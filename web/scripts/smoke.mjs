@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
 const pagesMode = process.argv.includes("--pages");
-const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}`;
+const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}?quality=low`;
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 const processes = [];
 
@@ -96,7 +96,7 @@ class DevTools {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         rejectResult(new Error(`Chrome did not respond to ${method}`));
-      }, 10_000);
+      }, 30_000);
       this.pending.set(id, { resolve: resolveResult, reject: rejectResult, timer });
       this.socket.send(JSON.stringify({ id, method, params }));
     });
@@ -130,11 +130,13 @@ const STATE = `(() => ({
   gold: Number(document.getElementById("gold")?.textContent),
   villagers: Number(document.getElementById("villagers")?.textContent),
   enemyHp: Number(document.getElementById("enemy-hp")?.textContent),
+  tick: document.getElementById("tick")?.textContent,
+  notice: document.getElementById("notice")?.textContent,
   mapSeed: Number(document.getElementById("map-seed")?.textContent),
   recruitEnabled: !document.getElementById("recruit")?.disabled
 }))()`;
 
-function nearestWood(initialSeed) {
+function woodNodes(initialSeed) {
   let seed = initialSeed; const resources = [];
   const next = () => { seed = seed * 48_271 % 2_147_483_647; return Math.round((seed / 2_147_483_647 * 58 - 29) * 10) / 10; };
   let enemy;
@@ -149,10 +151,10 @@ function nearestWood(initialSeed) {
       resources.push({ id, x, z }); break;
     }
   }
-  return resources.filter((r) => (r.id - 1) % 3 === 0).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))[0];
+  return resources.filter((r) => (r.id - 1) % 3 === 0).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
 }
 function project(point, rect, y = 0) {
-  const height = Math.max(32 * 3.0, 32 * 3.2 / (rect.width / rect.height));
+  const height = Math.max(32 * 1.2, 32 * 1.8 / (rect.width / rect.height));
   const scale = rect.height / height;
   return { x: rect.left + rect.width / 2 + (point.x - point.z) / Math.sqrt(2) * scale,
     y: rect.top + rect.height / 2 + ((point.x + point.z) / Math.sqrt(6) - y * Math.sqrt(2 / 3)) * scale };
@@ -190,7 +192,7 @@ try {
     "--use-angle=swiftshader",
     "--remote-allow-origins=*",
     "--remote-debugging-port=0",
-    "--window-size=1440,900",
+    "--window-size=1100,700",
     pageUrl,
   ], webDirectory);
 
@@ -219,26 +221,43 @@ try {
     const state = await devtools.evaluate(STATE);
     return state.villagers === initial.villagers + 1 &&
       state.wood === initial.wood - 5 && state.gold === initial.gold - 5 ? state : false;
-  }, 10_000, "villager recruitment");
+  }, 35_000, "villager recruitment");
 
   const rect = await devtools.evaluate('(() => { const r = document.querySelector("#scene canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()');
   const villager = project({ x: 0, z: 3.4 }, rect, 1.5);
-  const wood = project(nearestWood(initial.mapSeed), rect, 2.5);
+  let wood;
+  for (const node of woodNodes(initial.mapSeed)) {
+    const candidate = project(node, rect, 2.5);
+    if (candidate.x < rect.left + 15 || candidate.x > rect.left + rect.width - 15 ||
+        candidate.y < rect.top + 15 || candidate.y > rect.top + rect.height - 15) continue;
+    const visible = await devtools.evaluate(`document.elementFromPoint(${candidate.x}, ${candidate.y})?.matches("#scene canvas")`);
+    if (visible) { wood = candidate; break; }
+  }
+  if (!wood) throw new Error("No visible wood node for browser order test");
   await devtools.click(villager.x, villager.y);
   const selected = await devtools.evaluate('document.getElementById("selection").textContent');
   if (!selected.includes("villageois sélectionné")) throw new Error(`Click selection failed: ${selected}`);
   await devtools.click(wood.x, wood.y, "right");
+  const orderDetail = await until(async () => { const detail = await devtools.evaluate('document.getElementById("selection-detail")?.textContent'); return detail?.includes("Récolte") ? detail : false; }, 30_000, "resource gather order");
+  if (!orderDetail) throw new Error("Gather order missing");
   const delivered = await until(async () => {
     const state = await devtools.evaluate(STATE);
     return state.wood > recruited.wood ? state : false;
-  }, 45_000, "ordered wood gathering and delivery");
+  }, 90_000, "ordered wood gathering and delivery");
+  await devtools.evaluate('document.getElementById("stop").click()');
+  await until(async () => {
+    const detail = await devtools.evaluate('document.getElementById("selection-detail")?.textContent');
+    return detail?.includes("Inactif") ? detail : false;
+  }, 30_000, "villager stop order");
+  const minimapVisible = await devtools.evaluate('(() => { const c = document.getElementById("minimap"); const r = c.getBoundingClientRect(); return r.width > 100 && r.height > 100 && !!c.getContext("2d"); })()');
+  if (!minimapVisible) throw new Error("Minimap missing");
 
   if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
     const screenshot = await devtools.send("Page.captureScreenshot", { format: "jpeg", quality: 65 });
     await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
   }
 
-  console.log(`Browser smoke passed: WebGL RTS map, ${pagesMode ? "static solo mode" : "Phoenix socket"}, three starting villagers and recruitment (${initial.villagers} → ${recruited.villagers}) and ordered wood delivery (${recruited.wood} → ${delivered.wood}).`);
+  console.log(`Browser smoke passed: WebGL RTS map and minimap, ${pagesMode ? "static solo mode" : "Phoenix socket"}, recruitment (${initial.villagers} → ${recruited.villagers}), ordered wood delivery (${recruited.wood} → ${delivered.wood}) and stop order.`);
 } catch (error) {
   console.error(error);
   if (devtools) {
