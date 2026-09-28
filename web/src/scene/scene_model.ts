@@ -1,4 +1,4 @@
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, RingGeometry, Sprite, SpriteMaterial, Vector3 } from "three";
+import { Group, Mesh, MeshBasicMaterial, RingGeometry, Sprite, SpriteMaterial, Vector3 } from "three";
 import type { WorldSnapshot } from "../game/protocol";
 import { createEnemyBase, createGround, createResourceNode, createTownCenter, createVillagerSprite } from "./world_objects";
 
@@ -11,19 +11,21 @@ function marker(radius: number): Mesh {
 }
 function healthBar(width: number, y: number): Group {
   const group = new Group(); group.position.y = y;
-  const back = new Mesh(new BoxGeometry(width, .16, .08), new MeshBasicMaterial({ color: 0x3b1e1c })); group.add(back);
-  const fill = new Mesh(new BoxGeometry(width, .17, .09), new MeshBasicMaterial({ color: 0x7bd568 })); fill.name = "fill"; fill.position.z = .01; group.add(fill);
+  group.userData.width = width;
+  const back = new Sprite(new SpriteMaterial({ color: 0x3b1e1c, depthTest: false })); back.scale.set(width + .18, .34, 1); group.add(back);
+  const fill = new Sprite(new SpriteMaterial({ color: 0x7bd568, depthTest: false })); fill.name = "fill"; fill.scale.set(width, .2, 1); fill.position.z = .02; group.add(fill);
   return group;
 }
 function setHealth(bar: Group, hp: number, max: number): void {
-  const fill = bar.getObjectByName("fill") as Mesh;
-  const ratio = Math.max(0, hp / max); fill.scale.x = ratio; fill.position.x = (ratio - 1) * (fill.geometry as BoxGeometry).parameters.width / 2;
+  const fill = bar.getObjectByName("fill") as Sprite;
+  const width = bar.userData.width as number;
+  const ratio = Math.max(0, hp / max); fill.scale.x = width * ratio; fill.position.x = (ratio - 1) * width / 2;
   bar.visible = true;
 }
 function disposeGroup(group: Group): void {
   group.traverse((object) => {
     if (object instanceof Sprite) disposeSprite(object);
-    else if (object instanceof Mesh) { object.geometry.dispose(); const materials = Array.isArray(object.material) ? object.material : [object.material]; materials.forEach((m) => m.dispose()); }
+    else if (object instanceof Mesh) { object.geometry.dispose(); const materials = Array.isArray(object.material) ? object.material : [object.material]; materials.forEach((m) => { if (m instanceof MeshBasicMaterial) m.map?.dispose(); m.dispose(); }); }
   });
 }
 export class SceneModel {
@@ -47,7 +49,7 @@ export class SceneModel {
         const group = b.owner === "enemy" ? createEnemyBase() : createTownCenter();
         group.userData = { kind: "building", id: b.id };
         group.position.set(b.x, 0, b.z);
-        const health = healthBar(5, 8.8); group.add(health);
+        const health = healthBar(5, 11.4); group.add(health);
         const selection = marker(4.8); group.add(selection);
         visual = { group, health, marker: selection }; this.buildings.set(b.id, visual); this.root.add(group);
       }
@@ -84,7 +86,7 @@ export class SceneModel {
     for (const [id, b] of this.buildings) b.marker.visible = id === buildingId;
   }
   advance(seconds: number): void {
-    const alpha = 1 - Math.exp(-Math.max(0, seconds) * 12);
+    const alpha = 1 - Math.exp(-Math.max(0, seconds) * 20);
     for (const visual of this.villagers.values()) {
       visual.sprite.position.lerp(visual.destination, alpha);
       visual.marker.position.set(visual.sprite.position.x, .08, visual.sprite.position.z);
