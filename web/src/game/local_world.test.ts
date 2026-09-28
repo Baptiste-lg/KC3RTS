@@ -29,6 +29,16 @@ describe("RTS simulation", () => {
     expect(later.stockpile.stone).toBe(start.stockpile.stone);
     expect(later.resources.find((r) => r.id === node.id)!.amount).toBeLessThan(node.amount);
   });
+  it("stops at the edge of a resource before gathering", () => {
+    const start = createLocalWorld(1234);
+    const node = start.resources.find((r) => r.kind === "wood")!;
+    const nearby = { ...start, villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: node.x + 3.4, z: node.z } : v) };
+    const ordered = applyLocalCommand(nearby, { type: "order", villager_ids: [1], order: { kind: "gather", id: node.id } });
+    expect(ordered.ok).toBe(true); if (!ordered.ok) return;
+    const worker = stepLocalWorld(ordered.world).villagers[0];
+    expect(Math.hypot(worker.x - node.x, worker.z - node.z)).toBeCloseTo(3);
+    expect(stepLocalWorld(ordered.world, 2).resources.find((r) => r.id === node.id)!.amount).toBe(node.amount - 1);
+  });
   it("reserves a larger building footprint around stone and gold", () => {
     const world = createLocalWorld(1234);
     const ore = world.resources.find((r) => r.kind === "stone")!;
@@ -71,5 +81,15 @@ describe("RTS simulation", () => {
     expect(result.ok).toBe(true); if (!result.ok) return;
     const end = stepLocalWorld(result.world, 200);
     expect(end.buildings[1].hp).toBe(0); expect(end.outcome).toBe("victory");
+  });
+  it("attacks from beside the enemy base and lets faster units strike more often", () => {
+    const start = createLocalWorld(1234);
+    const enemy = start.buildings[1];
+    const nearby = { ...start, villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: enemy.x + 5.8, z: enemy.z } : v) };
+    const normal = applyLocalCommand(nearby, { type: "order", villager_ids: [1], order: { kind: "attack", id: enemy.id } });
+    expect(normal.ok).toBe(true); if (!normal.ok) return;
+    const fast = { ...normal.world, villagers: normal.world.villagers.map((v) => v.id === 1 ? { ...v, attack_interval_ticks: 3 } : v) };
+    expect(stepLocalWorld(normal.world, 6).buildings[1].hp).toBe(245);
+    expect(stepLocalWorld(fast, 6).buildings[1].hp).toBe(240);
   });
 });

@@ -49,6 +49,27 @@ defmodule KC3RTS.Game.WorldTest do
     assert later.stockpile.stone == world.stockpile.stone
   end
 
+  test "a worker stops beside a resource before harvesting" do
+    world = World.new(seed: 1234)
+    node = Enum.find(world.resources, &(&1.kind == :wood))
+
+    world = %{
+      world
+      | villagers:
+          Enum.map(world.villagers, fn v ->
+            if v.id == 1, do: %{v | x: node.x + 3.4, z: node.z}, else: v
+          end)
+    }
+
+    assert {:ok, ordered} =
+             World.command(world, %{type: :order, villager_ids: [1], order: {:gather, node.id}})
+
+    worker = ordered |> World.step() |> Map.fetch!(:villagers) |> hd()
+    assert_in_delta distance(worker, node), 3.0, 0.0001
+    gathered = World.step(ordered, 2)
+    assert Enum.find(gathered.resources, &(&1.id == node.id)).amount == node.amount - 1
+  end
+
   test "a center cannot overlap the enlarged stone or gold footprint" do
     world = World.new(seed: 1234)
     ore = Enum.find(world.resources, &(&1.kind == :stone))
@@ -117,6 +138,35 @@ defmodule KC3RTS.Game.WorldTest do
     finished = World.step(ordered, 200)
     assert Enum.at(finished.buildings, 1).hp == 0
     assert finished.outcome == :victory
+  end
+
+  test "attack cadence follows the unit's interval while standing beside the base" do
+    world = World.new(seed: 1234)
+    enemy = Enum.at(world.buildings, 1)
+
+    world = %{
+      world
+      | villagers:
+          Enum.map(world.villagers, fn v ->
+            if v.id == 1, do: %{v | x: enemy.x + 5.8, z: enemy.z}, else: v
+          end)
+    }
+
+    assert {:ok, normal} =
+             World.command(world, %{type: :order, villager_ids: [1], order: {:attack, enemy.id}})
+
+    fast = %{
+      normal
+      | villagers:
+          Enum.map(normal.villagers, fn v ->
+            if v.id == 1, do: %{v | attack_interval_ticks: 3}, else: v
+          end)
+    }
+
+    assert normal |> World.step(6) |> Map.fetch!(:buildings) |> Enum.at(1) |> Map.fetch!(:hp) ==
+             245
+
+    assert fast |> World.step(6) |> Map.fetch!(:buildings) |> Enum.at(1) |> Map.fetch!(:hp) == 240
   end
 
   defp distance(a, b), do: :math.sqrt(:math.pow(a.x - b.x, 2) + :math.pow(a.z - b.z, 2))

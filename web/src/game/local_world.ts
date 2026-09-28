@@ -1,4 +1,5 @@
 import type { Building, GameCommand, GroundPoint, ResourceNode, Villager, WorldSnapshot } from "./protocol";
+import { ATTACK_RANGE, DEFAULT_ATTACK_INTERVAL_TICKS, GATHER_INTERVAL_TICKS, gatherRange } from "./action_rules";
 import { generateMap } from "./map_generation";
 
 const MOD = 2_147_483_647;
@@ -8,17 +9,16 @@ const COST = { villager: { wood: 5, gold: 5 }, center: { wood: 25, stone: 15 } }
 export interface LocalWorld extends WorldSnapshot { nextVillagerId: number; nextBuildingId: number }
 export type CommandResult = { ok: true; world: LocalWorld } | { ok: false; reason: string };
 const distance = (a: GroundPoint, b: GroundPoint): number => Math.hypot(a.x - b.x, a.z - b.z);
-const gatherRange = (resource: ResourceNode): number => resource.kind === "wood" ? 1.3 : 1.95;
 const buildClearance = (resource: ResourceNode): number => resource.kind === "wood" ? 5 : 7.5;
 const inside = (p: GroundPoint, radius: number): boolean => Number.isFinite(p.x) && Number.isFinite(p.z) && Math.abs(p.x) <= radius - 3 && Math.abs(p.z) <= radius - 3;
 function spawn(world: LocalWorld, building: Building): LocalWorld {
   const id = world.nextVillagerId;
-  return { ...world, villagers: [...world.villagers, { id, x: building.x + (id % 3 - 1) * 0.5, z: building.z + 3.4, hp: 30, max_hp: 30, cargo: 0, cargo_kind: null, order: null }], nextVillagerId: id + 1 };
+  return { ...world, villagers: [...world.villagers, { id, x: building.x + (id % 3 - 1) * 0.5, z: building.z + 3.4, hp: 30, max_hp: 30, attack_interval_ticks: DEFAULT_ATTACK_INTERVAL_TICKS, cargo: 0, cargo_kind: null, order: null }], nextVillagerId: id + 1 };
 }
 export function createLocalWorld(seed = 12_345): LocalWorld {
   const mapSeed = Number.isSafeInteger(seed) ? Math.abs(seed) % (MOD - 1) || 1 : 12_345;
   const { enemy, resources } = generateMap(mapSeed);
-  let world: LocalWorld = { protocol_version: 2, seed: mapSeed, tick: 0, map_radius: 52, stockpile: { wood: 30, stone: 15, gold: 20 }, resources,
+  let world: LocalWorld = { protocol_version: 3, seed: mapSeed, tick: 0, map_radius: 52, stockpile: { wood: 30, stone: 15, gold: 20 }, resources,
     buildings: [{ id: 1, owner: "player", x: 0, z: 0, hp: 350, max_hp: 350, progress: 100 }, enemy], villagers: [], outcome: "playing", nextVillagerId: 1, nextBuildingId: 3 };
   for (let i = 0; i < 3; i += 1) world = spawn(world, world.buildings[0]);
   return world;
@@ -56,6 +56,12 @@ function move(v: Villager, p: GroundPoint): Villager {
   const d = distance(v, p); if (d <= SPEED) return { ...v, x: p.x, z: p.z };
   return { ...v, x: v.x + (p.x - v.x) / d * SPEED, z: v.z + (p.z - v.z) / d * SPEED };
 }
+function approach(v: Villager, p: GroundPoint, range: number): Villager {
+  const d = distance(v, p);
+  if (d <= range) return v;
+  const step = Math.min(SPEED, d - range);
+  return { ...v, x: v.x + (p.x - v.x) / d * step, z: v.z + (p.z - v.z) / d * step };
+}
 function nearestCenter(v: Villager, buildings: Building[]): Building | undefined {
   return buildings.filter((b) => b.owner === "player" && b.hp > 0 && b.progress === 100).sort((a, b) => distance(v, a) - distance(v, b))[0];
 }
@@ -81,8 +87,8 @@ function once(world: LocalWorld): LocalWorld {
         if (r.amount <= 0) v.order = null;
         return v;
       }
-      if (distance(v, r) > gatherRange(r)) return move(v, r);
-      if ((tick + v.id) % 3 === 0) { r.amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
+      if (distance(v, r) > gatherRange(r.kind) + .01) return approach(v, r, gatherRange(r.kind));
+      if ((tick + v.id) % GATHER_INTERVAL_TICKS === 0) { r.amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
       return v;
     }
     const b = buildings.find((item) => item.id === order.id);
@@ -93,8 +99,8 @@ function once(world: LocalWorld): LocalWorld {
       b.progress = Math.min(100, b.progress + 1); b.hp = Math.max(1, Math.round(b.max_hp * b.progress / 100));
       return v;
     }
-    if (distance(v, b) > 3.5) return move(v, b);
-    if ((tick + v.id) % 6 === 0) b.hp = Math.max(0, b.hp - 5);
+    if (distance(v, b) > ATTACK_RANGE + .01) return approach(v, b, ATTACK_RANGE);
+    if ((tick + v.id) % v.attack_interval_ticks === 0) b.hp = Math.max(0, b.hp - 5);
     return v;
   });
   return { ...world, tick, resources, buildings, stockpile, villagers, outcome: buildings.some((b) => b.owner === "enemy" && b.hp > 0) ? "playing" : "victory" };

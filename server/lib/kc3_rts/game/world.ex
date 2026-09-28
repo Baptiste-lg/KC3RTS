@@ -4,6 +4,8 @@ defmodule KC3RTS.Game.World do
   @mod 2_147_483_647
   @speed 0.55
   @capacity 5
+  @gather_interval_ticks 3
+  @attack_range 6.0
   defstruct map_radius: 52.0,
             stockpile: %{wood: 30, stone: 15, gold: 20},
             resources: [],
@@ -214,10 +216,10 @@ defmodule KC3RTS.Game.World do
       returning?(v, resource) ->
         deliver_or_move(v, resource, center, resources, buildings, stockpile)
 
-      distance(v, resource) > gather_range(resource) ->
-        {move(v, resource), resources, buildings, stockpile}
+      distance(v, resource) > gather_range(resource) + 0.01 ->
+        {approach(v, resource, gather_range(resource)), resources, buildings, stockpile}
 
-      rem(tick + v.id, 3) != 0 ->
+      rem(tick + v.id, @gather_interval_ticks) != 0 ->
         {v, resources, buildings, stockpile}
 
       true ->
@@ -251,10 +253,10 @@ defmodule KC3RTS.Game.World do
       is_nil(building) or building.hp == 0 ->
         {%{v | order: nil}, resources, buildings, stockpile}
 
-      distance(v, building) > 3.5 ->
-        {move(v, building), resources, buildings, stockpile}
+      distance(v, building) > @attack_range + 0.01 ->
+        {approach(v, building, @attack_range), resources, buildings, stockpile}
 
-      rem(tick + v.id, 6) != 0 ->
+      rem(tick + v.id, v.attack_interval_ticks) != 0 ->
         {v, resources, buildings, stockpile}
 
       true ->
@@ -326,6 +328,7 @@ defmodule KC3RTS.Game.World do
       z: center.z + 3.4,
       hp: 30,
       max_hp: 30,
+      attack_interval_ticks: 6,
       cargo: 0,
       cargo_kind: nil,
       order: nil
@@ -342,8 +345,24 @@ defmodule KC3RTS.Game.World do
       else: %{v | x: v.x + (point.x - v.x) / d * @speed, z: v.z + (point.z - v.z) / d * @speed}
   end
 
-  defp gather_range(%{kind: :wood}), do: 1.3
-  defp gather_range(_ore), do: 1.95
+  defp approach(v, point, range) do
+    distance = distance(v, point)
+
+    if distance <= range do
+      v
+    else
+      step = min(@speed, distance - range)
+
+      %{
+        v
+        | x: v.x + (point.x - v.x) / distance * step,
+          z: v.z + (point.z - v.z) / distance * step
+      }
+    end
+  end
+
+  defp gather_range(%{kind: :wood}), do: 3.0
+  defp gather_range(_ore), do: 4.3
   defp build_clearance(%{kind: :wood}), do: 5
   defp build_clearance(_ore), do: 7.5
 
