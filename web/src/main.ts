@@ -75,7 +75,9 @@ function onSnapshot(snapshot: WorldSnapshot): void {
 }
 function onStatus(next: GameConnectionStatus): void { status = next; connectionBadge.dataset.state = next; connectionLabel.textContent = statusLabels[next]; updateControls(); }
 function onCommand(outcome: CommandOutcome): void { if (!outcome.ok) showNotice(errors[outcome.reason] ?? `Ordre refusé (${outcome.reason}).`); }
-const connection: GameClient = import.meta.env.VITE_KC3RTS_MODE === "local" ? new LocalGameConnection({ onSnapshot, onStatus, onCommand }) : new GameConnection({ onSnapshot, onStatus, onCommand });
+const requestedSeed = Number(new URLSearchParams(location.search).get("seed"));
+const localSeed = Number.isSafeInteger(requestedSeed) && requestedSeed > 0 ? requestedSeed : undefined;
+const connection: GameClient = import.meta.env.VITE_KC3RTS_MODE === "local" ? new LocalGameConnection({ onSnapshot, onStatus, onCommand }, localSeed) : new GameConnection({ onSnapshot, onStatus, onCommand });
 function send(command: GameCommand): void { connection.command(command); }
 const actions = {
   select(hit: MapHit, additive: boolean): void {

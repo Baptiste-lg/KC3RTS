@@ -58,6 +58,7 @@ unit's health, current order and cargo. Each new match uses a fresh map seed,
 shown in the HUD. The enemy base spawns at a random location and has
 250 HP but no AI. There is no opposing army yet.
 Add `?quality=low` to the page URL on machines with slow graphics rendering.
+Add `?seed=12345` to replay a specific solo map; omit it for a fresh random map.
 
 ## Quality checks
 

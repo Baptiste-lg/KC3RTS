@@ -3,6 +3,13 @@ import type { WorldSnapshot } from "./protocol";
 import { LocalGameConnection } from "./local_connection";
 afterEach(() => vi.useRealTimers());
 describe("LocalGameConnection", () => {
+  it("accepts a fixed seed for reproducible solo maps", () => {
+    vi.useFakeTimers(); const snapshots: WorldSnapshot[] = [];
+    const game = new LocalGameConnection({ onSnapshot: (s) => snapshots.push(s), onStatus: () => undefined, onCommand: () => undefined }, 12345);
+    game.connect();
+    expect(snapshots[0].seed).toBe(12345);
+    game.disconnect();
+  });
   it("starts villagers and executes player orders", () => {
     vi.useFakeTimers(); const snapshots: WorldSnapshot[] = []; const outcomes: boolean[] = [];
     const game = new LocalGameConnection({ onSnapshot: (s) => snapshots.push(s), onStatus: () => undefined, onCommand: (o) => outcomes.push(o.ok) });

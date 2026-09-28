@@ -4,10 +4,10 @@ import { applyLocalCommand, createLocalWorld, stepLocalWorld, type LocalWorld } 
 export class LocalGameConnection implements GameClient {
   private world: LocalWorld | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  constructor(private readonly handlers: GameConnectionHandlers) {}
+  constructor(private readonly handlers: GameConnectionHandlers, private readonly seed?: number) {}
   connect(): void {
     if (this.timer !== null) return;
-    this.world = createLocalWorld(crypto.getRandomValues(new Uint32Array(1))[0]); this.handlers.onStatus("local"); this.handlers.onSnapshot(this.world);
+    this.world = createLocalWorld(this.seed ?? crypto.getRandomValues(new Uint32Array(1))[0]); this.handlers.onStatus("local"); this.handlers.onSnapshot(this.world);
     this.timer = setInterval(() => {
       if (!this.world || this.world.outcome !== "playing") return;
       this.world = stepLocalWorld(this.world); this.handlers.onSnapshot(this.world);
