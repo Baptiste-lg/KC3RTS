@@ -33,6 +33,10 @@ describe("pixel art world objects", () => {
       expect(object.children[0]).toBeInstanceOf(Sprite);
       expect((object.children[0] as Sprite).material.map).toBeInstanceOf(CanvasTexture);
     }
+    expect((stone.children[0] as Sprite).scale.x).toBe(6.6);
+    expect((stone.children[0] as Sprite).scale.y).toBe(6.6);
+    expect((gold.children[0] as Sprite).scale.x).toBe(6.6);
+    expect((gold.children[0] as Sprite).scale.y).toBe(6.6);
     expect(wood.position.x).toBe(8);
     expect(wood.position.z).toBe(3);
     expect(painted).toHaveBeenCalledTimes(6);

@@ -176,7 +176,7 @@ export function createResourceNode(node: ResourceNode): Group {
   const group = new Group(); group.name = `resource-${node.id}`;
   group.userData = { kind: "resource", id: node.id };
   group.position.set(node.x, 0, node.z);
-  group.add(node.kind === "wood" ? sprite(treeArt(node.id), 4.5, 6.8) : sprite(rockArt(node.kind === "gold"), 4.4, 4.4));
+  group.add(node.kind === "wood" ? sprite(treeArt(node.id), 4.5, 6.8) : sprite(rockArt(node.kind === "gold"), 6.6, 6.6));
   return group;
 }
 
