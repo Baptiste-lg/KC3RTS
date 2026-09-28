@@ -82,7 +82,8 @@ button { font: inherit; }
   backdrop-filter: blur(15px);
 }
 .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: #e3b66e; box-shadow: 0 0 0 3px rgba(227, 182, 110, .16); }
-.connection[data-state="connected"] .connection-dot { background: #9ad99a; box-shadow: 0 0 0 3px rgba(112, 218, 142, .18); }
+.connection[data-state="connected"] .connection-dot,
+.connection[data-state="local"] .connection-dot { background: #9ad99a; box-shadow: 0 0 0 3px rgba(112, 218, 142, .18); }
 .connection[data-state="offline"] .connection-dot,
 .connection[data-state="incompatible"] .connection-dot { background: #e9927d; box-shadow: 0 0 0 3px rgba(233, 146, 125, .17); }
 

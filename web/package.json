@@ -9,10 +9,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:pages": "vite build --mode pages --base=/KC3RTS/",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:pages": "npm run build:pages && node scripts/smoke.mjs --pages"
   },
   "dependencies": {
     "phoenix": "1.8.15",

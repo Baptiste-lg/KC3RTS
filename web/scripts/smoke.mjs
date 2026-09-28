@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
+const pagesMode = process.argv.includes("--pages");
+const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}`;
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 const processes = [];
 
@@ -114,7 +116,7 @@ class DevTools {
 }
 
 const STATE = `(() => ({
-  connected: document.getElementById("connection")?.dataset.state === "connected",
+  mode: document.getElementById("connection")?.dataset.state,
   canvas: !!document.querySelector("#scene canvas"),
   loadingHidden: document.getElementById("loading")?.hidden,
   fallbackHidden: document.getElementById("fallback")?.hidden,
@@ -128,17 +130,21 @@ let profile;
 let devtools;
 
 try {
-  start("Phoenix", "mix", ["run", "--no-halt"], serverDirectory);
-  start("Vite", process.execPath, ["node_modules/vite/bin/vite.js"], webDirectory);
+  if (!pagesMode) start("Phoenix", "mix", ["run", "--no-halt"], serverDirectory);
+  start("Vite", process.execPath, pagesMode
+    ? ["node_modules/vite/bin/vite.js", "preview", "--base", "/KC3RTS/", "--host", "127.0.0.1", "--port", "5173", "--strictPort"]
+    : ["node_modules/vite/bin/vite.js"], webDirectory);
 
+  if (!pagesMode) {
+    await until(async () => {
+      const response = await fetch("http://127.0.0.1:4000/health", { signal: AbortSignal.timeout(1_000) });
+      return response.ok && (await response.json()).status === "ok";
+    }, 90_000, "Phoenix health endpoint");
+  }
   await until(async () => {
-    const response = await fetch("http://127.0.0.1:4000/health", { signal: AbortSignal.timeout(1_000) });
-    return response.ok && (await response.json()).status === "ok";
-  }, 90_000, "Phoenix health endpoint");
-  await until(async () => {
-    const response = await fetch("http://127.0.0.1:5173/", { signal: AbortSignal.timeout(1_000) });
+    const response = await fetch(pageUrl, { signal: AbortSignal.timeout(1_000) });
     return response.ok;
-  }, 15_000, "Vite page");
+  }, 15_000, pagesMode ? "Pages preview" : "Vite page");
 
   profile = await mkdtemp(join(tmpdir(), "kc3rts-browser-"));
   start("Chromium", browserExecutable(), [
@@ -153,7 +159,7 @@ try {
     "--remote-allow-origins=*",
     "--remote-debugging-port=0",
     "--window-size=1440,900",
-    "http://127.0.0.1:5173/",
+    pageUrl,
   ], webDirectory);
 
   const port = await until(async () => {
@@ -163,14 +169,15 @@ try {
   const pages = await until(async () => {
     const response = await fetch(`http://127.0.0.1:${port}/json/list`);
     const entries = await response.json();
-    return entries.find((entry) => entry.type === "page" && entry.url.includes("127.0.0.1:5173"));
+    return entries.find((entry) => entry.type === "page" && entry.url.startsWith(pageUrl));
   }, 15_000, "game browser tab");
   devtools = new DevTools(pages.webSocketDebuggerUrl);
   await devtools.ready();
 
   const initial = await until(async () => {
     const state = await devtools.evaluate(STATE);
-    return state.connected && state.canvas && state.loadingHidden && state.fallbackHidden &&
+    return state.mode === (pagesMode ? "local" : "connected") && state.canvas &&
+      state.loadingHidden && state.fallbackHidden &&
       state.recruitEnabled && state.stockpile === 20 && state.remaining > 0 ? state : false;
   }, 30_000, "live 3D village");
 
@@ -191,9 +198,12 @@ try {
     await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
   }
 
-  console.log(`Browser smoke passed: WebGL scene, Phoenix socket, recruitment, delivery (${initial.stockpile} → ${recruited.stockpile} → ${delivered.stockpile}).`);
+  console.log(`Browser smoke passed: WebGL scene, ${pagesMode ? "static solo mode" : "Phoenix socket"}, recruitment, delivery (${initial.stockpile} → ${recruited.stockpile} → ${delivered.stockpile}).`);
 } catch (error) {
   console.error(error);
+  if (devtools) {
+    try { console.error("Browser state:", await devtools.evaluate(STATE)); } catch { /* tab closed */ }
+  }
   for (const process of processes) console.error(`${process.name} log:\n${process.logs()}`);
   process.exitCode = 1;
 } finally {

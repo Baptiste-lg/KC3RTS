@@ -1,7 +1,7 @@
 import { Socket, type Channel } from "phoenix";
 import { parseSnapshot, type WorldSnapshot } from "./protocol";
 
-export type GameConnectionStatus = "connecting" | "connected" | "offline" | "incompatible";
+export type GameConnectionStatus = "connecting" | "connected" | "local" | "offline" | "incompatible";
 
 export type RecruitmentOutcome = { ok: true } | { ok: false; reason: string };
 
@@ -9,6 +9,12 @@ export interface GameConnectionHandlers {
   onSnapshot(snapshot: WorldSnapshot): void;
   onStatus(status: GameConnectionStatus): void;
   onRecruitment(outcome: RecruitmentOutcome): void;
+}
+
+export interface GameClient {
+  connect(): void;
+  spawnVillager(): void;
+  disconnect(): void;
 }
 
 function readWorld(payload: unknown): WorldSnapshot | null {
@@ -23,7 +29,7 @@ function readReason(payload: unknown): string {
   return typeof payload.reason === "string" ? payload.reason : "command_rejected";
 }
 
-export class GameConnection {
+export class GameConnection implements GameClient {
   private channel: Channel | null = null;
   private ready = false;
   private started = false;

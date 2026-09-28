@@ -1,5 +1,6 @@
 import "./style.css";
-import { GameConnection, type GameConnectionStatus, type RecruitmentOutcome } from "./game/connection";
+import { GameConnection, type GameClient, type GameConnectionStatus, type RecruitmentOutcome } from "./game/connection";
+import { LocalGameConnection } from "./game/local_connection";
 import type { WorldSnapshot } from "./game/protocol";
 import { WorldView } from "./scene/world_view";
 
@@ -30,6 +31,7 @@ let noticeTimer = 0;
 const statusLabels: Record<GameConnectionStatus, string> = {
   connecting: "Connexion au village…",
   connected: "Village connecté",
+  local: "Partie solo · navigateur",
   offline: "Serveur hors ligne",
   incompatible: "Version du serveur incompatible",
 };
@@ -42,7 +44,7 @@ const errorLabels: Record<string, string> = {
 };
 
 function updateButton(): void {
-  recruitButton.disabled = graphicsFailed || connectionState !== "connected" ||
+  recruitButton.disabled = graphicsFailed || (connectionState !== "connected" && connectionState !== "local") ||
     currentWorld === null || currentWorld.stockpile < 5;
 }
 
@@ -97,11 +99,14 @@ function showRecruitment(outcome: RecruitmentOutcome): void {
   }
 }
 
-const connection = new GameConnection({
+const handlers = {
   onSnapshot: updateWorld,
   onStatus: updateStatus,
   onRecruitment: showRecruitment,
-});
+};
+const connection: GameClient = import.meta.env.VITE_KC3RTS_MODE === "local"
+  ? new LocalGameConnection(handlers)
+  : new GameConnection(handlers);
 
 recruitButton.addEventListener("click", () => connection.spawnVillager());
 window.addEventListener("keydown", (event) => {
