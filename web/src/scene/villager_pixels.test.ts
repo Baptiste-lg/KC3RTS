@@ -16,5 +16,7 @@ describe("generated villager art", () => {
     const empty = generateVillagerPixels(7, false);
     expect(generateVillagerPixels(7, false).data).toEqual(empty.data);
     expect(generateVillagerPixels(7, true).data).not.toEqual(empty.data);
+    expect(generateVillagerPixels(7, false, 2).data).not.toEqual(generateVillagerPixels(7, false, 1).data);
+    expect(generateVillagerPixels(7, false, 2).data).toEqual(generateVillagerPixels(7, false, 2).data);
   });
 });
