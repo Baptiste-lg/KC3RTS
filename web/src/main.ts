@@ -23,9 +23,9 @@ const selectedVillagers = new Set<number>();
 const controlGroups = new Map<number, number[]>();
 let lastGroup = 0, lastGroupTime = 0;
 const minimap = new Minimap(minimapCanvas, (point) => { view?.focus(point); if (world && view) minimap.draw(world, view.getFocus(), view.getViewport()); });
-const statusLabels: Record<GameConnectionStatus, string> = { connecting: "Connexion…", connected: "Partie connectée", local: "Partie solo", offline: "Serveur hors ligne", incompatible: "Version incompatible" };
-const errors: Record<string, string> = { insufficient_resources: "Ressources insuffisantes.", invalid_location: "Emplacement trop proche d’un obstacle ou hors de la carte.", invalid_target: "Cible indisponible.", invalid_selection: "Sélectionnez un villageois.", invalid_building: "Sélectionnez un centre terminé.", offline: "Connexion interrompue.", game_over: "La partie est terminée." };
-function showNotice(message: string): void { window.clearTimeout(noticeTimer); notice.textContent = message; noticeTimer = window.setTimeout(() => { notice.textContent = "Clic gauche : sélectionner · clic droit : donner un ordre."; }, 5_000); }
+const statusLabels: Record<GameConnectionStatus, string> = { connecting: "Connecting…", connected: "Connected game", local: "Solo game", offline: "Server offline", incompatible: "Incompatible version" };
+const errors: Record<string, string> = { insufficient_resources: "Not enough resources.", invalid_location: "Site too close to an obstacle or outside the map.", invalid_target: "Target unavailable.", invalid_selection: "Select a villager.", invalid_building: "Select a completed town center.", offline: "Connection lost.", game_over: "The game has ended." };
+function showNotice(message: string): void { window.clearTimeout(noticeTimer); notice.textContent = message; noticeTimer = window.setTimeout(() => { notice.textContent = "Left click: select · right click: issue an order."; }, 5_000); }
 function selectedCenter(): Building | undefined { return world?.buildings.find((b) => b.id === selectedBuilding && b.owner === "player" && b.hp > 0 && b.progress === 100); }
 function updateControls(): void {
   const ready = !graphicsFailed && (status === "connected" || status === "local") && world?.outcome === "playing";
@@ -39,19 +39,19 @@ function updateControls(): void {
   buildButton.classList.toggle("active", placing);
   const resource = selectedInfo?.kind === "resource" ? world?.resources.find((r) => r.id === selectedInfo?.id) : null;
   const enemy = selectedInfo?.kind === "enemy" ? world?.buildings.find((b) => b.id === selectedInfo?.id) : null;
-  selectionLabel.textContent = selectedVillagers.size ? `${selectedVillagers.size} villageois sélectionné${selectedVillagers.size > 1 ? "s" : ""}` : selectedCenter() ? `Centre #${selectedCenter()!.id} · ${selectedCenter()!.hp}/${selectedCenter()!.max_hp} PV` : resource ? `${{ wood: "Bois", stone: "Pierre", gold: "Or" }[resource.kind]} · ${resource.amount} restants` : enemy ? `Base adverse · ${enemy.hp}/${enemy.max_hp} PV` : "Aucune unité sélectionnée";
+  selectionLabel.textContent = selectedVillagers.size ? `${selectedVillagers.size} ${selectedVillagers.size === 1 ? "villager" : "villagers"} selected` : selectedCenter() ? `Town center #${selectedCenter()!.id} · ${selectedCenter()!.hp}/${selectedCenter()!.max_hp} HP` : resource ? `${{ wood: "Wood", stone: "Stone", gold: "Gold" }[resource.kind]} · ${resource.amount} remaining` : enemy ? `Enemy base · ${enemy.hp}/${enemy.max_hp} HP` : "No unit selected";
   if (selected.length === 1) {
     const unit = selected[0];
-    const order = unit.order?.kind === "gather" ? "Récolte" : unit.order?.kind === "move" ? "Déplacement" : unit.order?.kind === "build" ? "Construction" : unit.order?.kind === "attack" ? "Attaque" : "Inactif";
-    selectionDetail.textContent = `PV ${unit.hp}/${unit.max_hp} · ${order}${unit.cargo ? ` · Charge ${unit.cargo} ${unit.cargo_kind}` : ""}`;
+    const order = unit.order?.kind === "gather" ? "Gathering" : unit.order?.kind === "move" ? "Moving" : unit.order?.kind === "build" ? "Building" : unit.order?.kind === "attack" ? "Attacking" : "Idle";
+    selectionDetail.textContent = `HP ${unit.hp}/${unit.max_hp} · ${order}${unit.cargo ? ` · Carrying ${unit.cargo} ${unit.cargo_kind}` : ""}`;
   } else if (selected.length > 1) {
-    selectionDetail.textContent = `${selected.filter((v) => v.order === null).length} inactifs · ${selected.length} unités`;
+    selectionDetail.textContent = `${selected.filter((v) => v.order === null).length} idle · ${selected.length} units`;
   } else if (selectedCenter()) {
-    selectionDetail.textContent = `PV ${selectedCenter()!.hp}/${selectedCenter()!.max_hp} · Produit des villageois · Reçoit les ressources`;
+    selectionDetail.textContent = `HP ${selectedCenter()!.hp}/${selectedCenter()!.max_hp} · Trains villagers · Receives resources`;
   } else {
-    selectionDetail.textContent = resource ? `${resource.amount}/${resource.initial_amount} disponibles` : enemy ? `PV ${enemy.hp}/${enemy.max_hp}` : "";
+    selectionDetail.textContent = resource ? `${resource.amount}/${resource.initial_amount} available` : enemy ? `HP ${enemy.hp}/${enemy.max_hp}` : "";
   }
-  commandHelp.textContent = selected.length ? "Clic droit sur le terrain pour déplacer, sur une ressource pour récolter, sur la base rouge pour attaquer." : selectedCenter() ? "Recrutez ici, ou sélectionnez vos villageois sur la carte." : "Clic gauche pour sélectionner ; clic droit pour donner un ordre.";
+  commandHelp.textContent = selected.length ? "Right click terrain to move, a resource to gather, or the red base to attack." : selectedCenter() ? "Recruit here, or select your villagers on the map." : "Left click to select; right click to issue an order.";
   view?.select(selectedVillagers, selectedBuilding);
   view?.setPlacing(placing);
 }
@@ -67,14 +67,14 @@ function onSnapshot(snapshot: WorldSnapshot): void {
   if (graphicsFailed) return;
   try {
     if (view) view.update(snapshot);
-    else { view = new WorldView(sceneMount, snapshot, actions); loading.hidden = true; showNotice("Sélectionnez vos villageois, puis clic droit sur une ressource."); }
+    else { view = new WorldView(sceneMount, snapshot, actions); loading.hidden = true; showNotice("Select your villagers, then right click a resource."); }
     updateControls();
     if (view) minimap.draw(snapshot, view.getFocus(), view.getViewport());
-    if (snapshot.outcome !== "playing" && previousOutcome !== snapshot.outcome) showNotice(snapshot.outcome === "victory" ? "Victoire ! La base adverse est détruite." : "Défaite.");
+    if (snapshot.outcome !== "playing" && previousOutcome !== snapshot.outcome) showNotice(snapshot.outcome === "victory" ? "Victory! The enemy base is destroyed." : "Defeat.");
   } catch (error) { console.error(error); graphicsFailed = true; loading.hidden = true; fallback.hidden = false; updateControls(); }
 }
 function onStatus(next: GameConnectionStatus): void { status = next; connectionBadge.dataset.state = next; connectionLabel.textContent = statusLabels[next]; updateControls(); }
-function onCommand(outcome: CommandOutcome): void { if (!outcome.ok) showNotice(errors[outcome.reason] ?? `Ordre refusé (${outcome.reason}).`); }
+function onCommand(outcome: CommandOutcome): void { if (!outcome.ok) showNotice(errors[outcome.reason] ?? `Order rejected (${outcome.reason}).`); }
 const requestedSeed = Number(new URLSearchParams(location.search).get("seed"));
 const localSeed = Number.isSafeInteger(requestedSeed) && requestedSeed > 0 ? requestedSeed : undefined;
 const connection: GameClient = import.meta.env.VITE_KC3RTS_MODE === "local" ? new LocalGameConnection({ onSnapshot, onStatus, onCommand }, localSeed) : new GameConnection({ onSnapshot, onStatus, onCommand });
@@ -113,7 +113,7 @@ const actions = {
 };
 recruitButton.addEventListener("click", () => { const center = selectedCenter(); if (center) send({ type: "spawn_villager", building_id: center.id }); });
 stopButton.addEventListener("click", () => { if (selectedVillagers.size) send({ type: "stop", villager_ids: [...selectedVillagers] }); });
-buildButton.addEventListener("click", () => { placing = !placing; updateControls(); if (placing) showNotice("Cliquez sur un terrain libre pour placer le centre."); });
+buildButton.addEventListener("click", () => { placing = !placing; updateControls(); if (placing) showNotice("Click open ground to place the town center."); });
 window.addEventListener("keydown", (e) => {
   if (e.altKey || e.metaKey || e.repeat) return;
   const digit = /^Digit([1-9])$/.exec(e.code);
@@ -121,7 +121,7 @@ window.addEventListener("keydown", (e) => {
     const number = Number(digit[1]);
     if (e.ctrlKey) {
       e.preventDefault();
-      if (selectedVillagers.size) { controlGroups.set(number, [...selectedVillagers]); showNotice(`Groupe ${number} enregistré.`); }
+      if (selectedVillagers.size) { controlGroups.set(number, [...selectedVillagers]); showNotice(`Group ${number} saved.`); }
     } else if (!e.shiftKey) {
       const ids = controlGroups.get(number)?.filter((id) => world?.villagers.some((v) => v.id === id)) ?? [];
       if (ids.length) {
@@ -140,7 +140,7 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.ctrlKey) return;
   if (e.code === "Escape") { placing = false; selectedVillagers.clear(); selectedBuilding = null; selectedInfo = null; updateControls(); }
-  if (e.code === "KeyB" && !buildButton.disabled) { placing = !placing; updateControls(); if (placing) showNotice("Cliquez sur un terrain libre pour placer le centre."); }
+  if (e.code === "KeyB" && !buildButton.disabled) { placing = !placing; updateControls(); if (placing) showNotice("Click open ground to place the town center."); }
   if (e.code === "KeyV" && !recruitButton.disabled) recruitButton.click();
   if (e.code === "KeyX" && !stopButton.disabled) stopButton.click();
 });
