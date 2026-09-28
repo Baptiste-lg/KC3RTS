@@ -11,7 +11,9 @@ orders to move, gather, build another town center or attack a passive enemy base
 Units and buildings have hit points. Destroying the enemy base wins the match.
 
 All artwork is generated in code. Villagers use simple, front-facing 16 × 24 pixel sprites;
-their clothing palette changes with each match seed. Units move briskly, and an order marker
+their clothing palette changes with each match seed. Villagers make short hops
+while moving and lunge from the edge of resources or the enemy base when an
+action lands. Attack lunges follow each unit's attack interval. An order marker
 appears immediately when you right-click a target.
 
 ## Play online

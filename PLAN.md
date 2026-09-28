@@ -16,8 +16,10 @@ army yet.
 The browser uses Three.js for the isometric map and generated geometry. The
 Phoenix server owns authoritative matches in development and can receive the
 same command set as the static solo simulation used on GitHub Pages. The
-snapshot protocol is version 2 and contains resources, buildings, villagers,
-orders, hit points, stockpiles and outcome.
+snapshot protocol is version 3 and contains resources, buildings, villagers,
+orders, hit points, attack intervals, stockpiles and outcome. Villagers hop
+while moving and lunge in time with gathering or attacking; the target
+remains outside their standing footprint.
 
 ## Next work
 
