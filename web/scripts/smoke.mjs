@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
 const pagesMode = process.argv.includes("--pages");
-const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}${process.env.KC3RTS_SMOKE_QUALITY === "normal" ? "" : "?quality=low"}`;
+const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}?${new URLSearchParams({
+  ...(process.env.KC3RTS_SMOKE_QUALITY === "normal" ? {} : { quality: "low" }),
+  ...(pagesMode ? { seed: "12345" } : {}),
+})}`;
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 const processes = [];
 
@@ -232,14 +235,18 @@ try {
     if (candidate.x < rect.left + 15 || candidate.x > rect.left + rect.width - 15 ||
         candidate.y < rect.top + 15 || candidate.y > rect.top + rect.height - 15) continue;
     const visible = await devtools.evaluate(`document.elementFromPoint(${candidate.x}, ${candidate.y})?.matches("#scene canvas")`);
-    if (visible) { wood = candidate; break; }
+    if (!visible) continue;
+    await devtools.click(candidate.x, candidate.y);
+    const label = await devtools.evaluate('document.getElementById("selection")?.textContent');
+    if (label?.startsWith("Bois")) { wood = candidate; break; }
   }
   if (!wood) throw new Error("No visible wood node for browser order test");
   await devtools.click(villager.x, villager.y);
   const selected = await devtools.evaluate('document.getElementById("selection").textContent');
   if (!selected.includes("villageois sélectionné")) throw new Error(`Click selection failed: ${selected}`);
-  await devtools.click(wood.x, wood.y, "right");
+  await devtools.send("Input.dispatchMouseEvent", { type: "mousePressed", x: wood.x, y: wood.y, button: "right", buttons: 2, clickCount: 1 });
   const orderDetail = await until(async () => { const detail = await devtools.evaluate('document.getElementById("selection-detail")?.textContent'); return detail?.includes("Récolte") ? detail : false; }, 30_000, "resource gather order");
+  await devtools.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: wood.x, y: wood.y, button: "right", buttons: 0, clickCount: 1 });
   if (!orderDetail) throw new Error("Gather order missing");
   const delivered = await until(async () => {
     const state = await devtools.evaluate(STATE);

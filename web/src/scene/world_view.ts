@@ -116,9 +116,22 @@ export class WorldView {
   }
   private readonly pointerDown = (e: PointerEvent): void => {
     e.preventDefault();
+    if (e.button === 2) {
+      const hit = this.hit(e.clientX, e.clientY);
+      if (hit) this.issueOrder(hit);
+      return;
+    }
     this.pointer = { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, id: e.pointerId, button: e.button };
     this.renderer.domElement.setPointerCapture(e.pointerId);
   };
+  private issueOrder(hit: MapHit): void {
+    if (!this.actions.order(hit)) return;
+    const target = hit.kind === "ground" ? hit.point : hit.kind === "resource" ? this.snapshot.resources.find((r) => r.id === hit.id) : this.snapshot.buildings.find((b) => b.id === hit.id);
+    if (!target) return;
+    this.orderMarker.position.set(target.x, .14, target.z);
+    this.orderMaterial.color.set(hit.kind === "resource" ? 0xe5c46c : hit.kind === "building" ? 0xe77d70 : 0xb8e4bb);
+    this.orderTime = performance.now(); this.orderMarker.visible = true;
+  }
   private readonly pointerMove = (e: PointerEvent): void => {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.edgePan.x = e.clientX < rect.left + 24 ? -1 : e.clientX > rect.right - 24 ? 1 : 0;
@@ -150,18 +163,6 @@ export class WorldView {
     if (this.renderer.domElement.hasPointerCapture(e.pointerId)) this.renderer.domElement.releasePointerCapture(e.pointerId);
     const dragged = Math.hypot(e.clientX - start.startX, e.clientY - start.startY) > 8;
     if (start.button === 1) return;
-    if (start.button === 2) {
-      const hit = this.hit(e.clientX, e.clientY);
-      if (hit && this.actions.order(hit)) {
-        const target = hit.kind === "ground" ? hit.point : hit.kind === "resource" ? this.snapshot.resources.find((r) => r.id === hit.id) : this.snapshot.buildings.find((b) => b.id === hit.id);
-        if (target) {
-          this.orderMarker.position.set(target.x, .14, target.z);
-          this.orderMaterial.color.set(hit.kind === "resource" ? 0xe5c46c : hit.kind === "building" ? 0xe77d70 : 0xb8e4bb);
-          this.orderTime = performance.now(); this.orderMarker.visible = true;
-        }
-      }
-      return;
-    }
     if (dragged) {
       const left = Math.min(start.startX, e.clientX), right = Math.max(start.startX, e.clientX);
       const top = Math.min(start.startY, e.clientY), bottom = Math.max(start.startY, e.clientY);
