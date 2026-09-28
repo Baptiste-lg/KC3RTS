@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RESOURCE_AMOUNTS, RESOURCE_COUNTS } from "./map_generation";
 import { applyLocalCommand, createLocalWorld, stepLocalWorld } from "./local_world";
 
 describe("RTS simulation", () => {
@@ -7,8 +8,12 @@ describe("RTS simulation", () => {
     expect(createLocalWorld(1234)).toEqual(world);
     expect(world.villagers).toHaveLength(3);
     expect(world.map_radius).toBe(52);
-    expect(world.resources).toHaveLength(90);
-    expect(world.resources.slice(0, 18).every((r) => Math.abs(r.x) <= 18 && Math.abs(r.z) <= 18)).toBe(true);
+    expect(world.resources).toHaveLength(118);
+    for (const kind of ["wood", "stone", "gold"] as const) {
+      const nodes = world.resources.filter((r) => r.kind === kind);
+      expect(nodes).toHaveLength(RESOURCE_COUNTS[kind]);
+      expect(nodes.every((r) => r.amount === RESOURCE_AMOUNTS[kind])).toBe(true);
+    }
     expect(new Set(world.resources.map((r) => r.kind))).toEqual(new Set(["wood", "stone", "gold"]));
     expect(world.buildings.map((b) => b.owner)).toEqual(["player", "enemy"]);
     expect(Math.hypot(world.buildings[1].x, world.buildings[1].z)).toBeGreaterThanOrEqual(34);
