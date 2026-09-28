@@ -4,7 +4,10 @@
 
 KC3RTS is a browser RTS prototype with one building type: the town center.
 Each match starts with one center, three villagers, procedurally placed wood,
-stone and gold, and an enemy base at a random seeded position. The enemy has
+stone and gold, and an enemy base at a random seeded position. The resource
+layout has a starter grove, three large forests and five smaller groves, with
+104 trees, 8 stone deposits and 6 gold deposits. Each tree holds 160 wood,
+each stone deposit 480 stone and each gold deposit 520 gold. The enemy has
 250 HP but no AI. The player selects villagers, orders movement, gathering,
 construction and attacks, recruits at completed centers and wins by destroying
 the enemy base. Villagers have 30 HP; centers have 350 HP. There is no opposing
