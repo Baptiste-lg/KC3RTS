@@ -14,8 +14,7 @@ sprites are generated mathematically or drawn into a canvas at runtime.
 [Play KC3RTS on GitHub Pages](https://baptiste-lg.github.io/KC3RTS/). This is a
 solo match simulated in your browser, so it needs no running Phoenix server.
 Each visit starts a fresh match; there are no accounts or saved games yet.
-After the one-time Pages setup in repository settings, pushes to `main` publish
-only when all CI checks pass.
+Pushes to `main` publish only when all CI checks pass.
 
 ## Play locally
 
@@ -90,10 +89,11 @@ games. A later networked deployment can serve the normal `web/dist` and proxy
 
 ## GitHub Pages setup
 
-The repository owner must select **Settings → Pages → Build and deployment →
-Source: GitHub Actions** once. The `pages` CI job then builds `web/dist` with
-the `/KC3RTS/` base path and publishes it after the server, web and both browser
-checks succeed on a push to `main`. Pull requests run checks but cannot publish.
+This repository publishes through **Settings → Pages → Build and deployment →
+Source: GitHub Actions**. When copying the workflow to a new repository, select
+that source once. The `pages` CI job builds `web/dist` with the `/KC3RTS/` base
+path and publishes it after the server, web and both browser checks succeed on a
+push to `main`. Pull requests run checks but cannot publish.
 
 ## License
 
