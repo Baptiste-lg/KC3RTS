@@ -58,7 +58,34 @@ jobs:
         working-directory: web
       - run: npm run typecheck
         working-directory: web
-      - run: npm test -- --run
+      - run: npm test
         working-directory: web
       - run: npm run build
+        working-directory: web
+
+  browser:
+    name: Browser play loop
+    needs: [server, web]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.0"
+          elixir-version: "1.20.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: server/deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('server/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+      - run: mix deps.get
+        working-directory: server
+      - run: npm ci
+        working-directory: web
+      - run: npm run smoke
         working-directory: web
