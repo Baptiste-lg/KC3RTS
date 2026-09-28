@@ -91,16 +91,10 @@ defmodule KC3RTS.Game.WorldServer do
   end
 
   defp broadcast_world(game_id, world) do
-    topic = topic(game_id)
-
-    Phoenix.PubSub.broadcast(
-      KC3RTS.PubSub,
-      topic,
-      %Phoenix.Socket.Broadcast{
-        topic: topic,
-        event: "world_snapshot",
-        payload: %{world: Snapshot.from_world(world)}
-      }
+    KC3RTSWeb.Endpoint.broadcast(
+      topic(game_id),
+      "world_snapshot",
+      %{world: Snapshot.from_world(world)}
     )
   end
 

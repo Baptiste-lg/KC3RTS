@@ -34,6 +34,8 @@ defmodule KC3RTS.Game.WorldTest do
       assert {:ok, world, first} = World.spawn_villager(world)
       assert {:ok, world, second} = World.spawn_villager(world)
       assert first.id != second.id
+      assert first.z >= 3.0
+      assert second.z >= 3.0
       assert world.stockpile == 2
 
       assert {:error, :insufficient_resources, ^world} = World.spawn_villager(world)
@@ -41,6 +43,17 @@ defmodule KC3RTS.Game.WorldTest do
   end
 
   describe "step/2" do
+    test "delivers cargo at the visible town center entrance" do
+      world = World.new(resource_count: 0, starting_stockpile: 0)
+      villager = %{id: 1, x: 0.0, z: 3.2, cargo: 5, target: :town_center}
+      world = %{world | villagers: [villager]}
+
+      updated = World.step(world)
+
+      assert updated.stockpile == 5
+      assert hd(updated.villagers).cargo == 0
+    end
+
     test "villagers gather resources and deliver them to the town center" do
       world = World.new(seed: 42, resource_count: 24, starting_stockpile: 5)
       assert {:ok, world, _villager} = World.spawn_villager(world)

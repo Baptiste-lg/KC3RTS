@@ -18,6 +18,8 @@ defmodule KC3RTSWeb.GameChannelTest do
     assert_broadcast("world_snapshot", %{
       world: %{tick: 0, stockpile: 15, villagers: [%{id: 1}]}
     })
+
+    assert_push("world_snapshot", %{world: %{tick: 0, stockpile: 15, villagers: [%{id: 1}]}})
   end
 
   test "rejects malformed game ids" do

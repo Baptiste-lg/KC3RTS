@@ -11,6 +11,8 @@ defmodule KC3RTS.Game.World do
   @resource_min_spacing 3.0
   @gather_interval 5
   @gather_range 1.1
+  @delivery_range 3.4
+  @town_center_entrance_z 3.2
   @move_speed 0.18
   @villager_capacity 5
   @villager_cost 5
@@ -72,7 +74,7 @@ defmodule KC3RTS.Game.World do
     villager = %{
       id: id,
       x: world.town_center.x + offset,
-      z: world.town_center.z + 0.8,
+      z: world.town_center.z + @town_center_entrance_z,
       cargo: 0,
       target: nil
     }
@@ -163,7 +165,7 @@ defmodule KC3RTS.Game.World do
   end
 
   defp move_or_deliver(villager, resources, town_center, stockpile) do
-    if distance(villager, town_center) <= @gather_range do
+    if distance(villager, town_center) <= @delivery_range do
       {Map.put(villager, :cargo, 0) |> Map.put(:target, nil), resources,
        stockpile + villager.cargo}
     else

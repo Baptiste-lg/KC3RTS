@@ -12,7 +12,6 @@ defmodule KC3RTSWeb.GameChannel do
     if valid_game_id?(game_id) do
       case WorldServer.ensure_started(game_id) do
         {:ok, server} ->
-          Phoenix.PubSub.subscribe(KC3RTS.PubSub, topic(game_id))
           world = server |> WorldServer.snapshot() |> Snapshot.from_world()
           {:ok, %{world: world}, assign(socket, :game_server, server)}
 
@@ -51,6 +50,4 @@ defmodule KC3RTSWeb.GameChannel do
     byte_size(game_id) <= @max_game_id_length and
       String.match?(game_id, ~r/\A[a-zA-Z0-9_-]+\z/)
   end
-
-  defp topic(game_id), do: "game:" <> game_id
 end
