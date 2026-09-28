@@ -16,6 +16,9 @@ downloaded art assets.
 - The complete local CI command list passes, including a headless browser check
   of WebGL rendering, Phoenix connection, recruitment and resource delivery.
   GitHub Actions repeats the browser check after server and web checks pass.
+- A static solo build mirrors the first simulation rules in the browser for
+  GitHub Pages. CI checks that build at `/KC3RTS/` and deploys it only after
+  server, web and both browser play-loop jobs succeed on `main`.
 - KC3 persistence and Rust are later milestones. Neither is needed to run the
   first playable prototype; document an integration boundary without bundling
   KC3 in this repository.
@@ -39,7 +42,8 @@ downloaded art assets.
   Prefer a supervised external worker protocol first; consider NIFs only if
   measured message overhead is material.
 - **Transport:** Phoenix WebSocket in production; Vite proxies `/socket` to the
-  local Phoenix server for development.
+  local Phoenix server for development. GitHub Pages uses a browser-only solo
+  simulation, since Pages does not run server processes.
 
 ## Milestones
 
@@ -58,9 +62,11 @@ downloaded art assets.
 5. Play loop and polish: spawn controls, live snapshot updates, error states,
    accessibility, keyboard controls and public-facing documentation. Verify the
    complete local CI command list and a real browser connection before commit.
-6. KC3 persistence adapter: define versioned payloads, add checkpoint/load
+6. GitHub Pages: build a static solo version, verify its full browser play loop
+   without Phoenix and publish after all CI jobs pass.
+7. KC3 persistence adapter: define versioned payloads, add checkpoint/load
    routes on KC3 and integration tests. KC3 remains an external dependency.
-7. Performance gate: profile increasing map/unit sizes. Add Rust only when a
+8. Performance gate: profile increasing map/unit sizes. Add Rust only when a
    documented benchmark shows Elixir cannot meet the selected simulation
    budget.
 
@@ -68,7 +74,7 @@ downloaded art assets.
 
 - `mix test`, `mix format --check-formatted`, `mix credo --strict`,
   `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and
-  `npm run smoke` pass.
+  `npm run smoke`, and `npm run smoke:pages` pass.
 - A developer can start the app with documented commands and open it in a
   browser without third-party art files.
 - The server creates a deterministic map for a supplied seed; resource nodes
