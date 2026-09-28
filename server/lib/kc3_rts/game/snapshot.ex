@@ -4,7 +4,7 @@ defmodule KC3RTS.Game.Snapshot do
   @spec from_world(World.t()) :: map()
   def from_world(%World{} = world) do
     %{
-      protocol_version: 2,
+      protocol_version: 3,
       seed: world.seed,
       tick: world.tick,
       map_radius: world.map_radius,

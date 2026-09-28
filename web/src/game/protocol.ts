@@ -14,11 +14,11 @@ export type VillagerOrder =
   | { kind: "attack"; id: number }
   | null;
 export interface Villager extends GroundPoint {
-  id: number; hp: number; max_hp: number; cargo: number; cargo_kind: ResourceKind | null;
+  id: number; hp: number; max_hp: number; attack_interval_ticks: number; cargo: number; cargo_kind: ResourceKind | null;
   order: VillagerOrder;
 }
 export interface WorldSnapshot {
-  protocol_version: 2; seed: number; tick: number; map_radius: number; stockpile: Stockpile;
+  protocol_version: 3; seed: number; tick: number; map_radius: number; stockpile: Stockpile;
   resources: ResourceNode[]; buildings: Building[]; villagers: Villager[];
   outcome: "playing" | "victory" | "defeat";
 }
@@ -42,10 +42,10 @@ const order = (value: unknown): value is VillagerOrder => value === null || (rec
   (value.kind === "move" && point(value)) ||
   ((value.kind === "gather" || value.kind === "build" || value.kind === "attack") && positive(value.id))
 ));
-const villager = (value: unknown): value is Villager => record(value) && point(value) && positive(value.id) && count(value.hp) && positive(value.max_hp) && value.hp <= value.max_hp && count(value.cargo) && (value.cargo_kind === null || kind(value.cargo_kind)) && order(value.order);
+const villager = (value: unknown): value is Villager => record(value) && point(value) && positive(value.id) && count(value.hp) && positive(value.max_hp) && value.hp <= value.max_hp && positive(value.attack_interval_ticks) && value.attack_interval_ticks <= 100 && count(value.cargo) && (value.cargo_kind === null || kind(value.cargo_kind)) && order(value.order);
 
 export function parseSnapshot(value: unknown): WorldSnapshot | null {
-  if (!record(value) || value.protocol_version !== 2 || !positive(value.seed) || !count(value.tick) || !finite(value.map_radius) || value.map_radius <= 0) return null;
+  if (!record(value) || value.protocol_version !== 3 || !positive(value.seed) || !count(value.tick) || !finite(value.map_radius) || value.map_radius <= 0) return null;
   if (!stockpile(value.stockpile) || !Array.isArray(value.resources) || !value.resources.every(resource)) return null;
   if (!Array.isArray(value.buildings) || !value.buildings.every(building) || !Array.isArray(value.villagers) || !value.villagers.every(villager)) return null;
   if (value.outcome !== "playing" && value.outcome !== "victory" && value.outcome !== "defeat") return null;

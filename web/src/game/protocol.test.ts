@@ -12,5 +12,6 @@ describe("parseSnapshot", () => {
     expect(parseSnapshot({ ...world, protocol_version: 1 })).toBeNull();
     expect(parseSnapshot({ ...world, buildings: [{ ...world.buildings[0], hp: 9999 }] })).toBeNull();
     expect(parseSnapshot({ ...world, resources: [{ ...world.resources[0], kind: "crystal" }] })).toBeNull();
+    expect(parseSnapshot({ ...world, villagers: [{ ...world.villagers[0], attack_interval_ticks: 0 }] })).toBeNull();
   });
 });
