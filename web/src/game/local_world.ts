@@ -1,4 +1,5 @@
-import type { Building, GameCommand, GroundPoint, ResourceKind, ResourceNode, Villager, WorldSnapshot } from "./protocol";
+import type { Building, GameCommand, GroundPoint, Villager, WorldSnapshot } from "./protocol";
+import { generateMap } from "./map_generation";
 
 const MOD = 2_147_483_647;
 const SPEED = 0.55;
@@ -8,33 +9,13 @@ export interface LocalWorld extends WorldSnapshot { nextVillagerId: number; next
 export type CommandResult = { ok: true; world: LocalWorld } | { ok: false; reason: string };
 const distance = (a: GroundPoint, b: GroundPoint): number => Math.hypot(a.x - b.x, a.z - b.z);
 const inside = (p: GroundPoint, radius: number): boolean => Number.isFinite(p.x) && Number.isFinite(p.z) && Math.abs(p.x) <= radius - 3 && Math.abs(p.z) <= radius - 3;
-function next(seed: number, span: number): [number, number] {
-  const value = seed * 48_271 % MOD;
-  return [Math.round((value / MOD * span * 2 - span) * 10) / 10, value];
-}
 function spawn(world: LocalWorld, building: Building): LocalWorld {
   const id = world.nextVillagerId;
   return { ...world, villagers: [...world.villagers, { id, x: building.x + (id % 3 - 1) * 0.5, z: building.z + 3.4, hp: 30, max_hp: 30, cargo: 0, cargo_kind: null, order: null }], nextVillagerId: id + 1 };
 }
 export function createLocalWorld(seed = 12_345): LocalWorld {
-  let random = Number.isSafeInteger(seed) ? Math.abs(seed) % (MOD - 1) || 1 : 12_345;
-  const mapSeed = random;
-  const enemy: Building = { id: 2, owner: "enemy", x: 0, z: 0, hp: 250, max_hp: 250, progress: 100 };
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const [x, a] = next(random, 48); const [z, b] = next(a, 48); random = b;
-    if (Math.hypot(x, z) >= 34) { enemy.x = x; enemy.z = z; break; }
-  }
-  const resources: ResourceNode[] = [];
-  for (let id = 1; id <= 90; id += 1) {
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      const span = id <= 18 ? 18 : 48;
-      const [x, a] = next(random, span); const [z, b] = next(a, span); random = b;
-      const p = { x, z };
-      if (distance(p, { x: 0, z: 0 }) < 9 || distance(p, enemy) < 7 || resources.some((r) => distance(p, r) < 3)) continue;
-      const kind: ResourceKind = (["wood", "stone", "gold"] as const)[(id - 1) % 3];
-      resources.push({ id, kind, ...p, amount: 30, initial_amount: 30 }); break;
-    }
-  }
+  const mapSeed = Number.isSafeInteger(seed) ? Math.abs(seed) % (MOD - 1) || 1 : 12_345;
+  const { enemy, resources } = generateMap(mapSeed);
   let world: LocalWorld = { protocol_version: 2, seed: mapSeed, tick: 0, map_radius: 52, stockpile: { wood: 30, stone: 15, gold: 20 }, resources,
     buildings: [{ id: 1, owner: "player", x: 0, z: 0, hp: 350, max_hp: 350, progress: 100 }, enemy], villagers: [], outcome: "playing", nextVillagerId: 1, nextBuildingId: 3 };
   for (let i = 0; i < 3; i += 1) world = spawn(world, world.buildings[0]);
