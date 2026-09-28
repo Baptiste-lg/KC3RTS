@@ -34,7 +34,7 @@ export class GameConnection implements GameClient {
   }
   command(command: GameCommand): void {
     if (!this.ready || !this.channel) { this.handlers.onCommand({ ok: false, reason: "offline" }); return; }
-    this.channel.push("command", command).receive("ok", (payload) => {
+    this.channel.push("command", command, 30_000).receive("ok", (payload) => {
       const world = readWorld(payload);
       if (!world) { this.ready = false; this.setStatus("incompatible"); this.handlers.onCommand({ ok: false, reason: "invalid_response" }); return; }
       this.handlers.onSnapshot(world); this.handlers.onCommand({ ok: true });
