@@ -1,11 +1,11 @@
-import { AmbientLight, Color, DirectionalLight, DoubleSide, MathUtils, Mesh, MeshBasicMaterial, PCFSoftShadowMap, Plane, PlaneGeometry, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from "three";
+import { Color, DoubleSide, MathUtils, Mesh, MeshBasicMaterial, Plane, PlaneGeometry, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from "three";
 import type { GroundPoint, WorldSnapshot } from "../game/protocol";
 import { createIsometricCamera, resizeIsometricCamera } from "./camera";
 import { SceneModel } from "./scene_model";
 
 const CAMERA_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"]);
 export type MapHit = { kind: "villager" | "resource" | "building"; id: number } | { kind: "ground"; point: GroundPoint };
-export interface MapActions { select(hit: MapHit, additive: boolean): void; order(hit: MapHit): void; selectArea(ids: number[], additive: boolean): void; place(point: GroundPoint): void; isPlacing(): boolean }
+export interface MapActions { select(hit: MapHit, additive: boolean): void; order(hit: MapHit): boolean; selectArea(ids: number[], additive: boolean): void; place(point: GroundPoint): void; isPlacing(): boolean }
 export class WorldView {
   private readonly scene = new Scene(); private readonly model: SceneModel; private readonly camera; private readonly renderer: WebGLRenderer;
   private readonly cameraOrigin: Vector3; private readonly pan = new Vector3(); private readonly keys = new Set<string>();
@@ -13,6 +13,10 @@ export class WorldView {
   private readonly selectionBox = document.createElement("div");
   private readonly placementMaterial = new MeshBasicMaterial({ color: 0x70df83, transparent: true, opacity: .28, side: DoubleSide, depthWrite: false });
   private readonly placementGhost = new Mesh(new PlaneGeometry(8, 8), this.placementMaterial);
+  private readonly orderMaterial = new MeshBasicMaterial({ color: 0xe6e18b, transparent: true, opacity: .9, depthTest: false });
+  private readonly orderMarker = new Mesh(new RingGeometry(1.0, 1.22, 24), this.orderMaterial);
+  private orderTime = 0;
+  private readonly edgePan = { x: 0, y: 0 };
   private pointer: { x: number; y: number; startX: number; startY: number; id: number; button: number } | null = null;
   private frame = 0; private lastFrame = 0; private lastRender = 0; private snapshot: WorldSnapshot;
   private readonly lowQuality = new URLSearchParams(window.location.search).get("quality") === "low";
@@ -21,16 +25,15 @@ export class WorldView {
     this.camera = createIsometricCamera(1, snapshot.map_radius); this.cameraOrigin = this.camera.position.clone();
     this.renderer = new WebGLRenderer({ antialias: !this.lowQuality, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(this.lowQuality ? .65 : Math.min(window.devicePixelRatio || 1, 1.5));
-    this.renderer.shadowMap.enabled = !this.lowQuality; this.renderer.shadowMap.type = PCFSoftShadowMap;
     this.renderer.domElement.setAttribute("aria-label", "Carte RTS interactive"); this.mount.appendChild(this.renderer.domElement);
     this.selectionBox.className = "selection-box"; this.selectionBox.hidden = true; this.mount.appendChild(this.selectionBox);
-    this.scene.background = new Color(0x244b32); this.scene.add(this.model.root); this.scene.add(new AmbientLight(0xc8ddcc, 1.6));
+    this.scene.background = new Color(0x274d39); this.scene.add(this.model.root);
     this.placementGhost.rotation.x = -Math.PI / 2; this.placementGhost.position.y = .12; this.placementGhost.visible = false; this.scene.add(this.placementGhost);
-    const sun = new DirectionalLight(0xffe6b1, 2.4); sun.position.set(-28, 58, 35); sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024); sun.shadow.camera.left = -52; sun.shadow.camera.right = 52; sun.shadow.camera.top = 52; sun.shadow.camera.bottom = -52; sun.shadow.normalBias = .03; this.scene.add(sun);
+    this.orderMarker.rotation.x = -Math.PI / 2; this.orderMarker.position.y = .14; this.orderMarker.renderOrder = 100;
+    this.orderMarker.visible = false; this.scene.add(this.orderMarker);
     window.addEventListener("resize", this.resize); window.addEventListener("keydown", this.keyDown); window.addEventListener("keyup", this.keyUp);
     const canvas = this.renderer.domElement;
-    canvas.addEventListener("pointerdown", this.pointerDown); canvas.addEventListener("pointermove", this.pointerMove);
+    canvas.addEventListener("pointerdown", this.pointerDown); canvas.addEventListener("pointermove", this.pointerMove); canvas.addEventListener("pointerleave", this.pointerLeave);
     canvas.addEventListener("pointerup", this.pointerUp); canvas.addEventListener("pointercancel", this.pointerUp);
     canvas.addEventListener("contextmenu", this.contextMenu); canvas.addEventListener("dblclick", this.doubleClick); canvas.addEventListener("wheel", this.wheel, { passive: false });
     this.resize(); this.frame = requestAnimationFrame(this.animate);
@@ -39,24 +42,33 @@ export class WorldView {
   select(ids: ReadonlySet<number>, buildingId: number | null): void { this.model.select(ids, buildingId); }
   setPlacing(active: boolean): void { this.renderer.domElement.classList.toggle("placing", active); if (!active) this.placementGhost.visible = false; }
   focus(point: GroundPoint): void {
-    const bound = this.mapRadius * .9;
+    const bound = this.mapRadius - 6;
     this.pan.x = MathUtils.clamp(point.x, -bound, bound);
     this.pan.z = MathUtils.clamp(point.z, -bound, bound);
     this.camera.position.copy(this.cameraOrigin).add(this.pan);
     this.camera.lookAt(this.pan);
   }
   getFocus(): GroundPoint { return { x: this.pan.x, z: this.pan.z }; }
+  getViewport(): GroundPoint[] {
+    const plane = new Plane(new Vector3(0, 1, 0), 0);
+    return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => {
+      this.raycaster.setFromCamera(new Vector2(x, y), this.camera);
+      const point = new Vector3(); this.raycaster.ray.intersectPlane(plane, point);
+      return { x: point.x, z: point.z };
+    });
+  }
 
   dispose(): void {
     cancelAnimationFrame(this.frame); window.removeEventListener("resize", this.resize); window.removeEventListener("keydown", this.keyDown); window.removeEventListener("keyup", this.keyUp);
     const c = this.renderer.domElement; c.removeEventListener("pointerdown", this.pointerDown); c.removeEventListener("pointermove", this.pointerMove);
-    c.removeEventListener("pointerup", this.pointerUp); c.removeEventListener("pointercancel", this.pointerUp); c.removeEventListener("contextmenu", this.contextMenu); c.removeEventListener("dblclick", this.doubleClick); c.removeEventListener("wheel", this.wheel);
-    this.model.dispose(); this.placementGhost.geometry.dispose(); this.placementMaterial.dispose(); this.renderer.dispose(); c.remove(); this.selectionBox.remove();
+    c.removeEventListener("pointerup", this.pointerUp); c.removeEventListener("pointercancel", this.pointerUp); c.removeEventListener("pointerleave", this.pointerLeave); c.removeEventListener("contextmenu", this.contextMenu); c.removeEventListener("dblclick", this.doubleClick); c.removeEventListener("wheel", this.wheel);
+    this.model.dispose(); this.placementGhost.geometry.dispose(); this.placementMaterial.dispose(); this.orderMarker.geometry.dispose(); this.orderMaterial.dispose(); this.renderer.dispose(); c.remove(); this.selectionBox.remove();
   }
   private readonly resize = (): void => { const width = Math.max(1, this.mount.clientWidth); const height = Math.max(1, this.mount.clientHeight); resizeIsometricCamera(this.camera, width / height); this.renderer.setSize(width, height, false); };
   private readonly keyDown = (e: KeyboardEvent): void => { if (CAMERA_KEYS.has(e.code)) { e.preventDefault(); this.keys.add(e.code); } };
   private readonly keyUp = (e: KeyboardEvent): void => { this.keys.delete(e.code); };
   private readonly contextMenu = (e: MouseEvent): void => { e.preventDefault(); };
+  private readonly pointerLeave = (): void => { this.edgePan.x = 0; this.edgePan.y = 0; };
   private readonly doubleClick = (e: MouseEvent): void => {
     const hit = this.hit(e.clientX, e.clientY);
     if (hit?.kind !== "villager") return;
@@ -108,6 +120,9 @@ export class WorldView {
     this.renderer.domElement.setPointerCapture(e.pointerId);
   };
   private readonly pointerMove = (e: PointerEvent): void => {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.edgePan.x = e.clientX < rect.left + 24 ? -1 : e.clientX > rect.right - 24 ? 1 : 0;
+    this.edgePan.y = e.clientY < rect.top + 24 ? 1 : e.clientY > rect.bottom - 24 ? -1 : 0;
     if (this.actions.isPlacing()) {
       const point = this.ground(e.clientX, e.clientY);
       this.placementGhost.visible = point !== null;
@@ -135,7 +150,18 @@ export class WorldView {
     if (this.renderer.domElement.hasPointerCapture(e.pointerId)) this.renderer.domElement.releasePointerCapture(e.pointerId);
     const dragged = Math.hypot(e.clientX - start.startX, e.clientY - start.startY) > 8;
     if (start.button === 1) return;
-    if (start.button === 2) { const hit = this.hit(e.clientX, e.clientY); if (hit) this.actions.order(hit); return; }
+    if (start.button === 2) {
+      const hit = this.hit(e.clientX, e.clientY);
+      if (hit && this.actions.order(hit)) {
+        const target = hit.kind === "ground" ? hit.point : hit.kind === "resource" ? this.snapshot.resources.find((r) => r.id === hit.id) : this.snapshot.buildings.find((b) => b.id === hit.id);
+        if (target) {
+          this.orderMarker.position.set(target.x, .14, target.z);
+          this.orderMaterial.color.set(hit.kind === "resource" ? 0xe5c46c : hit.kind === "building" ? 0xe77d70 : 0xb8e4bb);
+          this.orderTime = performance.now(); this.orderMarker.visible = true;
+        }
+      }
+      return;
+    }
     if (dragged) {
       const left = Math.min(start.startX, e.clientX), right = Math.max(start.startX, e.clientX);
       const top = Math.min(start.startY, e.clientY), bottom = Math.max(start.startY, e.clientY);
@@ -157,9 +183,15 @@ export class WorldView {
   }
   private readonly animate = (time: number): void => {
     const delta = this.lastFrame === 0 ? 0 : Math.min((time - this.lastFrame) / 1000, .1); this.lastFrame = time;
-    const right = Number(this.keys.has("KeyD") || this.keys.has("ArrowRight")) - Number(this.keys.has("KeyA") || this.keys.has("ArrowLeft"));
-    const up = Number(this.keys.has("KeyW") || this.keys.has("ArrowUp")) - Number(this.keys.has("KeyS") || this.keys.has("ArrowDown"));
-    if (right || up) this.movePan(right * delta * 22, up * delta * 22);
+    const right = Number(this.keys.has("KeyD") || this.keys.has("ArrowRight")) - Number(this.keys.has("KeyA") || this.keys.has("ArrowLeft")) + (this.pointer ? 0 : this.edgePan.x);
+    const up = Number(this.keys.has("KeyW") || this.keys.has("ArrowUp")) - Number(this.keys.has("KeyS") || this.keys.has("ArrowDown")) + (this.pointer ? 0 : this.edgePan.y);
+    if (right || up) this.movePan(right * delta * 36, up * delta * 36);
+    if (this.orderMarker.visible) {
+      const progress = Math.min(1, (time - this.orderTime) / 550);
+      this.orderMarker.scale.setScalar(1 + progress * .55);
+      this.orderMaterial.opacity = .9 * (1 - progress);
+      if (progress >= 1) this.orderMarker.visible = false;
+    }
     this.model.advance(delta);
     if (!this.lowQuality || time - this.lastRender >= 100) { this.renderer.render(this.scene, this.camera); this.lastRender = time; }
     this.frame = requestAnimationFrame(this.animate);

@@ -16,7 +16,7 @@ export class Minimap {
   constructor(private readonly canvas: HTMLCanvasElement, private readonly onFocus: (point: GroundPoint) => void) {
     canvas.addEventListener("pointerdown", this.pointerDown);
   }
-  draw(world: WorldSnapshot, focus: GroundPoint): void {
+  draw(world: WorldSnapshot, focus: GroundPoint, viewport: GroundPoint[]): void {
     this.world = world;
     const ctx = this.canvas.getContext("2d");
     if (!ctx) return;
@@ -50,7 +50,15 @@ export class Minimap {
     }
     const camera = mapToMini(focus, world.map_radius, size);
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5;
-    ctx.strokeRect(camera.x - 16, camera.z - 12, 32, 24);
+    if (viewport.length === 4) {
+      ctx.beginPath();
+      viewport.forEach((corner, index) => {
+        const p = mapToMini(corner, world.map_radius, size);
+        if (index === 0) ctx.moveTo(p.x, p.z); else ctx.lineTo(p.x, p.z);
+      });
+      ctx.closePath(); ctx.stroke();
+    }
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(camera.x - 2, camera.z - 2, 4, 4);
     ctx.strokeStyle = "rgba(0, 0, 0, .65)"; ctx.strokeRect(1, 1, size - 2, size - 2);
   }
   dispose(): void { this.canvas.removeEventListener("pointerdown", this.pointerDown); }
