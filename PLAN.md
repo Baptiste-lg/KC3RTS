@@ -9,6 +9,18 @@ procedurally placed resource nodes, gather, and return resources to the center.
 All visual geometry and sprite pixels are generated at runtime. There are no
 downloaded art assets.
 
+## Implementation status (2026-09-28)
+
+- Repository foundation and deterministic simulation are committed.
+- Phoenix supervision, snapshots, channel commands and HTTP health route are
+  implemented locally. Complete the broadcast test and CI checks, then commit
+  this as the next feature.
+- The browser client, live play loop and development instructions remain to be
+  built. Implement them in that order, with a focused test before each behavior.
+- KC3 persistence and Rust are later milestones. Neither is needed to run the
+  first playable prototype; document an integration boundary without bundling
+  KC3 in this repository.
+
 ## Architecture decisions
 
 - **Browser:** TypeScript, Vite, Three.js. Three.js owns the 3D field, camera,
@@ -38,12 +50,15 @@ downloaded art assets.
    villager spawning, gather/return behavior and resource stockpile. Write
    ExUnit tests first; keep simulation independent of Phoenix and Three.js.
 3. Authoritative server: supervised match process, fixed tick, Phoenix channel,
-   command validation and snapshot protocol. Test rules and channel behavior.
+   command validation and snapshot protocol. A successful recruitment command
+   broadcasts the new snapshot immediately; later ticks broadcast movement and
+   gathering. Test rules and channel behavior.
 4. Browser scene: isometric 3D field, procedural geometry, camera controls,
-   billboard villagers and HUD. Add browser-facing tests for projection,
-   rendering setup and client protocol.
+   billboard villagers and HUD. Add focused tests for camera projection,
+   procedural sprite creation, snapshot conversion and client protocol.
 5. Play loop and polish: spawn controls, live snapshot updates, error states,
-   accessibility, keyboard controls and public-facing documentation.
+   accessibility, keyboard controls and public-facing documentation. Verify the
+   complete local CI command list and a real browser connection before commit.
 6. KC3 persistence adapter: define versioned payloads, add checkpoint/load
    routes on KC3 and integration tests. KC3 remains an external dependency.
 7. Performance gate: profile increasing map/unit sizes. Add Rust only when a

@@ -174,8 +174,11 @@ defmodule KC3RTS.Game.World do
   defp gather_or_move(villager, resources, resource_id, stockpile, tick) do
     resource = Enum.find(resources, &(&1.id == resource_id))
 
-    if distance(villager, resource) <= @gather_range do
-      if rem(tick + villager.id, @gather_interval) == 0 do
+    cond do
+      distance(villager, resource) > @gather_range ->
+        {move_towards(villager, resource), resources, stockpile}
+
+      rem(tick + villager.id, @gather_interval) == 0 ->
         resources =
           Enum.map(resources, fn
             %{id: ^resource_id, amount: amount} = node when amount > 0 ->
@@ -186,11 +189,9 @@ defmodule KC3RTS.Game.World do
           end)
 
         {%{villager | cargo: villager.cargo + 1}, resources, stockpile}
-      else
+
+      true ->
         {villager, resources, stockpile}
-      end
-    else
-      {move_towards(villager, resource), resources, stockpile}
     end
   end
 
