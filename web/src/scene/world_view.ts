@@ -25,7 +25,7 @@ export class WorldView {
     this.camera = createIsometricCamera(1, snapshot.map_radius); this.cameraOrigin = this.camera.position.clone();
     this.renderer = new WebGLRenderer({ antialias: !this.lowQuality, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(this.lowQuality ? .65 : Math.min(window.devicePixelRatio || 1, 1.5));
-    this.renderer.domElement.setAttribute("aria-label", "Carte RTS interactive"); this.mount.appendChild(this.renderer.domElement);
+    this.renderer.domElement.setAttribute("aria-label", "Interactive RTS map"); this.mount.appendChild(this.renderer.domElement);
     this.selectionBox.className = "selection-box"; this.selectionBox.hidden = true; this.mount.appendChild(this.selectionBox);
     this.scene.background = new Color(0x274d39); this.scene.add(this.model.root);
     this.placementGhost.rotation.x = -Math.PI / 2; this.placementGhost.position.y = .12; this.placementGhost.visible = false; this.scene.add(this.placementGhost);
@@ -70,7 +70,7 @@ export class WorldView {
   private readonly contextMenu = (e: MouseEvent): void => { e.preventDefault(); };
   private readonly pointerLeave = (): void => { this.edgePan.x = 0; this.edgePan.y = 0; };
   private readonly doubleClick = (e: MouseEvent): void => {
-    const hit = this.hit(e.clientX, e.clientY);
+    const hit = this.hit(e.clientX, e.clientY, true);
     if (hit?.kind !== "villager") return;
     const ids = this.snapshot.villagers.filter((v) => {
       const p = new Vector3(v.x, 1.5, v.z).project(this.camera);
@@ -90,16 +90,25 @@ export class WorldView {
     const hit = new Vector3(); if (!this.raycaster.ray.intersectPlane(new Plane(new Vector3(0, 1, 0), 0), hit)) return null;
     return { x: MathUtils.clamp(hit.x, -this.mapRadius, this.mapRadius), z: MathUtils.clamp(hit.z, -this.mapRadius, this.mapRadius) };
   }
-  private hit(x: number, y: number): MapHit | null {
+  private hit(x: number, y: number, preferVillager = false): MapHit | null {
     this.raycaster.setFromCamera(this.screen(x, y), this.camera);
-    for (const item of this.raycaster.intersectObjects(this.model.root.children, true)) {
+    const intersections = this.raycaster.intersectObjects(this.model.root.children, true);
+    const hits: MapHit[] = [];
+    for (const item of intersections) {
       let object = item.object;
       while (object) {
         const data = object.userData;
-        if ((data.kind === "villager" || data.kind === "resource" || data.kind === "building") && typeof data.id === "number") return { kind: data.kind, id: data.id };
+        if ((data.kind === "villager" || data.kind === "resource" || data.kind === "building") && typeof data.id === "number") {
+          hits.push({ kind: data.kind, id: data.id }); break;
+        }
         if (!object.parent) break; object = object.parent;
       }
     }
+    if (preferVillager) {
+      const villager = hits.find((hit) => hit.kind === "villager");
+      if (villager) return villager;
+    }
+    if (hits.length) return hits[0];
     const rect = this.renderer.domElement.getBoundingClientRect();
     let nearest: { id: number; gap: number } | null = null;
     for (const resource of this.snapshot.resources) {
@@ -173,7 +182,7 @@ export class WorldView {
       }).map((v) => v.id);
       this.actions.selectArea(ids, e.shiftKey); return;
     }
-    const hit = this.hit(e.clientX, e.clientY); if (!hit) return;
+    const hit = this.hit(e.clientX, e.clientY, true); if (!hit) return;
     if (this.actions.isPlacing() && hit.kind === "ground") this.actions.place(hit.point);
     else this.actions.select(hit, e.shiftKey);
   };
