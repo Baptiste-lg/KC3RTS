@@ -29,7 +29,11 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run smoke
 ```
 
-The repository CI runs these checks on pull requests and pushes to `main`.
-Keep commits focused and use `[ADD]` or `[FIX]` followed by a short description.
+`npm run smoke` launches Phoenix, Vite and headless Chrome and checks the real
+play loop. It requires a Chrome/Chromium executable; set `KC3RTS_CHROME` if the
+browser is not at a standard path. The repository CI runs these same checks on
+pull requests and pushes to `main`. Keep commits focused and use `[ADD]` or
+`[FIX]` followed by a short description.

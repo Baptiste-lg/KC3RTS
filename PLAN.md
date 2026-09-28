@@ -11,12 +11,11 @@ downloaded art assets.
 
 ## Implementation status (2026-09-28)
 
-- Repository foundation and deterministic simulation are committed.
-- Phoenix supervision, snapshots, channel commands and HTTP health route are
-  implemented locally. Complete the broadcast test and CI checks, then commit
-  this as the next feature.
-- The browser client, live play loop and development instructions remain to be
-  built. Implement them in that order, with a focused test before each behavior.
+- Repository foundation, deterministic simulation, authoritative Phoenix
+  server and playable browser client are committed.
+- The complete local CI command list passes, including a headless browser check
+  of WebGL rendering, Phoenix connection, recruitment and resource delivery.
+  GitHub Actions repeats the browser check after server and web checks pass.
 - KC3 persistence and Rust are later milestones. Neither is needed to run the
   first playable prototype; document an integration boundary without bundling
   KC3 in this repository.
@@ -68,7 +67,8 @@ downloaded art assets.
 ## First-slice acceptance criteria
 
 - `mix test`, `mix format --check-formatted`, `mix credo --strict`,
-  `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass.
+  `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and
+  `npm run smoke` pass.
 - A developer can start the app with documented commands and open it in a
   browser without third-party art files.
 - The server creates a deterministic map for a supplied seed; resource nodes
