@@ -1,9 +1,9 @@
 defmodule KC3RTS.Game.World do
   @moduledoc "Deterministic RTS simulation. One tick is 100 ms."
   @mod 2_147_483_647
-  @speed 0.22
+  @speed 0.55
   @capacity 5
-  defstruct map_radius: 32.0,
+  defstruct map_radius: 52.0,
             stockpile: %{wood: 30, stone: 15, gold: 20},
             resources: [],
             buildings: [],
@@ -22,7 +22,7 @@ defmodule KC3RTS.Game.World do
     seed = if seed == 0, do: 1, else: seed
     map_seed = seed
     {enemy, seed} = place_enemy(seed, 100)
-    count = Keyword.get(opts, :resource_count, 36)
+    count = Keyword.get(opts, :resource_count, 90)
     {resources, _final_seed} = place_resources(count, 1, seed, enemy, [], 1_000)
     center = %{id: 1, owner: :player, x: 0.0, z: 0.0, hp: 350, max_hp: 350, progress: 100}
 
@@ -218,7 +218,7 @@ defmodule KC3RTS.Game.World do
       distance(v, resource) > 1.3 ->
         {move(v, resource), resources, buildings, stockpile}
 
-      rem(tick + v.id, 5) != 0 ->
+      rem(tick + v.id, 3) != 0 ->
         {v, resources, buildings, stockpile}
 
       true ->
@@ -229,7 +229,7 @@ defmodule KC3RTS.Game.World do
     end
   end
 
-  defp step_villager(%{order: {:build, id}} = v, resources, buildings, stockpile, tick) do
+  defp step_villager(%{order: {:build, id}} = v, resources, buildings, stockpile, _tick) do
     building = Enum.find(buildings, &(&1.id == id))
 
     cond do
@@ -238,9 +238,6 @@ defmodule KC3RTS.Game.World do
 
       distance(v, building) > 3.5 ->
         {move(v, building), resources, buildings, stockpile}
-
-      rem(tick + v.id, 2) != 0 ->
-        {v, resources, buildings, stockpile}
 
       true ->
         buildings = Enum.map(buildings, &progress_building(&1, id))
@@ -258,7 +255,7 @@ defmodule KC3RTS.Game.World do
       distance(v, building) > 3.5 ->
         {move(v, building), resources, buildings, stockpile}
 
-      rem(tick + v.id, 8) != 0 ->
+      rem(tick + v.id, 6) != 0 ->
         {v, resources, buildings, stockpile}
 
       true ->
@@ -353,19 +350,19 @@ defmodule KC3RTS.Game.World do
 
   defp inside?(_point, _radius), do: false
 
-  defp next(seed) do
+  defp next(seed, span) do
     value = rem(seed * 48_271, @mod)
-    {Float.round(value / @mod * 58 - 29, 1), value}
+    {Float.round(value / @mod * span * 2 - span, 1), value}
   end
 
   defp place_enemy(seed, 0),
-    do: {%{id: 2, owner: :enemy, x: 24.0, z: 24.0, hp: 250, max_hp: 250, progress: 100}, seed}
+    do: {%{id: 2, owner: :enemy, x: 38.0, z: 38.0, hp: 250, max_hp: 250, progress: 100}, seed}
 
   defp place_enemy(seed, attempts) do
-    {x, seed} = next(seed)
-    {z, seed} = next(seed)
+    {x, seed} = next(seed, 48)
+    {z, seed} = next(seed, 48)
 
-    if :math.sqrt(x * x + z * z) >= 22,
+    if :math.sqrt(x * x + z * z) >= 34,
       do: {%{id: 2, owner: :enemy, x: x, z: z, hp: 250, max_hp: 250, progress: 100}, seed},
       else: place_enemy(seed, attempts - 1)
   end
@@ -377,8 +374,9 @@ defmodule KC3RTS.Game.World do
     do: {Enum.reverse(resources), seed}
 
   defp place_resources(count, id, seed, enemy, resources, attempts) do
-    {x, seed} = next(seed)
-    {z, seed} = next(seed)
+    span = if id <= 18, do: 18, else: 48
+    {x, seed} = next(seed, span)
+    {z, seed} = next(seed, span)
     point = %{x: x, z: z}
 
     if distance(point, %{x: 0.0, z: 0.0}) < 9 or distance(point, enemy) < 7 or

@@ -1,16 +1,16 @@
 import type { Building, GameCommand, GroundPoint, ResourceKind, ResourceNode, Villager, WorldSnapshot } from "./protocol";
 
 const MOD = 2_147_483_647;
-const SPEED = 0.22;
+const SPEED = 0.55;
 const CAPACITY = 5;
 const COST = { villager: { wood: 5, gold: 5 }, center: { wood: 25, stone: 15 } };
 export interface LocalWorld extends WorldSnapshot { nextVillagerId: number; nextBuildingId: number }
 export type CommandResult = { ok: true; world: LocalWorld } | { ok: false; reason: string };
 const distance = (a: GroundPoint, b: GroundPoint): number => Math.hypot(a.x - b.x, a.z - b.z);
 const inside = (p: GroundPoint, radius: number): boolean => Number.isFinite(p.x) && Number.isFinite(p.z) && Math.abs(p.x) <= radius - 3 && Math.abs(p.z) <= radius - 3;
-function next(seed: number): [number, number] {
+function next(seed: number, span: number): [number, number] {
   const value = seed * 48_271 % MOD;
-  return [Math.round((value / MOD * 58 - 29) * 10) / 10, value];
+  return [Math.round((value / MOD * span * 2 - span) * 10) / 10, value];
 }
 function spawn(world: LocalWorld, building: Building): LocalWorld {
   const id = world.nextVillagerId;
@@ -21,20 +21,21 @@ export function createLocalWorld(seed = 12_345): LocalWorld {
   const mapSeed = random;
   const enemy: Building = { id: 2, owner: "enemy", x: 0, z: 0, hp: 250, max_hp: 250, progress: 100 };
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const [x, a] = next(random); const [z, b] = next(a); random = b;
-    if (Math.hypot(x, z) >= 22) { enemy.x = x; enemy.z = z; break; }
+    const [x, a] = next(random, 48); const [z, b] = next(a, 48); random = b;
+    if (Math.hypot(x, z) >= 34) { enemy.x = x; enemy.z = z; break; }
   }
   const resources: ResourceNode[] = [];
-  for (let id = 1; id <= 36; id += 1) {
+  for (let id = 1; id <= 90; id += 1) {
     for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      const [x, a] = next(random); const [z, b] = next(a); random = b;
+      const span = id <= 18 ? 18 : 48;
+      const [x, a] = next(random, span); const [z, b] = next(a, span); random = b;
       const p = { x, z };
       if (distance(p, { x: 0, z: 0 }) < 9 || distance(p, enemy) < 7 || resources.some((r) => distance(p, r) < 3)) continue;
       const kind: ResourceKind = (["wood", "stone", "gold"] as const)[(id - 1) % 3];
       resources.push({ id, kind, ...p, amount: 30, initial_amount: 30 }); break;
     }
   }
-  let world: LocalWorld = { protocol_version: 2, seed: mapSeed, tick: 0, map_radius: 32, stockpile: { wood: 30, stone: 15, gold: 20 }, resources,
+  let world: LocalWorld = { protocol_version: 2, seed: mapSeed, tick: 0, map_radius: 52, stockpile: { wood: 30, stone: 15, gold: 20 }, resources,
     buildings: [{ id: 1, owner: "player", x: 0, z: 0, hp: 350, max_hp: 350, progress: 100 }, enemy], villagers: [], outcome: "playing", nextVillagerId: 1, nextBuildingId: 3 };
   for (let i = 0; i < 3; i += 1) world = spawn(world, world.buildings[0]);
   return world;
@@ -98,7 +99,7 @@ function once(world: LocalWorld): LocalWorld {
         return v;
       }
       if (distance(v, r) > 1.3) return move(v, r);
-      if ((tick + v.id) % 5 === 0) { r.amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
+      if ((tick + v.id) % 3 === 0) { r.amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
       return v;
     }
     const b = buildings.find((item) => item.id === order.id);
@@ -106,11 +107,11 @@ function once(world: LocalWorld): LocalWorld {
     if (order.kind === "build") {
       if (b.progress >= 100) return { ...v, order: null };
       if (distance(v, b) > 3.5) return move(v, b);
-      if ((tick + v.id) % 2 === 0) { b.progress = Math.min(100, b.progress + 1); b.hp = Math.max(1, Math.round(b.max_hp * b.progress / 100)); }
+      b.progress = Math.min(100, b.progress + 1); b.hp = Math.max(1, Math.round(b.max_hp * b.progress / 100));
       return v;
     }
     if (distance(v, b) > 3.5) return move(v, b);
-    if ((tick + v.id) % 8 === 0) b.hp = Math.max(0, b.hp - 5);
+    if ((tick + v.id) % 6 === 0) b.hp = Math.max(0, b.hp - 5);
     return v;
   });
   return { ...world, tick, resources, buildings, stockpile, villagers, outcome: buildings.some((b) => b.owner === "enemy" && b.hp > 0) ? "playing" : "victory" };

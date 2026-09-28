@@ -6,6 +6,9 @@ defmodule KC3RTS.Game.WorldTest do
     world = World.new(seed: 1234)
     assert World.new(seed: 1234) == world
     assert length(world.villagers) == 3
+    assert world.map_radius == 52.0
+    assert length(world.resources) == 90
+    assert Enum.all?(Enum.take(world.resources, 18), &(abs(&1.x) <= 18 and abs(&1.z) <= 18))
     assert Enum.sort(Enum.uniq(Enum.map(world.resources, & &1.kind))) == [:gold, :stone, :wood]
     assert Enum.map(world.buildings, & &1.owner) == [:player, :enemy]
     assert Enum.at(world.buildings, 1).hp == 250
@@ -56,6 +59,21 @@ defmodule KC3RTS.Game.WorldTest do
     assert {:ok, stopped} = World.command(moving, %{type: :stop, villager_ids: [1]})
     assert Enum.at(stopped.villagers, 0).order == nil
     assert match?({:move, _}, Enum.at(stopped.villagers, 1).order)
+  end
+
+  test "villagers cross the expanded map quickly" do
+    world = World.new(seed: 1234)
+
+    assert {:ok, ordered} =
+             World.command(world, %{
+               type: :order,
+               villager_ids: [1],
+               order: {:move, %{x: 40.0, z: 0.0}}
+             })
+
+    moved = ordered |> World.step(100) |> Map.fetch!(:villagers) |> hd()
+    assert moved.x == 40.0
+    assert moved.order == nil
   end
 
   test "villagers can destroy the enemy base and win" do
