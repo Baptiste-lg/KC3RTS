@@ -73,7 +73,7 @@ export class WorldView {
     const hit = this.hit(e.clientX, e.clientY, true);
     if (hit?.kind !== "villager") return;
     const ids = this.snapshot.villagers.filter((v) => {
-      const p = new Vector3(v.x, 1.5, v.z).project(this.camera);
+      const p = new Vector3(v.x, 1, v.z).project(this.camera);
       return p.x >= -1 && p.x <= 1 && p.y >= -1 && p.y <= 1;
     }).map((v) => v.id);
     this.actions.selectArea(ids, e.shiftKey);
@@ -107,6 +107,18 @@ export class WorldView {
     if (preferVillager) {
       const villager = hits.find((hit) => hit.kind === "villager");
       if (villager) return villager;
+      // A four-pixel peon still needs a comfortable click target at normal zoom.
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      let closest: { id: number; gap: number } | null = null;
+      for (const unit of this.snapshot.villagers) {
+        if (unit.hp <= 0) continue;
+        const projected = new Vector3(unit.x, 1, unit.z).project(this.camera);
+        const px = rect.left + (projected.x + 1) * rect.width / 2;
+        const py = rect.top + (1 - projected.y) * rect.height / 2;
+        const gap = Math.hypot(x - px, y - py);
+        if (gap < 13 && (!closest || gap < closest.gap)) closest = { id: unit.id, gap };
+      }
+      if (closest) return { kind: "villager", id: closest.id };
     }
     if (hits.length) return hits[0];
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -176,7 +188,7 @@ export class WorldView {
       const left = Math.min(start.startX, e.clientX), right = Math.max(start.startX, e.clientX);
       const top = Math.min(start.startY, e.clientY), bottom = Math.max(start.startY, e.clientY);
       const ids = this.snapshot.villagers.filter((v) => {
-        const p = new Vector3(v.x, 1.5, v.z).project(this.camera); const rect = this.renderer.domElement.getBoundingClientRect();
+        const p = new Vector3(v.x, 1, v.z).project(this.camera); const rect = this.renderer.domElement.getBoundingClientRect();
         const x = rect.left + (p.x + 1) * rect.width / 2, y = rect.top + (1 - p.y) * rect.height / 2;
         return x >= left && x <= right && y >= top && y <= bottom;
       }).map((v) => v.id);

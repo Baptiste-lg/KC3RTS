@@ -218,7 +218,7 @@ try {
   }, 35_000, "villager recruitment");
 
   const rect = await devtools.evaluate('(() => { const r = document.querySelector("#scene canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()');
-  const villager = project({ x: 0, z: 3.4 }, rect, 1.5);
+  const villager = project({ x: 0, z: 3.4 }, rect, 1);
   let wood;
   for (const node of woodNodes(initial.mapSeed)) {
     const candidate = project(node, rect, 3.2);
