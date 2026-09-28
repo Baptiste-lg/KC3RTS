@@ -4,11 +4,13 @@ A browser RTS prototype built with Elixir, Phoenix, TypeScript and Three.js.
 The large isometric map starts with a town center and three villagers. Its
 terrain, buildings, trees, rocks and villagers are pixel art drawn as flat
 textures and camera-facing sprites. Wood grows in a starter grove, five small groves and three larger forests.
-Stone and gold are sparse, high-capacity deposits; one of each starts near the town center. You select villagers and give them
+Stone and gold are sparse, high-capacity deposits; one of each starts near the town center.
+Their artwork and click targets are 1.5 times larger than before, while their
+resource reserves stay the same. You select villagers and give them
 orders to move, gather, build another town center or attack a passive enemy base.
 Units and buildings have hit points. Destroying the enemy base wins the match.
 
-All artwork is generated in code. Villagers use crisp 32 × 48 pixel sprites;
+All artwork is generated in code. Villagers use simple, front-facing 16 × 24 pixel sprites;
 their clothing palette changes with each match seed. Units move briskly, and an order marker
 appears immediately when you right-click a target.
 
