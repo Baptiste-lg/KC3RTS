@@ -49,6 +49,9 @@ describe("pixel art world objects", () => {
     expect(sprite).toBeInstanceOf(Sprite);
     expect(sprite.material.map).toBeInstanceOf(CanvasTexture);
     expect(sprite.center.y).toBe(0);
+    expect(sprite.scale.x).toBe(1.3);
+    expect(sprite.scale.y).toBe(1.95);
+    expect(sprite.userData.facing).toBe("right");
     expect(painted).toHaveBeenCalledOnce();
   });
 });

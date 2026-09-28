@@ -12,6 +12,7 @@ import {
 } from "three";
 import type { ResourceNode } from "../game/protocol";
 import { generateVillagerPixels } from "./villager_pixels";
+import type { UnitFacing } from "./unit_facing";
 
 type Ink = readonly [number, number, number, number?];
 const outline: Ink = [34, 43, 42];
@@ -180,12 +181,12 @@ export function createResourceNode(node: ResourceNode): Group {
   return group;
 }
 
-export function createVillagerSprite(id: number, carrying: boolean, seed = 1): Sprite {
-  const pixels = generateVillagerPixels(id, carrying, seed);
+export function createVillagerSprite(id: number, carrying: boolean, seed = 1, facing: UnitFacing = "right"): Sprite {
+  const pixels = generateVillagerPixels(id, carrying, seed, facing);
   const art = new PixelArt(pixels.width, pixels.height);
   art.data.set(pixels.data);
-  const result = sprite(art, 2.6, 3.9);
+  const result = sprite(art, 1.3, 1.95);
   result.name = `villager-${id}`;
-  result.userData = { kind: "villager", id };
+  result.userData = { kind: "villager", id, facing };
   return result;
 }
