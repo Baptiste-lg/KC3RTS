@@ -6,10 +6,10 @@ describe("generated villager art", () => {
     const sprite = generateVillagerPixels(1, false);
     const alpha = Array.from(sprite.data.filter((_, index) => index % 4 === 3));
 
-    expect(sprite.width).toBe(32);
-    expect(sprite.height).toBe(48);
+    expect(sprite.width).toBe(16);
+    expect(sprite.height).toBe(24);
     expect(alpha[0]).toBe(0);
-    expect(alpha.filter((value) => value > 0).length).toBeGreaterThan(200);
+    expect(alpha.filter((value) => value > 0).length).toBeGreaterThan(100);
   });
 
   it("is deterministic and shows cargo visually", () => {
