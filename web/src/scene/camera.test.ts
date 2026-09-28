@@ -21,6 +21,6 @@ describe("isometric camera", () => {
     resizeIsometricCamera(camera, 1);
 
     expect(camera.top - camera.bottom).toBeGreaterThan(height);
-    expect(camera.right - camera.left).toBeCloseTo(32 * 3.2);
+    expect(camera.right - camera.left).toBeCloseTo(32 * 1.8);
   });
 });

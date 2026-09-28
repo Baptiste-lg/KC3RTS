@@ -1,10 +1,13 @@
 import {
   BoxGeometry,
+  BufferGeometry,
   CanvasTexture,
+  Color,
   ConeGeometry,
   CylinderGeometry,
   DoubleSide,
-  GridHelper,
+  DodecahedronGeometry,
+  Float32BufferAttribute,
   Group,
   Mesh,
   MeshBasicMaterial,
@@ -26,7 +29,7 @@ const trim = new MeshStandardMaterial({ color: 0xe0bf7c, roughness: 0.85, flatSh
 
 function addMesh(
   parent: Group,
-  geometry: BoxGeometry | ConeGeometry | CylinderGeometry,
+  geometry: BufferGeometry,
   material: MeshStandardMaterial,
   x: number,
   y: number,
@@ -44,6 +47,17 @@ export function createGround(radius: number): Group {
   const ground = new Group();
   ground.name = "ground";
 
+  // The surrounding field keeps the camera filled with terrain while the
+  // brighter square marks the playable area.
+  const surroundings = new Mesh(
+    new PlaneGeometry(radius * 12, radius * 12),
+    new MeshStandardMaterial({ color: 0x244b32, roughness: 1, side: DoubleSide }),
+  );
+  surroundings.rotation.x = -Math.PI / 2;
+  surroundings.position.y = -1.3;
+  surroundings.receiveShadow = true;
+  ground.add(surroundings);
+
   const slab = new Mesh(
     new BoxGeometry(radius * 2, 1.2, radius * 2),
     new MeshStandardMaterial({ color: 0x304b3a, roughness: 1, flatShading: true }),
@@ -52,29 +66,47 @@ export function createGround(radius: number): Group {
   slab.receiveShadow = true;
   ground.add(slab);
 
+  const geometry = new PlaneGeometry(radius * 2, radius * 2, 64, 64);
+  const positions = geometry.getAttribute("position");
+  const colors: number[] = [];
+  const base = new Color(0x5b8859);
+  const shade = new Color();
+  for (let i = 0; i < positions.count; i += 1) {
+    const x = positions.getX(i), z = positions.getY(i);
+    const broad = Math.sin(x * 0.27) * Math.cos(z * 0.19) * 0.045;
+    const fine = Math.sin(x * 1.49 + z * 0.73) * Math.sin(z * 1.17 - x * 0.46) * 0.018;
+    const dry = Math.max(0, Math.sin(x * 0.15 + 1.7) * Math.cos(z * 0.22 - 1.1)) * 0.025;
+    shade.copy(base).offsetHSL(0, -dry, broad + fine - dry);
+    colors.push(shade.r, shade.g, shade.b);
+  }
+  geometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
   const surface = new Mesh(
-    new PlaneGeometry(radius * 2, radius * 2),
-    new MeshStandardMaterial({ color: 0x4a7153, roughness: 1, side: DoubleSide }),
+    geometry,
+    new MeshStandardMaterial({ vertexColors: true, roughness: 1, side: DoubleSide }),
   );
   surface.rotation.x = -Math.PI / 2;
-  surface.position.y = 0.005;
+  surface.position.y = 0.025;
   surface.receiveShadow = true;
   ground.add(surface);
 
-  const grid = new GridHelper(radius * 2, radius * 2, 0x86a77c, 0x648a62);
-  grid.position.y = 0.025;
-  ground.add(grid);
+  const path = new Mesh(
+    new PlaneGeometry(3.2, 11),
+    new MeshStandardMaterial({ color: 0x8b7652, transparent: true, opacity: 0.56, roughness: 1, side: DoubleSide }),
+  );
+  path.rotation.x = -Math.PI / 2;
+  path.position.set(0, 0.04, 8);
+  path.receiveShadow = true;
+  ground.add(path);
 
-  const borderMaterial = new MeshBasicMaterial({ color: 0x719b72 });
+  const borderMaterial = new MeshBasicMaterial({ color: 0x72966b });
   for (const edge of [-radius, radius]) {
-    const horizontal = new Mesh(new BoxGeometry(radius * 2 + 0.5, 0.08, 0.16), borderMaterial);
-    horizontal.position.set(0, 0.065, edge);
+    const horizontal = new Mesh(new BoxGeometry(radius * 2 + 0.5, 0.04, 0.12), borderMaterial);
+    horizontal.position.set(0, 0.055, edge);
     ground.add(horizontal);
-    const vertical = new Mesh(new BoxGeometry(0.16, 0.08, radius * 2 + 0.5), borderMaterial);
-    vertical.position.set(edge, 0.065, 0);
+    const vertical = new Mesh(new BoxGeometry(0.12, 0.04, radius * 2 + 0.5), borderMaterial);
+    vertical.position.set(edge, 0.055, 0);
     ground.add(vertical);
   }
-
   return ground;
 }
 
@@ -112,14 +144,16 @@ export function createResourceNode(node: ResourceNode): Group {
     addMesh(group, new ConeGeometry(1.35, 2.6, 7), new MeshStandardMaterial({ color: 0x296d3d, roughness: 1, flatShading: true }), 0, 3.1, 0);
     addMesh(group, new ConeGeometry(1.05, 2.2, 7), new MeshStandardMaterial({ color: 0x38894b, roughness: 1, flatShading: true }), 0, 4.2, 0);
   } else if (node.kind === "stone") {
-    const rock = new MeshStandardMaterial({ color: 0x9aa4a3, roughness: 1, flatShading: true });
-    addMesh(group, new ConeGeometry(1.25, 2, 5), rock, 0, 1.0, 0);
-    addMesh(group, new ConeGeometry(0.85, 1.45, 5), rock, 0.9, 0.72, 0.3);
+    const rock = new MeshStandardMaterial({ color: 0x9ea8a4, roughness: 1, flatShading: true });
+    addMesh(group, new DodecahedronGeometry(1.25, 0), rock, 0, 0.9, 0);
+    addMesh(group, new DodecahedronGeometry(0.85, 0), rock, 0.95, 0.65, 0.25);
+    addMesh(group, new DodecahedronGeometry(0.65, 0), rock, -0.85, 0.5, -0.25);
   } else {
-    const ore = new MeshStandardMaterial({ color: 0xe5bd55, roughness: .55, metalness: .35, flatShading: true });
-    addMesh(group, new CylinderGeometry(1.2, 1.4, 0.3, 7), stone, 0, 0.15, 0);
-    addMesh(group, new ConeGeometry(0.72, 2.8, 5), ore, 0, 1.6, 0);
-    addMesh(group, new ConeGeometry(0.45, 1.6, 5), ore, 0.72, 0.9, 0.2);
+    const ore = new MeshStandardMaterial({ color: 0xedbb4d, roughness: 0.55, metalness: 0.25, flatShading: true });
+    addMesh(group, new DodecahedronGeometry(1.15, 0), darkStone, 0, 0.8, 0);
+    addMesh(group, new DodecahedronGeometry(0.55, 0), ore, -0.6, 1.25, 0.35);
+    addMesh(group, new DodecahedronGeometry(0.43, 0), ore, 0.58, 1.15, -0.15);
+    addMesh(group, new DodecahedronGeometry(0.36, 0), ore, 0.3, 0.5, 0.7);
   }
   return group;
 }
