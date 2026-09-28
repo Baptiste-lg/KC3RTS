@@ -15,12 +15,13 @@ describe("isometric camera", () => {
   });
 
   it("widens the visible field to keep the map on narrow viewports", () => {
-    const camera = createIsometricCamera(16 / 9, 32);
+    const camera = createIsometricCamera(16 / 9, 52);
     const height = camera.top - camera.bottom;
 
     resizeIsometricCamera(camera, 1);
 
     expect(camera.top - camera.bottom).toBeGreaterThan(height);
-    expect(camera.right - camera.left).toBeCloseTo(32 * 1.8);
+    expect(camera.right - camera.left).toBeCloseTo(64);
+    expect(camera.top - camera.bottom).toBeCloseTo(64);
   });
 });

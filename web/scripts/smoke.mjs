@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
 const pagesMode = process.argv.includes("--pages");
-const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}?quality=low`;
+const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}${process.env.KC3RTS_SMOKE_QUALITY === "normal" ? "" : "?quality=low"}`;
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 const processes = [];
 
@@ -138,14 +138,15 @@ const STATE = `(() => ({
 
 function woodNodes(initialSeed) {
   let seed = initialSeed; const resources = [];
-  const next = () => { seed = seed * 48_271 % 2_147_483_647; return Math.round((seed / 2_147_483_647 * 58 - 29) * 10) / 10; };
+  const next = (span) => { seed = seed * 48_271 % 2_147_483_647; return Math.round((seed / 2_147_483_647 * span * 2 - span) * 10) / 10; };
   let enemy;
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const x = next(), z = next(); if (Math.hypot(x, z) >= 22) { enemy = { x, z }; break; }
+    const x = next(48), z = next(48); if (Math.hypot(x, z) >= 34) { enemy = { x, z }; break; }
   }
-  for (let id = 1; id <= 36; id += 1) {
+  for (let id = 1; id <= 90; id += 1) {
     for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      const x = next(), z = next();
+      const span = id <= 18 ? 18 : 48;
+      const x = next(span), z = next(span);
       if (Math.hypot(x, z) < 9 || Math.hypot(x - enemy.x, z - enemy.z) < 7 ||
           resources.some((r) => Math.hypot(x - r.x, z - r.z) < 3)) continue;
       resources.push({ id, x, z }); break;
@@ -154,7 +155,7 @@ function woodNodes(initialSeed) {
   return resources.filter((r) => (r.id - 1) % 3 === 0).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
 }
 function project(point, rect, y = 0) {
-  const height = Math.max(32 * 1.2, 32 * 1.8 / (rect.width / rect.height));
+  const height = Math.max(42, 64 / (rect.width / rect.height));
   const scale = rect.height / height;
   return { x: rect.left + rect.width / 2 + (point.x - point.z) / Math.sqrt(2) * scale,
     y: rect.top + rect.height / 2 + ((point.x + point.z) / Math.sqrt(6) - y * Math.sqrt(2 / 3)) * scale };
@@ -227,7 +228,7 @@ try {
   const villager = project({ x: 0, z: 3.4 }, rect, 1.5);
   let wood;
   for (const node of woodNodes(initial.mapSeed)) {
-    const candidate = project(node, rect, 2.5);
+    const candidate = project(node, rect, 3.2);
     if (candidate.x < rect.left + 15 || candidate.x > rect.left + rect.width - 15 ||
         candidate.y < rect.top + 15 || candidate.y > rect.top + rect.height - 15) continue;
     const visible = await devtools.evaluate(`document.elementFromPoint(${candidate.x}, ${candidate.y})?.matches("#scene canvas")`);
