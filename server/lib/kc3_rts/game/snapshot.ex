@@ -1,32 +1,32 @@
 defmodule KC3RTS.Game.Snapshot do
-  @moduledoc "Converts internal simulation state into a versioned browser-safe payload."
-
+  @moduledoc "Versioned browser payload for the RTS simulation."
   alias KC3RTS.Game.World
-
-  @protocol_version 1
-
   @spec from_world(World.t()) :: map()
   def from_world(%World{} = world) do
     %{
-      protocol_version: @protocol_version,
+      protocol_version: 2,
+      seed: world.seed,
       tick: world.tick,
       map_radius: world.map_radius,
-      town_center: world.town_center,
       stockpile: world.stockpile,
+      outcome: Atom.to_string(world.outcome),
       resources:
-        Enum.map(world.resources, fn resource ->
-          Map.take(resource, [:id, :x, :z, :amount, :initial_amount])
-        end),
+        Enum.map(world.resources, &Map.update!(&1, :kind, fn kind -> Atom.to_string(kind) end)),
+      buildings:
+        Enum.map(world.buildings, &Map.update!(&1, :owner, fn owner -> Atom.to_string(owner) end)),
       villagers:
-        Enum.map(world.villagers, fn villager ->
-          villager
-          |> Map.take([:id, :x, :z, :cargo, :target])
-          |> Map.update!(:target, &target_payload/1)
+        Enum.map(world.villagers, fn v ->
+          v
+          |> Map.update!(:cargo_kind, fn
+            nil -> nil
+            kind -> Atom.to_string(kind)
+          end)
+          |> Map.update!(:order, &order_payload/1)
         end)
     }
   end
 
-  defp target_payload(nil), do: nil
-  defp target_payload(:town_center), do: %{kind: "town_center"}
-  defp target_payload({:resource, id}), do: %{kind: "resource", id: id}
+  defp order_payload(nil), do: nil
+  defp order_payload({:move, point}), do: Map.put(point, :kind, "move")
+  defp order_payload({kind, id}), do: %{kind: Atom.to_string(kind), id: id}
 end

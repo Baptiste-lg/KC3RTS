@@ -105,23 +105,35 @@ export function createTownCenter(): Group {
 export function createResourceNode(node: ResourceNode): Group {
   const group = new Group();
   group.name = `resource-${node.id}`;
+  group.userData = { kind: "resource", id: node.id };
   group.position.set(node.x, 0, node.z);
-
-  const hue = (node.id * 47) % 360;
-  const crystal = new MeshStandardMaterial({
-    color: `hsl(${hue}, 42%, 64%)`,
-    roughness: 0.38,
-    metalness: 0.1,
-    flatShading: true,
-  });
-
-  addMesh(group, new CylinderGeometry(1.2, 1.45, 0.3, 7), stone, 0, 0.15, 0);
-  const main = addMesh(group, new ConeGeometry(0.78, 2.8, 5), crystal, 0, 1.65, 0);
-  main.rotation.z = (node.id % 3 - 1) * 0.08;
-  addMesh(group, new ConeGeometry(0.47, 1.65, 5), crystal, -0.82, 1.03, 0.25);
-  addMesh(group, new ConeGeometry(0.38, 1.35, 5), crystal, 0.76, 0.88, -0.35);
-
+  if (node.kind === "wood") {
+    addMesh(group, new CylinderGeometry(0.34, 0.48, 2.8, 7), wood, 0, 1.4, 0);
+    addMesh(group, new ConeGeometry(1.35, 2.6, 7), new MeshStandardMaterial({ color: 0x296d3d, roughness: 1, flatShading: true }), 0, 3.1, 0);
+    addMesh(group, new ConeGeometry(1.05, 2.2, 7), new MeshStandardMaterial({ color: 0x38894b, roughness: 1, flatShading: true }), 0, 4.2, 0);
+  } else if (node.kind === "stone") {
+    const rock = new MeshStandardMaterial({ color: 0x9aa4a3, roughness: 1, flatShading: true });
+    addMesh(group, new ConeGeometry(1.25, 2, 5), rock, 0, 1.0, 0);
+    addMesh(group, new ConeGeometry(0.85, 1.45, 5), rock, 0.9, 0.72, 0.3);
+  } else {
+    const ore = new MeshStandardMaterial({ color: 0xe5bd55, roughness: .55, metalness: .35, flatShading: true });
+    addMesh(group, new CylinderGeometry(1.2, 1.4, 0.3, 7), stone, 0, 0.15, 0);
+    addMesh(group, new ConeGeometry(0.72, 2.8, 5), ore, 0, 1.6, 0);
+    addMesh(group, new ConeGeometry(0.45, 1.6, 5), ore, 0.72, 0.9, 0.2);
+  }
   return group;
+}
+
+export function createEnemyBase(): Group {
+  const base = createTownCenter();
+  base.name = "enemy-base";
+  base.traverse((part) => {
+    if (part instanceof Mesh && part.material instanceof MeshStandardMaterial) {
+      part.material = part.material.clone();
+      part.material.color.set(0x8f4040);
+    }
+  });
+  return base;
 }
 
 export function createVillagerSprite(id: number, carrying: boolean): Sprite {
@@ -146,6 +158,7 @@ export function createVillagerSprite(id: number, carrying: boolean): Sprite {
     new SpriteMaterial({ map: texture, transparent: true, alphaTest: 0.05, depthWrite: false }),
   );
   sprite.name = `villager-${id}`;
+  sprite.userData = { kind: "villager", id };
   sprite.center.set(0.5, 0);
   sprite.scale.set(2.15, 3.25, 1);
   sprite.position.y = 0.04;

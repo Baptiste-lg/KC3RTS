@@ -32,7 +32,7 @@ defmodule KC3RTS.Game.WorldServer do
   @spec snapshot(GenServer.server()) :: World.t()
   def snapshot(server), do: GenServer.call(server, :snapshot)
 
-  @spec command(GenServer.server(), atom()) :: {:ok, map()} | {:error, atom()}
+  @spec command(GenServer.server(), map()) :: {:ok, map()} | {:error, atom()}
   def command(server, command), do: GenServer.call(server, {:command, command})
 
   @spec ensure_started(binary(), keyword()) :: {:ok, pid()} | {:error, term()}
@@ -56,7 +56,13 @@ defmodule KC3RTS.Game.WorldServer do
 
     {:ok,
      %{
-       world: World.new(seed: Keyword.get(opts, :seed, 12_345)),
+       world:
+         World.new(
+           seed:
+             Keyword.get_lazy(opts, :seed, fn ->
+               :binary.decode_unsigned(:crypto.strong_rand_bytes(4))
+             end)
+         ),
        tick_interval: tick_interval,
        game_id: Keyword.fetch!(opts, :game_id)
      }}
@@ -65,19 +71,16 @@ defmodule KC3RTS.Game.WorldServer do
   @impl true
   def handle_call(:snapshot, _from, state), do: {:reply, state.world, state}
 
-  def handle_call({:command, :spawn_villager}, _from, state) do
-    case World.spawn_villager(state.world) do
-      {:ok, world, villager} ->
+  def handle_call({:command, command}, _from, state) do
+    case World.command(state.world, command) do
+      {:ok, world} ->
         broadcast_world(state.game_id, world)
-        {:reply, {:ok, villager}, %{state | world: world}}
+        {:reply, {:ok, Snapshot.from_world(world)}, %{state | world: world}}
 
-      {:error, reason, _world} ->
+      {:error, reason} ->
         {:reply, {:error, reason}, state}
     end
   end
-
-  def handle_call({:command, _unknown}, _from, state),
-    do: {:reply, {:error, :unknown_command}, state}
 
   @impl true
   def handle_info(:tick, %{tick_interval: :disabled} = state), do: {:noreply, state}

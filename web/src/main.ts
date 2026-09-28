@@ -1,124 +1,96 @@
 import "./style.css";
-import { GameConnection, type GameClient, type GameConnectionStatus, type RecruitmentOutcome } from "./game/connection";
+import { GameConnection, type GameClient, type GameConnectionStatus, type CommandOutcome } from "./game/connection";
 import { LocalGameConnection } from "./game/local_connection";
-import type { WorldSnapshot } from "./game/protocol";
-import { WorldView } from "./scene/world_view";
+import type { Building, GameCommand, GroundPoint, WorldSnapshot } from "./game/protocol";
+import { WorldView, type MapHit } from "./scene/world_view";
 
-function element<T extends HTMLElement>(id: string): T {
-  const found = document.getElementById(id);
-  if (!found) throw new Error(`Missing interface element: ${id}`);
-  return found as T;
-}
-
+function element<T extends HTMLElement>(id: string): T { const found = document.getElementById(id); if (!found) throw new Error(`Missing interface element: ${id}`); return found as T; }
 const sceneMount = element<HTMLDivElement>("scene");
-const stockpileLabel = element<HTMLElement>("stockpile");
-const villagerLabel = element<HTMLElement>("villagers");
-const remainingLabel = element<HTMLElement>("remaining");
-const tickLabel = element<HTMLElement>("tick");
-const connectionBadge = element<HTMLElement>("connection");
-const connectionLabel = element<HTMLElement>("connection-label");
-const recruitButton = element<HTMLButtonElement>("recruit");
-const notice = element<HTMLElement>("notice");
-const loading = element<HTMLElement>("loading");
-const fallback = element<HTMLElement>("fallback");
-
-let view: WorldView | null = null;
-let currentWorld: WorldSnapshot | null = null;
-let connectionState: GameConnectionStatus = "connecting";
-let graphicsFailed = false;
-let noticeTimer = 0;
-
-const statusLabels: Record<GameConnectionStatus, string> = {
-  connecting: "Connexion au village…",
-  connected: "Village connecté",
-  local: "Partie solo · navigateur",
-  offline: "Serveur hors ligne",
-  incompatible: "Version du serveur incompatible",
-};
-
-const errorLabels: Record<string, string> = {
-  insufficient_resources: "Pas assez de ressources pour recruter.",
-  offline: "La connexion au village est interrompue.",
-  timeout: "Le serveur ne répond pas. Réessayez.",
-  invalid_response: "Le serveur a envoyé une réponse invalide.",
-};
-
-function updateButton(): void {
-  recruitButton.disabled = graphicsFailed || (connectionState !== "connected" && connectionState !== "local") ||
-    currentWorld === null || currentWorld.stockpile < 5;
+const woodLabel = element<HTMLElement>("wood"), stoneLabel = element<HTMLElement>("stone"), goldLabel = element<HTMLElement>("gold");
+const mapSeedLabel = element<HTMLElement>("map-seed");
+const villagerLabel = element<HTMLElement>("villagers"), enemyHpLabel = element<HTMLElement>("enemy-hp"), tickLabel = element<HTMLElement>("tick");
+const connectionBadge = element<HTMLElement>("connection"), connectionLabel = element<HTMLElement>("connection-label");
+const recruitButton = element<HTMLButtonElement>("recruit"), buildButton = element<HTMLButtonElement>("build");
+const selectionLabel = element<HTMLElement>("selection"), notice = element<HTMLElement>("notice");
+const loading = element<HTMLElement>("loading"), fallback = element<HTMLElement>("fallback");
+let view: WorldView | null = null, world: WorldSnapshot | null = null;
+let status: GameConnectionStatus = "connecting", graphicsFailed = false, placing = false, noticeTimer = 0;
+let selectedBuilding: number | null = 1;
+let selectedInfo: { kind: "resource" | "enemy"; id: number } | null = null;
+const selectedVillagers = new Set<number>();
+const statusLabels: Record<GameConnectionStatus, string> = { connecting: "Connexion…", connected: "Partie connectée", local: "Partie solo", offline: "Serveur hors ligne", incompatible: "Version incompatible" };
+const errors: Record<string, string> = { insufficient_resources: "Ressources insuffisantes.", invalid_location: "Emplacement trop proche d’un obstacle ou hors de la carte.", invalid_target: "Cible indisponible.", invalid_selection: "Sélectionnez un villageois.", invalid_building: "Sélectionnez un centre terminé.", offline: "Connexion interrompue.", game_over: "La partie est terminée." };
+function showNotice(message: string): void { window.clearTimeout(noticeTimer); notice.textContent = message; noticeTimer = window.setTimeout(() => { notice.textContent = "Clic gauche : sélectionner · clic droit : donner un ordre."; }, 5_000); }
+function selectedCenter(): Building | undefined { return world?.buildings.find((b) => b.id === selectedBuilding && b.owner === "player" && b.hp > 0 && b.progress === 100); }
+function updateControls(): void {
+  const ready = !graphicsFailed && (status === "connected" || status === "local") && world?.outcome === "playing";
+  recruitButton.disabled = !ready || !selectedCenter() || (world?.stockpile.wood ?? 0) < 5 || (world?.stockpile.gold ?? 0) < 5;
+  buildButton.disabled = !ready || selectedVillagers.size === 0 || (world?.stockpile.wood ?? 0) < 25 || (world?.stockpile.stone ?? 0) < 15;
+  buildButton.classList.toggle("active", placing);
+  const resource = selectedInfo?.kind === "resource" ? world?.resources.find((r) => r.id === selectedInfo?.id) : null;
+  const enemy = selectedInfo?.kind === "enemy" ? world?.buildings.find((b) => b.id === selectedInfo?.id) : null;
+  selectionLabel.textContent = selectedVillagers.size ? `${selectedVillagers.size} villageois sélectionné${selectedVillagers.size > 1 ? "s" : ""}` : selectedCenter() ? `Centre #${selectedCenter()!.id} · ${selectedCenter()!.hp}/${selectedCenter()!.max_hp} PV` : resource ? `${{ wood: "Bois", stone: "Pierre", gold: "Or" }[resource.kind]} · ${resource.amount} restants` : enemy ? `Base adverse · ${enemy.hp}/${enemy.max_hp} PV` : "Aucune unité sélectionnée";
+  view?.select(selectedVillagers, selectedBuilding);
 }
-
-function showNotice(message: string): void {
-  window.clearTimeout(noticeTimer);
-  notice.textContent = message;
-  noticeTimer = window.setTimeout(() => {
-    notice.textContent = "Les villageois récoltent automatiquement.";
-  }, 4_000);
-}
-
-function updateWorld(snapshot: WorldSnapshot): void {
-  currentWorld = snapshot;
-  stockpileLabel.textContent = String(snapshot.stockpile);
+function onSnapshot(snapshot: WorldSnapshot): void {
+  const previousOutcome = world?.outcome;
+  world = snapshot;
+  for (const id of selectedVillagers) if (!snapshot.villagers.some((v) => v.id === id)) selectedVillagers.delete(id);
+  mapSeedLabel.textContent = String(snapshot.seed);
+  woodLabel.textContent = String(snapshot.stockpile.wood); stoneLabel.textContent = String(snapshot.stockpile.stone); goldLabel.textContent = String(snapshot.stockpile.gold);
   villagerLabel.textContent = String(snapshot.villagers.length);
-  remainingLabel.textContent = String(snapshot.resources.reduce((sum, node) => sum + node.amount, 0));
-  const seconds = Math.floor(snapshot.tick / 10);
-  tickLabel.textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  updateButton();
-
+  const enemy = snapshot.buildings.find((b) => b.owner === "enemy"); enemyHpLabel.textContent = String(enemy?.hp ?? 0);
+  const seconds = Math.floor(snapshot.tick / 10); tickLabel.textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   if (graphicsFailed) return;
   try {
-    if (view) {
-      view.update(snapshot);
-    } else {
-      view = new WorldView(sceneMount, snapshot);
-      loading.hidden = true;
-      showNotice("Le village est prêt. Recrutez votre premier villageois !");
-    }
-  } catch {
-    graphicsFailed = true;
-    loading.hidden = true;
-    fallback.hidden = false;
-    updateButton();
-  }
+    if (view) view.update(snapshot);
+    else { view = new WorldView(sceneMount, snapshot, actions); loading.hidden = true; showNotice("Sélectionnez vos villageois, puis clic droit sur une ressource."); }
+    updateControls();
+    if (snapshot.outcome !== "playing" && previousOutcome !== snapshot.outcome) showNotice(snapshot.outcome === "victory" ? "Victoire ! La base adverse est détruite." : "Défaite.");
+  } catch (error) { console.error(error); graphicsFailed = true; loading.hidden = true; fallback.hidden = false; updateControls(); }
 }
-
-function updateStatus(status: GameConnectionStatus): void {
-  connectionState = status;
-  connectionBadge.dataset.state = status;
-  connectionLabel.textContent = statusLabels[status];
-  updateButton();
-  if (status === "offline") showNotice("Connexion perdue. Reconnexion en cours…");
-  if (status === "incompatible") showNotice("Version du serveur incompatible avec ce jeu.");
-}
-
-function showRecruitment(outcome: RecruitmentOutcome): void {
-  if (outcome.ok) {
-    showNotice("Un nouveau villageois rejoint le centre.");
-  } else {
-    showNotice(errorLabels[outcome.reason] ?? "Le recrutement a été refusé.");
-  }
-}
-
-const handlers = {
-  onSnapshot: updateWorld,
-  onStatus: updateStatus,
-  onRecruitment: showRecruitment,
+function onStatus(next: GameConnectionStatus): void { status = next; connectionBadge.dataset.state = next; connectionLabel.textContent = statusLabels[next]; updateControls(); }
+function onCommand(outcome: CommandOutcome): void { if (!outcome.ok) showNotice(errors[outcome.reason] ?? "Ordre refusé."); }
+const connection: GameClient = import.meta.env.VITE_KC3RTS_MODE === "local" ? new LocalGameConnection({ onSnapshot, onStatus, onCommand }) : new GameConnection({ onSnapshot, onStatus, onCommand });
+function send(command: GameCommand): void { connection.command(command); }
+const actions = {
+  select(hit: MapHit, additive: boolean): void {
+    if (hit.kind === "villager") {
+      if (!additive) selectedVillagers.clear();
+      if (additive && selectedVillagers.has(hit.id)) selectedVillagers.delete(hit.id); else selectedVillagers.add(hit.id);
+      selectedBuilding = null; selectedInfo = null;
+    } else if (hit.kind === "building" && world?.buildings.some((b) => b.id === hit.id && b.owner === "player")) {
+      selectedVillagers.clear(); selectedBuilding = hit.id; selectedInfo = null;
+    } else if (hit.kind === "resource") {
+      selectedVillagers.clear(); selectedBuilding = null; selectedInfo = { kind: "resource", id: hit.id };
+    } else if (hit.kind === "building") {
+      selectedVillagers.clear(); selectedBuilding = null; selectedInfo = { kind: "enemy", id: hit.id };
+    } else if (!additive) { selectedVillagers.clear(); selectedBuilding = null; selectedInfo = null; }
+    placing = false; updateControls();
+  },
+  selectArea(ids: number[], additive: boolean): void { if (!additive) selectedVillagers.clear(); ids.forEach((id) => selectedVillagers.add(id)); selectedBuilding = null; selectedInfo = null; updateControls(); },
+  order(hit: MapHit): void {
+    placing = false; updateControls(); if (!selectedVillagers.size) return;
+    const villager_ids = [...selectedVillagers];
+    if (hit.kind === "resource") send({ type: "order", villager_ids, order: { kind: "gather", id: hit.id } });
+    else if (hit.kind === "building") {
+      const b = world?.buildings.find((item) => item.id === hit.id);
+      if (b?.owner === "enemy") send({ type: "order", villager_ids, order: { kind: "attack", id: b.id } });
+      else if (b && b.progress < 100) send({ type: "order", villager_ids, order: { kind: "build", id: b.id } });
+      else if (b) send({ type: "order", villager_ids, order: { kind: "move", x: b.x + 4, z: b.z } });
+    } else if (hit.kind === "ground") send({ type: "order", villager_ids, order: { kind: "move", ...hit.point } });
+  },
+  place(point: GroundPoint): void { if (!placing) return; placing = false; updateControls(); send({ type: "build", villager_ids: [...selectedVillagers], ...point }); },
+  isPlacing: (): boolean => placing,
 };
-const connection: GameClient = import.meta.env.VITE_KC3RTS_MODE === "local"
-  ? new LocalGameConnection(handlers)
-  : new GameConnection(handlers);
-
-recruitButton.addEventListener("click", () => connection.spawnVillager());
-window.addEventListener("keydown", (event) => {
-  if (event.code === "KeyB" && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey) {
-    if (!recruitButton.disabled) connection.spawnVillager();
-  }
+recruitButton.addEventListener("click", () => { const center = selectedCenter(); if (center) send({ type: "spawn_villager", building_id: center.id }); });
+buildButton.addEventListener("click", () => { placing = !placing; updateControls(); if (placing) showNotice("Cliquez sur un terrain libre pour placer le centre."); });
+window.addEventListener("keydown", (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;
+  if (e.code === "Escape") { placing = false; selectedVillagers.clear(); selectedBuilding = null; selectedInfo = null; updateControls(); }
+  if (e.code === "KeyB" && !buildButton.disabled) { placing = !placing; updateControls(); if (placing) showNotice("Cliquez sur un terrain libre pour placer le centre."); }
+  if (e.code === "KeyV" && !recruitButton.disabled) recruitButton.click();
+  if (e.code === "KeyA" && e.shiftKey && world) { world.villagers.forEach((v) => selectedVillagers.add(v.id)); selectedBuilding = null; updateControls(); }
 });
 connection.connect();
-
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    connection.disconnect();
-    view?.dispose();
-  });
-}
+if (import.meta.hot) import.meta.hot.dispose(() => { connection.disconnect(); view?.dispose(); });

@@ -1,154 +1,117 @@
-import type { GroundPoint, ResourceNode, Villager, VillagerTarget, WorldSnapshot } from "./protocol";
+import type { Building, GameCommand, GroundPoint, ResourceKind, ResourceNode, Villager, WorldSnapshot } from "./protocol";
 
-const RANDOM_MODULUS = 2_147_483_647;
-const RESOURCE_AMOUNT = 10;
-const RESOURCE_MIN_CENTER_DISTANCE = 8;
-const RESOURCE_MIN_SPACING = 3;
-const GATHER_INTERVAL = 5;
-const GATHER_RANGE = 1.1;
-const DELIVERY_RANGE = 3.4;
-const MOVE_SPEED = 0.18;
-const VILLAGER_CAPACITY = 5;
-const VILLAGER_COST = 5;
-
-export interface LocalWorld extends WorldSnapshot {
-  nextVillagerId: number;
+const MOD = 2_147_483_647;
+const SPEED = 0.22;
+const CAPACITY = 5;
+const COST = { villager: { wood: 5, gold: 5 }, center: { wood: 25, stone: 15 } };
+export interface LocalWorld extends WorldSnapshot { nextVillagerId: number; nextBuildingId: number }
+export type CommandResult = { ok: true; world: LocalWorld } | { ok: false; reason: string };
+const distance = (a: GroundPoint, b: GroundPoint): number => Math.hypot(a.x - b.x, a.z - b.z);
+const inside = (p: GroundPoint, radius: number): boolean => Number.isFinite(p.x) && Number.isFinite(p.z) && Math.abs(p.x) <= radius - 3 && Math.abs(p.z) <= radius - 3;
+function next(seed: number): [number, number] {
+  const value = seed * 48_271 % MOD;
+  return [Math.round((value / MOD * 58 - 29) * 10) / 10, value];
 }
-
-export type RecruitmentResult =
-  | { ok: true; world: LocalWorld }
-  | { ok: false; reason: "insufficient_resources" };
-
-function distance(left: GroundPoint, right: GroundPoint): number {
-  return Math.hypot(left.x - right.x, left.z - right.z);
-}
-
-function randomCoordinate(seed: number): [number, number] {
-  const nextSeed = (seed * 48_271) % RANDOM_MODULUS;
-  const coordinate = Math.round((nextSeed / RANDOM_MODULUS * 58 - 29) * 10) / 10;
-  return [coordinate, nextSeed];
-}
-
-export function createLocalWorld(seed = 12_345): LocalWorld {
-  const normalized = Number.isSafeInteger(seed) ? Math.abs(seed) % (RANDOM_MODULUS - 1) : 12_345;
-  let randomSeed = normalized || 1;
-  const resources: ResourceNode[] = [];
-
-  for (let id = 1; id <= 24; id += 1) {
-    let placed = false;
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      const [x, xSeed] = randomCoordinate(randomSeed);
-      const [z, zSeed] = randomCoordinate(xSeed);
-      randomSeed = zSeed;
-      const point = { x, z };
-      if (distance(point, { x: 0, z: 0 }) < RESOURCE_MIN_CENTER_DISTANCE ||
-          resources.some((resource) => distance(point, resource) < RESOURCE_MIN_SPACING)) continue;
-      resources.push({ id, ...point, amount: RESOURCE_AMOUNT, initial_amount: RESOURCE_AMOUNT });
-      placed = true;
-      break;
-    }
-    if (!placed) break;
-  }
-
-  return {
-    protocol_version: 1,
-    tick: 0,
-    map_radius: 32,
-    town_center: { x: 0, z: 0 },
-    stockpile: 20,
-    resources,
-    villagers: [],
-    nextVillagerId: 1,
-  };
-}
-
-export function recruitLocalVillager(world: LocalWorld): RecruitmentResult {
-  if (world.stockpile < VILLAGER_COST) return { ok: false, reason: "insufficient_resources" };
+function spawn(world: LocalWorld, building: Building): LocalWorld {
   const id = world.nextVillagerId;
-  const villager: Villager = {
-    id,
-    x: world.town_center.x + ((id - 1) % 3) * 0.45,
-    z: world.town_center.z + 3.2,
-    cargo: 0,
-    target: null,
-  };
-  return {
-    ok: true,
-    world: {
-      ...world,
-      stockpile: world.stockpile - VILLAGER_COST,
-      villagers: [...world.villagers, villager],
-      nextVillagerId: id + 1,
-    },
-  };
+  return { ...world, villagers: [...world.villagers, { id, x: building.x + (id % 3 - 1) * 0.5, z: building.z + 3.4, hp: 30, max_hp: 30, cargo: 0, cargo_kind: null, order: null }], nextVillagerId: id + 1 };
 }
-
-function nearestResource(villager: Villager, resources: ResourceNode[]): ResourceNode | undefined {
-  let nearest: ResourceNode | undefined;
-  let nearestDistance = Infinity;
-  for (const resource of resources) {
-    if (resource.amount <= 0) continue;
-    const candidateDistance = distance(villager, resource);
-    if (candidateDistance < nearestDistance) {
-      nearest = resource;
-      nearestDistance = candidateDistance;
+export function createLocalWorld(seed = 12_345): LocalWorld {
+  let random = Number.isSafeInteger(seed) ? Math.abs(seed) % (MOD - 1) || 1 : 12_345;
+  const mapSeed = random;
+  const enemy: Building = { id: 2, owner: "enemy", x: 0, z: 0, hp: 250, max_hp: 250, progress: 100 };
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [x, a] = next(random); const [z, b] = next(a); random = b;
+    if (Math.hypot(x, z) >= 22) { enemy.x = x; enemy.z = z; break; }
+  }
+  const resources: ResourceNode[] = [];
+  for (let id = 1; id <= 36; id += 1) {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      const [x, a] = next(random); const [z, b] = next(a); random = b;
+      const p = { x, z };
+      if (distance(p, { x: 0, z: 0 }) < 9 || distance(p, enemy) < 7 || resources.some((r) => distance(p, r) < 3)) continue;
+      const kind: ResourceKind = (["wood", "stone", "gold"] as const)[(id - 1) % 3];
+      resources.push({ id, kind, ...p, amount: 30, initial_amount: 30 }); break;
     }
   }
-  return nearest;
+  let world: LocalWorld = { protocol_version: 2, seed: mapSeed, tick: 0, map_radius: 32, stockpile: { wood: 30, stone: 15, gold: 20 }, resources,
+    buildings: [{ id: 1, owner: "player", x: 0, z: 0, hp: 350, max_hp: 350, progress: 100 }, enemy], villagers: [], outcome: "playing", nextVillagerId: 1, nextBuildingId: 3 };
+  for (let i = 0; i < 3; i += 1) world = spawn(world, world.buildings[0]);
+  return world;
 }
-
-function chooseTarget(villager: Villager, resources: ResourceNode[]): VillagerTarget {
-  if (villager.cargo >= VILLAGER_CAPACITY ||
-      (villager.target?.kind === "town_center" && villager.cargo > 0)) {
-    return { kind: "town_center" };
+export function applyLocalCommand(world: LocalWorld, command: GameCommand): CommandResult {
+  if (world.outcome !== "playing") return { ok: false, reason: "game_over" };
+  if (command.type === "spawn_villager") {
+    const building = world.buildings.find((b) => b.id === command.building_id && b.owner === "player" && b.hp > 0 && b.progress === 100);
+    if (!building) return { ok: false, reason: "invalid_building" };
+    if (world.stockpile.wood < COST.villager.wood || world.stockpile.gold < COST.villager.gold) return { ok: false, reason: "insufficient_resources" };
+    return { ok: true, world: spawn({ ...world, stockpile: { ...world.stockpile, wood: world.stockpile.wood - 5, gold: world.stockpile.gold - 5 } }, building) };
   }
-  const previousTarget = villager.target;
-  if (previousTarget?.kind === "resource" &&
-      resources.some((resource) => resource.id === previousTarget.id && resource.amount > 0)) {
-    return previousTarget;
+  if (!Array.isArray(command.villager_ids) || command.villager_ids.length === 0 || command.villager_ids.length > 100 || !command.villager_ids.every(Number.isSafeInteger)) return { ok: false, reason: "invalid_selection" };
+  const ids = new Set(command.villager_ids);
+  if (!world.villagers.some((v) => ids.has(v.id) && v.hp > 0)) return { ok: false, reason: "invalid_selection" };
+  if (command.type === "build") {
+    const p = { x: command.x, z: command.z };
+    if (!inside(p, world.map_radius) || world.buildings.some((b) => b.hp > 0 && distance(p, b) < 8) || world.resources.some((r) => r.amount > 0 && distance(p, r) < 5)) return { ok: false, reason: "invalid_location" };
+    if (world.stockpile.wood < COST.center.wood || world.stockpile.stone < COST.center.stone) return { ok: false, reason: "insufficient_resources" };
+    const id = world.nextBuildingId;
+    const building: Building = { id, owner: "player", ...p, hp: 1, max_hp: 350, progress: 0 };
+    return { ok: true, world: { ...world, stockpile: { ...world.stockpile, wood: world.stockpile.wood - 25, stone: world.stockpile.stone - 15 }, buildings: [...world.buildings, building], villagers: world.villagers.map((v) => ids.has(v.id) ? { ...v, order: { kind: "build", id } } : v), nextBuildingId: id + 1 } };
   }
-  const nearest = nearestResource(villager, resources);
-  if (nearest) return { kind: "resource", id: nearest.id };
-  return villager.cargo > 0 ? { kind: "town_center" } : null;
+  const order = command.order;
+  if (order.kind === "move" && !inside(order, world.map_radius)) return { ok: false, reason: "invalid_location" };
+  if (order.kind === "gather" && !world.resources.some((r) => r.id === order.id && r.amount > 0)) return { ok: false, reason: "invalid_target" };
+  if (order.kind === "build" && !world.buildings.some((b) => b.id === order.id && b.owner === "player" && b.progress < 100)) return { ok: false, reason: "invalid_target" };
+  if (order.kind === "attack" && !world.buildings.some((b) => b.id === order.id && b.owner === "enemy" && b.hp > 0)) return { ok: false, reason: "invalid_target" };
+  return { ok: true, world: { ...world, villagers: world.villagers.map((v) => ids.has(v.id) ? { ...v, order } : v) } };
 }
-
-function moveTowards(villager: Villager, point: GroundPoint): Villager {
-  const gap = distance(villager, point);
-  if (gap <= MOVE_SPEED) return { ...villager, x: point.x, z: point.z };
-  return {
-    ...villager,
-    x: villager.x + (point.x - villager.x) / gap * MOVE_SPEED,
-    z: villager.z + (point.z - villager.z) / gap * MOVE_SPEED,
-  };
+function move(v: Villager, p: GroundPoint): Villager {
+  const d = distance(v, p); if (d <= SPEED) return { ...v, x: p.x, z: p.z };
+  return { ...v, x: v.x + (p.x - v.x) / d * SPEED, z: v.z + (p.z - v.z) / d * SPEED };
 }
-
-function stepOnce(world: LocalWorld): LocalWorld {
+function nearestCenter(v: Villager, buildings: Building[]): Building | undefined {
+  return buildings.filter((b) => b.owner === "player" && b.hp > 0 && b.progress === 100).sort((a, b) => distance(v, a) - distance(v, b))[0];
+}
+function once(world: LocalWorld): LocalWorld {
+  if (world.outcome !== "playing") return world;
   const tick = world.tick + 1;
-  let stockpile = world.stockpile;
-  let resources = world.resources;
-  const villagers = world.villagers.map((previous) => {
-    const target = chooseTarget(previous, resources);
-    const villager = { ...previous, target };
-    if (target?.kind === "town_center") {
-      if (distance(villager, world.town_center) <= DELIVERY_RANGE) {
-        stockpile += villager.cargo;
-        return { ...villager, cargo: 0, target: null };
+  const resources = world.resources.map((r) => ({ ...r }));
+  const buildings = world.buildings.map((b) => ({ ...b }));
+  const stockpile = { ...world.stockpile };
+  const villagers = world.villagers.filter((v) => v.hp > 0).map((previous) => {
+    let v = { ...previous };
+    const order = v.order;
+    if (!order) return v;
+    if (order.kind === "move") { v = move(v, order); if (distance(v, order) < 0.1) v.order = null; return v; }
+    if (order.kind === "gather") {
+      const r = resources.find((n) => n.id === order.id);
+      const center = nearestCenter(v, buildings);
+      if (!r || r.amount <= 0 && v.cargo === 0) return { ...v, order: null };
+      if (v.cargo >= CAPACITY || r.amount <= 0 || v.cargo > 0 && v.cargo_kind !== r.kind) {
+        if (!center) return v;
+        if (distance(v, center) > 3.5) return move(v, center);
+        stockpile[v.cargo_kind!] += v.cargo; v.cargo = 0; v.cargo_kind = null;
+        if (r.amount <= 0) v.order = null;
+        return v;
       }
-      return moveTowards(villager, world.town_center);
+      if (distance(v, r) > 1.3) return move(v, r);
+      if ((tick + v.id) % 5 === 0) { r.amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
+      return v;
     }
-    if (target?.kind !== "resource") return villager;
-    const resource = resources.find((node) => node.id === target.id);
-    if (!resource) return villager;
-    if (distance(villager, resource) > GATHER_RANGE) return moveTowards(villager, resource);
-    if ((tick + villager.id) % GATHER_INTERVAL !== 0) return villager;
-    resources = resources.map((node) => node.id === target.id ? { ...node, amount: node.amount - 1 } : node);
-    return { ...villager, cargo: villager.cargo + 1 };
+    const b = buildings.find((item) => item.id === order.id);
+    if (!b || b.hp <= 0) return { ...v, order: null };
+    if (order.kind === "build") {
+      if (b.progress >= 100) return { ...v, order: null };
+      if (distance(v, b) > 3.5) return move(v, b);
+      if ((tick + v.id) % 2 === 0) { b.progress = Math.min(100, b.progress + 1); b.hp = Math.max(1, Math.round(b.max_hp * b.progress / 100)); }
+      return v;
+    }
+    if (distance(v, b) > 3.5) return move(v, b);
+    if ((tick + v.id) % 8 === 0) b.hp = Math.max(0, b.hp - 5);
+    return v;
   });
-  return { ...world, tick, resources, villagers, stockpile };
+  return { ...world, tick, resources, buildings, stockpile, villagers, outcome: buildings.some((b) => b.owner === "enemy" && b.hp > 0) ? "playing" : "victory" };
 }
-
 export function stepLocalWorld(world: LocalWorld, count = 1): LocalWorld {
-  let current = world;
-  for (let step = 0; step < count; step += 1) current = stepOnce(current);
-  return current;
+  let current = world; for (let i = 0; i < count; i += 1) current = once(current); return current;
 }

@@ -177,3 +177,18 @@ kbd { min-width: 19px; padding: 3px 5px; border: 1px solid rgba(224, 239, 217, .
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+.resource-row.three { grid-template-columns: repeat(3, 1fr); }
+.resources-panel { width: 330px; }
+.resources-panel .small-card { min-width: 0; }
+.resource-symbol { font-size: 21px; line-height: 1; }
+.resource-symbol.wood { color: #8fca82; }
+.resource-symbol.stone { color: #b8c3c3; }
+.resource-symbol.gold { color: #e8c064; }
+.command-actions { display: grid; gap: 10px; }
+.recruit-button.secondary { background: linear-gradient(#b9d3c0, #83ad94); border-color: #d6ebd9; box-shadow: 0 5px 0 #466d54; }
+.recruit-button.secondary.active { outline: 3px solid #f8e4a6; }
+.command-panel { width: 385px; }
+.command-panel h1 { font-size: 20px; }
+@media (max-width: 700px) { .resources-panel { width: min(290px, calc(100vw - 32px)); } .command-panel { width: min(385px, calc(100vw - 32px)); } }
+
+.selection-box { position: absolute; z-index: 2; pointer-events: none; border: 1px solid #e7dd8c; background: rgba(219, 228, 142, .13); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }

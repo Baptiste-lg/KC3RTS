@@ -1,266 +1,375 @@
 defmodule KC3RTS.Game.World do
-  @moduledoc """
-  Deterministic, dependency-free simulation state for one match.
-
-  All positions use world-space X/Z coordinates. Rendering and networking are
-  deliberately outside this module so the game rules can be tested directly.
-  """
-
-  @resource_amount 10
-  @resource_min_center_distance 8.0
-  @resource_min_spacing 3.0
-  @gather_interval 5
-  @gather_range 1.1
-  @delivery_range 3.4
-  @town_center_entrance_z 3.2
-  @move_speed 0.18
-  @villager_capacity 5
-  @villager_cost 5
-  @max_resource_placement_attempts 1_000
-  @random_modulus 2_147_483_647
-
+  @moduledoc "Deterministic RTS simulation. One tick is 100 ms."
+  @mod 2_147_483_647
+  @speed 0.22
+  @capacity 5
   defstruct map_radius: 32.0,
-            town_center: %{x: 0.0, z: 0.0},
+            stockpile: %{wood: 30, stone: 15, gold: 20},
             resources: [],
+            buildings: [],
             villagers: [],
-            stockpile: 20,
+            outcome: :playing,
             tick: 0,
             next_villager_id: 1,
+            next_building_id: 3,
             seed: 1
 
-  @type point :: %{x: float(), z: float()}
-  @type resource :: %{
-          id: pos_integer(),
-          x: float(),
-          z: float(),
-          amount: non_neg_integer(),
-          initial_amount: pos_integer()
-        }
-  @type villager :: %{
-          id: pos_integer(),
-          x: float(),
-          z: float(),
-          cargo: non_neg_integer(),
-          target: :town_center | {:resource, pos_integer()} | nil
-        }
   @type t :: %__MODULE__{}
 
-  @doc "Creates a deterministic map. Options: `:seed`, `:resource_count`, and `:starting_stockpile`."
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
-    seed = normalize_seed(Keyword.get(opts, :seed, 12_345))
-    resource_count = Keyword.get(opts, :resource_count, 24)
+    seed = rem(abs(Keyword.get(opts, :seed, 12_345)), @mod - 1)
+    seed = if seed == 0, do: 1, else: seed
+    map_seed = seed
+    {enemy, seed} = place_enemy(seed, 100)
+    count = Keyword.get(opts, :resource_count, 36)
+    {resources, _final_seed} = place_resources(count, 1, seed, enemy, [], 1_000)
+    center = %{id: 1, owner: :player, x: 0.0, z: 0.0, hp: 350, max_hp: 350, progress: 100}
 
-    {resources, final_seed} =
-      place_resources(resource_count, 1, seed, [], @max_resource_placement_attempts)
-
-    %__MODULE__{
+    world = %__MODULE__{
       resources: resources,
-      stockpile: Keyword.get(opts, :starting_stockpile, 20),
-      seed: final_seed
-    }
-  end
-
-  @doc "Recruits one villager at the town center for #{@villager_cost} resources."
-  @spec spawn_villager(t()) :: {:ok, t(), villager()} | {:error, :insufficient_resources, t()}
-  def spawn_villager(%__MODULE__{stockpile: stockpile} = world) when stockpile < @villager_cost do
-    {:error, :insufficient_resources, world}
-  end
-
-  def spawn_villager(%__MODULE__{} = world) do
-    id = world.next_villager_id
-    offset = rem(id - 1, 3) * 0.45
-
-    villager = %{
-      id: id,
-      x: world.town_center.x + offset,
-      z: world.town_center.z + @town_center_entrance_z,
-      cargo: 0,
-      target: nil
+      buildings: [center, enemy],
+      seed: map_seed,
+      stockpile: Keyword.get(opts, :starting_stockpile, %{wood: 30, stone: 15, gold: 20})
     }
 
-    world = %{
+    Enum.reduce(1..3, world, fn _, current -> spawn_free(current, center) end)
+  end
+
+  @spec command(t(), map()) :: {:ok, t()} | {:error, atom()}
+  def command(%__MODULE__{outcome: outcome}, _command) when outcome != :playing,
+    do: {:error, :game_over}
+
+  def command(world, %{type: :spawn_villager, building_id: id}) when is_integer(id) do
+    center =
+      Enum.find(
+        world.buildings,
+        &(&1.id == id and &1.owner == :player and &1.hp > 0 and &1.progress == 100)
+      )
+
+    cond do
+      is_nil(center) ->
+        {:error, :invalid_building}
+
+      world.stockpile.wood < 5 or world.stockpile.gold < 5 ->
+        {:error, :insufficient_resources}
+
+      true ->
+        {:ok,
+         spawn_free(
+           %{
+             world
+             | stockpile: %{
+                 world.stockpile
+                 | wood: world.stockpile.wood - 5,
+                   gold: world.stockpile.gold - 5
+               }
+           },
+           center
+         )}
+    end
+  end
+
+  def command(world, %{type: :order, villager_ids: ids, order: order})
+      when is_list(ids) and length(ids) in 1..100 do
+    chosen = MapSet.new(ids)
+
+    cond do
+      not valid_selection?(world, ids, chosen) ->
+        {:error, :invalid_selection}
+
+      not valid_order?(world, order) ->
+        {:error, :invalid_target}
+
+      true ->
+        {:ok,
+         %{
+           world
+           | villagers:
+               Enum.map(world.villagers, fn v ->
+                 if MapSet.member?(chosen, v.id), do: %{v | order: order}, else: v
+               end)
+         }}
+    end
+  end
+
+  def command(world, %{type: :build, villager_ids: ids, x: x, z: z})
+      when is_list(ids) and length(ids) in 1..100 do
+    chosen = MapSet.new(ids)
+    point = %{x: x, z: z}
+
+    cond do
+      not valid_selection?(world, ids, chosen) -> {:error, :invalid_selection}
+      not valid_site?(world, point) -> {:error, :invalid_location}
+      world.stockpile.wood < 25 or world.stockpile.stone < 15 -> {:error, :insufficient_resources}
+      true -> {:ok, start_building(world, chosen, point)}
+    end
+  end
+
+  def command(_world, _command), do: {:error, :unknown_command}
+
+  defp valid_selection?(world, ids, chosen) do
+    Enum.all?(ids, &(is_integer(&1) and &1 > 0)) and
+      Enum.any?(world.villagers, &MapSet.member?(chosen, &1.id))
+  end
+
+  defp valid_site?(world, point) do
+    inside?(point, world.map_radius) and
+      Enum.all?(world.buildings, &(&1.hp == 0 or distance(point, &1) >= 8)) and
+      Enum.all?(world.resources, &(&1.amount == 0 or distance(point, &1) >= 5))
+  end
+
+  defp start_building(world, chosen, %{x: x, z: z}) do
+    id = world.next_building_id
+    building = %{id: id, owner: :player, x: x, z: z, hp: 1, max_hp: 350, progress: 0}
+
+    villagers =
+      Enum.map(world.villagers, fn v ->
+        if MapSet.member?(chosen, v.id), do: %{v | order: {:build, id}}, else: v
+      end)
+
+    %{
       world
-      | stockpile: world.stockpile - @villager_cost,
-        villagers: world.villagers ++ [villager],
-        next_villager_id: id + 1
+      | stockpile: %{
+          world.stockpile
+          | wood: world.stockpile.wood - 25,
+            stone: world.stockpile.stone - 15
+        },
+        buildings: world.buildings ++ [building],
+        villagers: villagers,
+        next_building_id: id + 1
     }
-
-    {:ok, world, villager}
   end
 
-  @doc "Advances the simulation by `count` fixed ticks (one tick is 100 ms)."
   @spec step(t(), non_neg_integer()) :: t()
-  def step(%__MODULE__{} = world, count \\ 1) when is_integer(count) and count >= 0 do
+  def step(world, count \\ 1) when is_integer(count) and count >= 0 do
     Enum.reduce(1..count//1, world, fn _, current -> step_once(current) end)
   end
 
-  defp step_once(%__MODULE__{} = world) do
+  defp step_once(%{outcome: outcome} = world) when outcome != :playing, do: world
+
+  defp step_once(world) do
     tick = world.tick + 1
 
-    {villagers, resources, stockpile} =
-      Enum.reduce(world.villagers, {[], world.resources, world.stockpile}, fn villager,
-                                                                              {villagers,
-                                                                               resources,
-                                                                               stockpile} ->
-        {villager, resources, stockpile} =
-          step_villager(villager, resources, world.town_center, stockpile, tick)
+    {villagers, resources, buildings, stockpile} =
+      Enum.reduce(world.villagers, {[], world.resources, world.buildings, world.stockpile}, fn v,
+                                                                                               {acc,
+                                                                                                resources,
+                                                                                                buildings,
+                                                                                                stockpile} ->
+        {v, resources, buildings, stockpile} =
+          step_villager(v, resources, buildings, stockpile, tick)
 
-        {[villager | villagers], resources, stockpile}
+        {[v | acc], resources, buildings, stockpile}
       end)
+
+    outcome =
+      if Enum.any?(buildings, &(&1.owner == :enemy and &1.hp > 0)), do: :playing, else: :victory
 
     %{
       world
       | tick: tick,
         villagers: Enum.reverse(villagers),
         resources: resources,
-        stockpile: stockpile
+        buildings: buildings,
+        stockpile: stockpile,
+        outcome: outcome
     }
   end
 
-  defp step_villager(villager, resources, town_center, stockpile, tick) do
-    target = choose_target(villager, resources)
-    villager = %{villager | target: target}
+  defp step_villager(%{order: nil} = v, resources, buildings, stockpile, _tick),
+    do: {v, resources, buildings, stockpile}
 
-    case target do
-      :town_center ->
-        move_or_deliver(villager, resources, town_center, stockpile)
-
-      {:resource, resource_id} ->
-        gather_or_move(villager, resources, resource_id, stockpile, tick)
-
-      nil ->
-        {villager, resources, stockpile}
-    end
+  defp step_villager(%{order: {:move, point}} = v, resources, buildings, stockpile, _tick) do
+    v = move(v, point)
+    v = if distance(v, point) < 0.1, do: %{v | order: nil}, else: v
+    {v, resources, buildings, stockpile}
   end
 
-  defp choose_target(%{cargo: cargo}, _resources) when cargo >= @villager_capacity,
-    do: :town_center
-
-  defp choose_target(%{target: :town_center, cargo: cargo}, _resources) when cargo > 0,
-    do: :town_center
-
-  defp choose_target(%{target: {:resource, id}, cargo: cargo} = villager, resources) do
-    case Enum.find(resources, &(&1.id == id and &1.amount > 0)) do
-      nil when cargo > 0 ->
-        :town_center
-
-      nil ->
-        case nearest_resource(villager, resources) do
-          nil -> nil
-          resource -> {:resource, resource.id}
-        end
-
-      _resource ->
-        {:resource, id}
-    end
-  end
-
-  defp choose_target(%{cargo: cargo} = villager, resources) do
-    case nearest_resource(villager, resources) do
-      nil when cargo > 0 -> :town_center
-      nil -> nil
-      resource -> {:resource, resource.id}
-    end
-  end
-
-  defp move_or_deliver(villager, resources, town_center, stockpile) do
-    if distance(villager, town_center) <= @delivery_range do
-      {Map.put(villager, :cargo, 0) |> Map.put(:target, nil), resources,
-       stockpile + villager.cargo}
-    else
-      {move_towards(villager, town_center), resources, stockpile}
-    end
-  end
-
-  defp gather_or_move(villager, resources, resource_id, stockpile, tick) do
-    resource = Enum.find(resources, &(&1.id == resource_id))
+  defp step_villager(%{order: {:gather, id}} = v, resources, buildings, stockpile, tick) do
+    resource = Enum.find(resources, &(&1.id == id))
+    center = nearest_center(v, buildings)
 
     cond do
-      distance(villager, resource) > @gather_range ->
-        {move_towards(villager, resource), resources, stockpile}
+      is_nil(resource) or (resource.amount == 0 and v.cargo == 0) ->
+        {%{v | order: nil}, resources, buildings, stockpile}
 
-      rem(tick + villager.id, @gather_interval) == 0 ->
-        resources =
-          Enum.map(resources, fn
-            %{id: ^resource_id, amount: amount} = node when amount > 0 ->
-              %{node | amount: amount - 1}
+      returning?(v, resource) ->
+        deliver_or_move(v, resource, center, resources, buildings, stockpile)
 
-            node ->
-              node
-          end)
+      distance(v, resource) > 1.3 ->
+        {move(v, resource), resources, buildings, stockpile}
 
-        {%{villager | cargo: villager.cargo + 1}, resources, stockpile}
+      rem(tick + v.id, 5) != 0 ->
+        {v, resources, buildings, stockpile}
 
       true ->
-        {villager, resources, stockpile}
+        resources =
+          Enum.map(resources, &deplete_resource(&1, id))
+
+        {%{v | cargo: v.cargo + 1, cargo_kind: resource.kind}, resources, buildings, stockpile}
     end
   end
 
-  defp nearest_resource(villager, resources) do
-    resources
-    |> Enum.filter(&(&1.amount > 0))
-    |> Enum.min_by(&distance(villager, &1), fn -> nil end)
+  defp step_villager(%{order: {:build, id}} = v, resources, buildings, stockpile, tick) do
+    building = Enum.find(buildings, &(&1.id == id))
+
+    cond do
+      is_nil(building) or building.hp == 0 or building.progress == 100 ->
+        {%{v | order: nil}, resources, buildings, stockpile}
+
+      distance(v, building) > 3.5 ->
+        {move(v, building), resources, buildings, stockpile}
+
+      rem(tick + v.id, 2) != 0 ->
+        {v, resources, buildings, stockpile}
+
+      true ->
+        buildings = Enum.map(buildings, &progress_building(&1, id))
+        {v, resources, buildings, stockpile}
+    end
   end
 
-  defp move_towards(villager, target) do
-    dx = target.x - villager.x
-    dz = target.z - villager.z
-    distance = :math.sqrt(dx * dx + dz * dz)
+  defp step_villager(%{order: {:attack, id}} = v, resources, buildings, stockpile, tick) do
+    building = Enum.find(buildings, &(&1.id == id))
 
-    if distance <= @move_speed do
-      %{villager | x: target.x, z: target.z}
+    cond do
+      is_nil(building) or building.hp == 0 ->
+        {%{v | order: nil}, resources, buildings, stockpile}
+
+      distance(v, building) > 3.5 ->
+        {move(v, building), resources, buildings, stockpile}
+
+      rem(tick + v.id, 8) != 0 ->
+        {v, resources, buildings, stockpile}
+
+      true ->
+        buildings =
+          Enum.map(buildings, &damage_building(&1, id))
+
+        {v, resources, buildings, stockpile}
+    end
+  end
+
+  defp deplete_resource(%{id: id} = r, id), do: %{r | amount: r.amount - 1}
+  defp deplete_resource(r, _id), do: r
+
+  defp nearest_center(v, buildings) do
+    buildings
+    |> Enum.filter(&(&1.owner == :player and &1.hp > 0 and &1.progress == 100))
+    |> Enum.min_by(&distance(v, &1), fn -> nil end)
+  end
+
+  defp returning?(v, resource) do
+    v.cargo >= @capacity or resource.amount == 0 or
+      (v.cargo > 0 and v.cargo_kind != resource.kind)
+  end
+
+  defp deliver_or_move(v, resource, center, resources, buildings, stockpile) do
+    cond do
+      is_nil(center) ->
+        {v, resources, buildings, stockpile}
+
+      distance(v, center) > 3.5 ->
+        {move(v, center), resources, buildings, stockpile}
+
+      true ->
+        stockpile = Map.update!(stockpile, v.cargo_kind, &(&1 + v.cargo))
+        order = if resource.amount == 0, do: nil, else: v.order
+        {%{v | cargo: 0, cargo_kind: nil, order: order}, resources, buildings, stockpile}
+    end
+  end
+
+  defp progress_building(%{id: id} = b, id) do
+    progress = min(100, b.progress + 1)
+    %{b | progress: progress, hp: max(1, round(b.max_hp * progress / 100))}
+  end
+
+  defp progress_building(b, _id), do: b
+
+  defp damage_building(%{id: id} = b, id), do: %{b | hp: max(0, b.hp - 5)}
+  defp damage_building(b, _id), do: b
+
+  defp valid_order?(world, {:move, point}), do: inside?(point, world.map_radius)
+
+  defp valid_order?(world, {:gather, id}),
+    do: Enum.any?(world.resources, &(&1.id == id and &1.amount > 0))
+
+  defp valid_order?(world, {:build, id}),
+    do: Enum.any?(world.buildings, &(&1.id == id and &1.owner == :player and &1.progress < 100))
+
+  defp valid_order?(world, {:attack, id}),
+    do: Enum.any?(world.buildings, &(&1.id == id and &1.owner == :enemy and &1.hp > 0))
+
+  defp valid_order?(_world, _order), do: false
+
+  defp spawn_free(world, center) do
+    id = world.next_villager_id
+
+    v = %{
+      id: id,
+      x: center.x + (rem(id, 3) - 1) * 0.5,
+      z: center.z + 3.4,
+      hp: 30,
+      max_hp: 30,
+      cargo: 0,
+      cargo_kind: nil,
+      order: nil
+    }
+
+    %{world | villagers: world.villagers ++ [v], next_villager_id: id + 1}
+  end
+
+  defp move(v, point) do
+    d = distance(v, point)
+
+    if d <= @speed,
+      do: %{v | x: point.x, z: point.z},
+      else: %{v | x: v.x + (point.x - v.x) / d * @speed, z: v.z + (point.z - v.z) / d * @speed}
+  end
+
+  defp distance(a, b), do: :math.sqrt(:math.pow(a.x - b.x, 2) + :math.pow(a.z - b.z, 2))
+
+  defp inside?(%{x: x, z: z}, radius) when is_number(x) and is_number(z),
+    do: abs(x) <= radius - 3 and abs(z) <= radius - 3
+
+  defp inside?(_point, _radius), do: false
+
+  defp next(seed) do
+    value = rem(seed * 48_271, @mod)
+    {Float.round(value / @mod * 58 - 29, 1), value}
+  end
+
+  defp place_enemy(seed, 0),
+    do: {%{id: 2, owner: :enemy, x: 24.0, z: 24.0, hp: 250, max_hp: 250, progress: 100}, seed}
+
+  defp place_enemy(seed, attempts) do
+    {x, seed} = next(seed)
+    {z, seed} = next(seed)
+
+    if :math.sqrt(x * x + z * z) >= 22,
+      do: {%{id: 2, owner: :enemy, x: x, z: z, hp: 250, max_hp: 250, progress: 100}, seed},
+      else: place_enemy(seed, attempts - 1)
+  end
+
+  defp place_resources(0, _id, seed, _enemy, resources, _attempts),
+    do: {Enum.reverse(resources), seed}
+
+  defp place_resources(_count, _id, seed, _enemy, resources, 0),
+    do: {Enum.reverse(resources), seed}
+
+  defp place_resources(count, id, seed, enemy, resources, attempts) do
+    {x, seed} = next(seed)
+    {z, seed} = next(seed)
+    point = %{x: x, z: z}
+
+    if distance(point, %{x: 0.0, z: 0.0}) < 9 or distance(point, enemy) < 7 or
+         Enum.any?(resources, &(distance(point, &1) < 3)) do
+      place_resources(count, id, seed, enemy, resources, attempts - 1)
     else
-      %{
-        villager
-        | x: villager.x + dx / distance * @move_speed,
-          z: villager.z + dz / distance * @move_speed
-      }
+      kind = Enum.at([:wood, :stone, :gold], rem(id - 1, 3))
+      resource = Map.merge(point, %{id: id, kind: kind, amount: 30, initial_amount: 30})
+      place_resources(count - 1, id + 1, seed, enemy, [resource | resources], 1_000)
     end
-  end
-
-  defp distance(left, right) do
-    dx = left.x - right.x
-    dz = left.z - right.z
-    :math.sqrt(dx * dx + dz * dz)
-  end
-
-  defp place_resources(0, _id, seed, resources, _attempts), do: {Enum.reverse(resources), seed}
-
-  defp place_resources(_count, _id, seed, resources, 0), do: {Enum.reverse(resources), seed}
-
-  defp place_resources(count, id, seed, resources, attempts) do
-    {x, seed} = random_coordinate(seed, 29.0)
-    {z, seed} = random_coordinate(seed, 29.0)
-    candidate = %{id: id, x: x, z: z, amount: @resource_amount, initial_amount: @resource_amount}
-
-    if valid_resource_location?(candidate, resources) do
-      place_resources(
-        count - 1,
-        id + 1,
-        seed,
-        [candidate | resources],
-        @max_resource_placement_attempts
-      )
-    else
-      place_resources(count, id, seed, resources, attempts - 1)
-    end
-  end
-
-  defp valid_resource_location?(candidate, resources) do
-    distance(candidate, %{x: 0.0, z: 0.0}) >= @resource_min_center_distance and
-      Enum.all?(resources, &(distance(candidate, &1) >= @resource_min_spacing))
-  end
-
-  defp random_coordinate(seed, radius) do
-    seed = rem(seed * 48_271, @random_modulus)
-    normalized = seed / @random_modulus
-    coordinate = Float.round(normalized * radius * 2 - radius, 1)
-    {coordinate, seed}
-  end
-
-  defp normalize_seed(seed) when is_integer(seed) do
-    seed = rem(abs(seed), @random_modulus - 1)
-    if seed == 0, do: 1, else: seed
   end
 end

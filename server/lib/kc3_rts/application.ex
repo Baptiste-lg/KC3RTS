@@ -10,7 +10,7 @@ defmodule KC3RTS.Application do
       {Registry, keys: :unique, name: KC3RTS.GameRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: KC3RTS.GameSupervisor},
       {Phoenix.PubSub, name: KC3RTS.PubSub},
-      {WorldServer, game_id: "lobby", seed: 20_260_925},
+      {WorldServer, game_id: "lobby"},
       KC3RTSWeb.Endpoint
     ]
 

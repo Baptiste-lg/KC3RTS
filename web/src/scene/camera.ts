@@ -11,7 +11,7 @@ export function createIsometricCamera(aspect: number, mapRadius: number): Orthog
   camera.position.set(distance, distance, distance);
   camera.lookAt(0, 0, 0);
   camera.userData.framing = {
-    baseHeight: mapRadius * 3.6,
+    baseHeight: mapRadius * 3.0,
     minimumWidth: mapRadius * 3.2,
   } satisfies CameraFraming;
   resizeIsometricCamera(camera, aspect);

@@ -102,6 +102,11 @@ class DevTools {
     });
   }
 
+  async click(x, y, button = "left") {
+    await this.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: 1 });
+    await this.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button, clickCount: 1 });
+  }
+
   async evaluate(expression) {
     const reply = await this.send("Runtime.evaluate", {
       expression,
@@ -120,11 +125,38 @@ const STATE = `(() => ({
   canvas: !!document.querySelector("#scene canvas"),
   loadingHidden: document.getElementById("loading")?.hidden,
   fallbackHidden: document.getElementById("fallback")?.hidden,
-  stockpile: Number(document.getElementById("stockpile")?.textContent),
+  wood: Number(document.getElementById("wood")?.textContent),
+  stone: Number(document.getElementById("stone")?.textContent),
+  gold: Number(document.getElementById("gold")?.textContent),
   villagers: Number(document.getElementById("villagers")?.textContent),
-  remaining: Number(document.getElementById("remaining")?.textContent),
+  enemyHp: Number(document.getElementById("enemy-hp")?.textContent),
+  mapSeed: Number(document.getElementById("map-seed")?.textContent),
   recruitEnabled: !document.getElementById("recruit")?.disabled
 }))()`;
+
+function nearestWood(initialSeed) {
+  let seed = initialSeed; const resources = [];
+  const next = () => { seed = seed * 48_271 % 2_147_483_647; return Math.round((seed / 2_147_483_647 * 58 - 29) * 10) / 10; };
+  let enemy;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const x = next(), z = next(); if (Math.hypot(x, z) >= 22) { enemy = { x, z }; break; }
+  }
+  for (let id = 1; id <= 36; id += 1) {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      const x = next(), z = next();
+      if (Math.hypot(x, z) < 9 || Math.hypot(x - enemy.x, z - enemy.z) < 7 ||
+          resources.some((r) => Math.hypot(x - r.x, z - r.z) < 3)) continue;
+      resources.push({ id, x, z }); break;
+    }
+  }
+  return resources.filter((r) => (r.id - 1) % 3 === 0).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))[0];
+}
+function project(point, rect, y = 0) {
+  const height = Math.max(32 * 3.0, 32 * 3.2 / (rect.width / rect.height));
+  const scale = rect.height / height;
+  return { x: rect.left + rect.width / 2 + (point.x - point.z) / Math.sqrt(2) * scale,
+    y: rect.top + rect.height / 2 + ((point.x + point.z) / Math.sqrt(6) - y * Math.sqrt(2 / 3)) * scale };
+}
 
 let profile;
 let devtools;
@@ -177,28 +209,36 @@ try {
   const initial = await until(async () => {
     const state = await devtools.evaluate(STATE);
     return state.mode === (pagesMode ? "local" : "connected") && state.canvas &&
-      state.loadingHidden && state.fallbackHidden &&
-      state.recruitEnabled && state.stockpile === 20 && state.remaining > 0 ? state : false;
-  }, 30_000, "live 3D village");
+      state.loadingHidden && state.fallbackHidden && state.recruitEnabled &&
+      state.wood === 30 && state.stone === 15 && state.gold === 20 &&
+      state.villagers === 3 && state.enemyHp === 250 ? state : false;
+  }, 30_000, "live RTS map");
 
   await devtools.evaluate('document.getElementById("recruit").click()');
   const recruited = await until(async () => {
     const state = await devtools.evaluate(STATE);
     return state.villagers === initial.villagers + 1 &&
-      state.stockpile === initial.stockpile - 5 ? state : false;
+      state.wood === initial.wood - 5 && state.gold === initial.gold - 5 ? state : false;
   }, 10_000, "villager recruitment");
 
+  const rect = await devtools.evaluate('(() => { const r = document.querySelector("#scene canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()');
+  const villager = project({ x: 0, z: 3.4 }, rect, 1.5);
+  const wood = project(nearestWood(initial.mapSeed), rect, 2.5);
+  await devtools.click(villager.x, villager.y);
+  const selected = await devtools.evaluate('document.getElementById("selection").textContent');
+  if (!selected.includes("villageois sélectionné")) throw new Error(`Click selection failed: ${selected}`);
+  await devtools.click(wood.x, wood.y, "right");
   const delivered = await until(async () => {
     const state = await devtools.evaluate(STATE);
-    return state.stockpile > recruited.stockpile && state.remaining < initial.remaining ? state : false;
-  }, 70_000, "harvest and resource delivery");
+    return state.wood > recruited.wood ? state : false;
+  }, 45_000, "ordered wood gathering and delivery");
 
   if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
     const screenshot = await devtools.send("Page.captureScreenshot", { format: "jpeg", quality: 65 });
     await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
   }
 
-  console.log(`Browser smoke passed: WebGL scene, ${pagesMode ? "static solo mode" : "Phoenix socket"}, recruitment, delivery (${initial.stockpile} → ${recruited.stockpile} → ${delivered.stockpile}).`);
+  console.log(`Browser smoke passed: WebGL RTS map, ${pagesMode ? "static solo mode" : "Phoenix socket"}, three starting villagers and recruitment (${initial.villagers} → ${recruited.villagers}) and ordered wood delivery (${recruited.wood} → ${delivered.wood}).`);
 } catch (error) {
   console.error(error);
   if (devtools) {

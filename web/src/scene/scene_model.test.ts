@@ -21,12 +21,10 @@ describe("SceneModel", () => {
     });
 
     const initial: WorldSnapshot = {
-      protocol_version: 1,
-      tick: 0,
-      map_radius: 32,
-      town_center: { x: 0, z: 0 },
-      stockpile: 20,
-      resources: [{ id: 1, x: 8, z: 3, amount: 10, initial_amount: 10 }],
+      protocol_version: 2, seed: 12345, tick: 0, map_radius: 32,
+      stockpile: { wood: 30, stone: 15, gold: 20 }, outcome: "playing",
+      resources: [{ id: 1, kind: "wood", x: 8, z: 3, amount: 10, initial_amount: 10 }],
+      buildings: [{ id: 1, owner: "player", x: 0, z: 0, hp: 350, max_hp: 350, progress: 100 }],
       villagers: [],
     };
     const model = new SceneModel(initial);
@@ -39,7 +37,7 @@ describe("SceneModel", () => {
       ...initial,
       tick: 1,
       resources: [{ ...initial.resources[0], amount: 0 }],
-      villagers: [{ id: 1, x: 1, z: 2, cargo: 2, target: { kind: "town_center" } }],
+      villagers: [{ id: 1, x: 1, z: 2, cargo: 2, cargo_kind: "wood", hp: 30, max_hp: 30, order: null }],
     });
 
     expect(resource.visible).toBe(false);

@@ -1,88 +1,15 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#13251d" />
-    <meta name="description" content="Un petit RTS isométrique en 3D, entièrement généré par le code." />
-    <title>KC3RTS — Le village</title>
-  </head>
-  <body>
-    <main class="game-shell">
-      <div id="scene" class="scene-stage"></div>
-      <div class="screen-vignette" aria-hidden="true"></div>
-
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div>
-            <div class="brand-name">KC3<span>RTS</span></div>
-            <div class="brand-subtitle">Un village. Une carte. À vous de jouer.</div>
-          </div>
-        </div>
-        <div id="connection" class="connection" data-state="connecting" role="status" aria-live="polite">
-          <span class="connection-dot" aria-hidden="true"></span>
-          <span id="connection-label">Connexion au village…</span>
-        </div>
-      </header>
-
-      <aside class="resources-panel" aria-label="État du village">
-        <div class="panel-heading">
-          <span class="eyebrow">APERÇU DU VILLAGE</span>
-          <span id="tick" class="tick-label">00:00</span>
-        </div>
-        <div class="resource-card primary-card">
-          <div class="gem-icon" aria-hidden="true"></div>
-          <div>
-            <span class="stat-label">Réserve</span>
-            <strong id="stockpile" class="stat-value">—</strong>
-          </div>
-        </div>
-        <div class="resource-row">
-          <div class="resource-card small-card">
-            <span class="mini-icon villager-icon" aria-hidden="true"></span>
-            <div><span class="stat-label">Villageois</span><strong id="villagers" class="stat-value">—</strong></div>
-          </div>
-          <div class="resource-card small-card">
-            <span class="mini-icon field-icon" aria-hidden="true"></span>
-            <div><span class="stat-label">Sur la carte</span><strong id="remaining" class="stat-value">—</strong></div>
-          </div>
-        </div>
-        <div class="panel-foot">Les villageois récoltent et livrent automatiquement.</div>
-      </aside>
-
-      <section class="command-panel" aria-labelledby="center-title">
-        <div class="command-type"><span class="type-line"></span> BÂTIMENT PRINCIPAL</div>
-        <h1 id="center-title">Centre du village</h1>
-        <p>Recrutez des villageois pour récupérer les cristaux éparpillés sur la carte.</p>
-        <div class="command-actions">
-          <button id="recruit" class="recruit-button" type="button" disabled>
-            <span class="button-plus" aria-hidden="true">+</span>
-            <span>Recruter un villageois</span>
-            <span class="button-cost" aria-label="Coût : 5 ressources">◆ 5</span>
-          </button>
-        </div>
-        <div id="notice" class="notice" role="status" aria-live="polite">Préparation du village…</div>
-      </section>
-
-      <div class="controls-hint" aria-label="Commandes">
-        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> déplacer</span>
-        <span><kbd>B</kbd> recruter</span>
-        <span>Molette · zoom</span>
-        <span>Glisser · déplacer</span>
-      </div>
-
-      <div id="loading" class="loading-overlay" role="status" aria-live="polite">
-        <div class="loading-emblem" aria-hidden="true"></div>
-        <strong>Préparation du village</strong>
-        <span>Création du monde en cours…</span>
-      </div>
-      <div id="fallback" class="fallback-overlay" hidden>
-        <strong>Le rendu 3D n’est pas disponible</strong>
-        <span>Activez WebGL dans votre navigateur puis rechargez la page.</span>
-      </div>
-    </main>
-    <noscript>Ce jeu nécessite JavaScript et WebGL.</noscript>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
-</html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#13251d"><title>KC3RTS — Partie RTS</title></head>
+<body><main class="game-shell">
+  <div id="scene" class="scene-stage"></div><div class="screen-vignette" aria-hidden="true"></div>
+  <header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><div class="brand-name">KC3<span>RTS</span></div><div class="brand-subtitle">Récoltez. Construisez. Détruisez la base adverse.</div></div></div><div id="connection" class="connection" data-state="connecting" role="status"><span class="connection-dot"></span><span id="connection-label">Connexion…</span></div></header>
+  <aside class="resources-panel" aria-label="Ressources"><div class="panel-heading"><span class="eyebrow">RESSOURCES</span><span id="tick" class="tick-label">00:00</span></div>
+    <div class="resource-row three"><div class="resource-card small-card"><span class="resource-symbol wood">♣</span><div><span class="stat-label">Bois</span><strong id="wood" class="stat-value">—</strong></div></div><div class="resource-card small-card"><span class="resource-symbol stone">⬟</span><div><span class="stat-label">Pierre</span><strong id="stone" class="stat-value">—</strong></div></div><div class="resource-card small-card"><span class="resource-symbol gold">◆</span><div><span class="stat-label">Or</span><strong id="gold" class="stat-value">—</strong></div></div></div>
+    <div class="resource-row"><div class="resource-card small-card"><div><span class="stat-label">Villageois</span><strong id="villagers" class="stat-value">—</strong></div></div><div class="resource-card small-card"><div><span class="stat-label">Base adverse · PV</span><strong id="enemy-hp" class="stat-value">—</strong></div></div></div>
+    <div class="panel-foot">Carte <span id="map-seed">—</span> · Objectif : détruire la base adverse.</div>
+  </aside>
+  <section class="command-panel" aria-label="Commandes"><div class="command-type"><span class="type-line"></span> ORDRES</div><h1 id="selection">Centre du village</h1><p>Sélectionnez vos villageois. Clic droit sur le bois, la pierre ou l’or pour récolter ; sur la base adverse pour attaquer.</p><div class="command-actions"><button id="recruit" class="recruit-button" type="button" disabled><span>Recruter un villageois</span><span class="button-cost">♣ 5 · ◆ 5</span></button><button id="build" class="recruit-button secondary" type="button" disabled><span>Construire un centre</span><span class="button-cost">♣ 25 · ⬟ 15</span></button></div><div id="notice" class="notice" role="status">Préparation de la carte…</div></section>
+  <div class="controls-hint"><span>Clic gauche · sélectionner</span><span>Clic droit · ordre</span><span>Glisser · sélectionner plusieurs</span><span>Molette · zoom &nbsp; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> caméra</span></div>
+  <div id="loading" class="loading-overlay" role="status"><div class="loading-emblem"></div><strong>Préparation de la carte</strong></div><div id="fallback" class="fallback-overlay" hidden><strong>WebGL indisponible</strong><span>Activez WebGL puis rechargez la page.</span></div>
+</main><noscript>Ce jeu nécessite JavaScript et WebGL.</noscript><script type="module" src="/src/main.ts"></script></body></html>

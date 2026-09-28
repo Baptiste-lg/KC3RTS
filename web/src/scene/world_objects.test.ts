@@ -8,7 +8,7 @@ describe("procedural world objects", () => {
   it("builds a 3D field, town center and resource nodes from geometry", () => {
     const ground = createGround(32);
     const center = createTownCenter();
-    const resource = createResourceNode({ id: 1, x: 8, z: 3, amount: 10, initial_amount: 10 });
+    const resource = createResourceNode({ id: 1, kind: "wood", x: 8, z: 3, amount: 10, initial_amount: 10 });
 
     expect(ground).toBeInstanceOf(Group);
     expect(center).toBeInstanceOf(Group);
