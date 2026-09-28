@@ -65,12 +65,12 @@ export class SceneModel {
       let visual = this.villagers.get(v.id);
       if (visual && visual.carrying !== carrying) {
         const pos = visual.sprite.position.clone(); this.root.remove(visual.sprite); disposeSprite(visual.sprite);
-        visual.sprite = createVillagerSprite(v.id, carrying); visual.sprite.position.copy(pos); visual.carrying = carrying; this.root.add(visual.sprite);
+        visual.sprite = createVillagerSprite(v.id, carrying, snapshot.seed); visual.sprite.position.copy(pos); visual.carrying = carrying; this.root.add(visual.sprite);
       }
       if (!visual) {
-        const sprite = createVillagerSprite(v.id, carrying); sprite.position.set(v.x, .04, v.z);
+        const sprite = createVillagerSprite(v.id, carrying, snapshot.seed); sprite.position.set(v.x, .04, v.z);
         const selection = marker(1.1); this.root.add(selection);
-        const health = healthBar(1.7, 3.5); this.root.add(health);
+        const health = healthBar(1.7, 3.9); this.root.add(health);
         visual = { sprite, carrying, destination: new Vector3(v.x, .04, v.z), marker: selection, health };
         this.villagers.set(v.id, visual); this.root.add(sprite);
       }
@@ -90,7 +90,7 @@ export class SceneModel {
     for (const visual of this.villagers.values()) {
       visual.sprite.position.lerp(visual.destination, alpha);
       visual.marker.position.set(visual.sprite.position.x, .08, visual.sprite.position.z);
-      visual.health.position.set(visual.sprite.position.x, 3.5, visual.sprite.position.z);
+      visual.health.position.set(visual.sprite.position.x, 3.9, visual.sprite.position.z);
     }
   }
   dispose(): void { disposeGroup(this.root); this.resources.clear(); this.buildings.clear(); this.villagers.clear(); }
