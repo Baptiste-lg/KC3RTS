@@ -39,15 +39,22 @@ Open <http://127.0.0.1:5173/>. Vite relays `/socket` and `/health` to the
 Phoenix server at `127.0.0.1:4000` during development.
 
 Select villagers with a left click or drag a selection box. Shift-click adds
-or removes a villager from the selection. Right-click terrain to move, a
+or removes a villager from the selection; double-click selects all visible
+villagers. **Ctrl+A** selects all your villagers. Save a selection with
+**Ctrl+1–9**, recall it with **1–9**, and press the number twice to center the
+camera on that group. Right-click terrain to move, a
 resource to gather, an unfinished town center to build, or the enemy base to
 attack. Select a completed town center and press **V** or the recruitment button
 to recruit a villager for 5 wood and 5 gold. Select one or more villagers and
 press **B** or the construction button, then click free ground to place a town
 center for 25 wood and 15 stone. Villagers carry up to 5 units and deliver to
-the nearest completed town center. **WASD** or arrow keys pan the camera; the
-mouse wheel zooms. Each new match uses a fresh map seed, shown in the HUD. The enemy base spawns at a random location and has
+the nearest completed town center. Press **X** to stop selected villagers.
+**WASD** or arrow keys pan the camera; the mouse wheel zooms. Click the
+mini-map to center the camera elsewhere. The command panel shows the selected
+unit's health, current order and cargo. Each new match uses a fresh map seed,
+shown in the HUD. The enemy base spawns at a random location and has
 250 HP but no AI. There is no opposing army yet.
+Add `?quality=low` to the page URL on machines with slow graphics rendering.
 
 ## Quality checks
 
