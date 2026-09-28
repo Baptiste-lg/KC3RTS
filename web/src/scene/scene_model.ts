@@ -1,8 +1,10 @@
 import { Group, Mesh, MeshBasicMaterial, RingGeometry, Sprite, SpriteMaterial, Vector3 } from "three";
-import type { WorldSnapshot } from "../game/protocol";
+import type { GroundPoint, Villager, WorldSnapshot } from "../game/protocol";
+import { ATTACK_RANGE, GATHER_INTERVAL_TICKS, gatherRange, TICKS_PER_SECOND } from "../game/action_rules";
 import { createEnemyBase, createGround, createResourceNode, createTownCenter, createVillagerSprite } from "./world_objects";
+import { unitPose, type ActionTarget } from "./unit_motion";
 
-interface VillagerVisual { sprite: Sprite; carrying: boolean; destination: Vector3; marker: Mesh; health: Group }
+interface VillagerVisual { sprite: Sprite; carrying: boolean; position: Vector3; destination: Vector3; movingUntil: number; action: ActionTarget | null; marker: Mesh; health: Group }
 interface BuildingVisual { group: Group; health: Group; marker: Mesh }
 function disposeSprite(sprite: Sprite): void { const material = sprite.material as SpriteMaterial; material.map?.dispose(); material.dispose(); }
 function marker(radius: number): Mesh {
@@ -30,11 +32,32 @@ function disposeGroup(group: Group): void {
 }
 export class SceneModel {
   readonly root = new Group();
+  private animationSeconds = 0;
+  private tickAge = 0;
+  private tick = 0;
   private readonly resources = new Map<number, Group>();
   private readonly buildings = new Map<number, BuildingVisual>();
   private readonly villagers = new Map<number, VillagerVisual>();
-  constructor(snapshot: WorldSnapshot) { this.root.add(createGround(snapshot.map_radius)); this.update(snapshot); }
+  constructor(snapshot: WorldSnapshot) { this.tick = snapshot.tick; this.root.add(createGround(snapshot.map_radius)); this.update(snapshot); }
+  private actionFor(v: Villager, snapshot: WorldSnapshot): ActionTarget | null {
+    const order = v.order;
+    if (order?.kind === "gather" && v.cargo < 5) {
+      const resource = snapshot.resources.find((node) => node.id === order.id && node.amount > 0);
+      if (resource && (!v.cargo_kind || v.cargo_kind === resource.kind) &&
+          Math.hypot(v.x - resource.x, v.z - resource.z) <= gatherRange(resource.kind) + .05) {
+        return { x: resource.x, z: resource.z, intervalTicks: GATHER_INTERVAL_TICKS };
+      }
+    }
+    if (order?.kind === "attack") {
+      const enemy = snapshot.buildings.find((building) => building.id === order.id && building.owner === "enemy" && building.hp > 0);
+      if (enemy && Math.hypot(v.x - enemy.x, v.z - enemy.z) <= ATTACK_RANGE + .05) {
+        return { x: enemy.x, z: enemy.z, intervalTicks: v.attack_interval_ticks };
+      }
+    }
+    return null;
+  }
   update(snapshot: WorldSnapshot): void {
+    if (snapshot.tick !== this.tick) { this.tick = snapshot.tick; this.tickAge = 0; }
     for (const r of snapshot.resources) {
       let group = this.resources.get(r.id);
       if (!group) { group = createResourceNode(r); this.resources.set(r.id, group); this.root.add(group); }
@@ -71,9 +94,11 @@ export class SceneModel {
         const sprite = createVillagerSprite(v.id, carrying, snapshot.seed); sprite.position.set(v.x, .04, v.z);
         const selection = marker(1.1); this.root.add(selection);
         const health = healthBar(1.7, 4.2); this.root.add(health);
-        visual = { sprite, carrying, destination: new Vector3(v.x, .04, v.z), marker: selection, health };
+        visual = { sprite, carrying, position: new Vector3(v.x, .04, v.z), destination: new Vector3(v.x, .04, v.z), movingUntil: 0, action: null, marker: selection, health };
         this.villagers.set(v.id, visual); this.root.add(sprite);
       }
+      if (Math.hypot(v.x - visual.destination.x, v.z - visual.destination.z) > .01) visual.movingUntil = this.animationSeconds + .17;
+      visual.action = this.actionFor(v, snapshot);
       visual.destination.set(v.x, .04, v.z); setHealth(visual.health, v.hp, v.max_hp);
     }
     for (const [id, visual] of this.villagers) if (!live.has(id)) {
@@ -86,11 +111,20 @@ export class SceneModel {
     for (const [id, b] of this.buildings) b.marker.visible = id === buildingId;
   }
   advance(seconds: number): void {
-    const alpha = 1 - Math.exp(-Math.max(0, seconds) * 20);
-    for (const visual of this.villagers.values()) {
-      visual.sprite.position.lerp(visual.destination, alpha);
-      visual.marker.position.set(visual.sprite.position.x, .08, visual.sprite.position.z);
-      visual.health.position.set(visual.sprite.position.x, 4.2, visual.sprite.position.z);
+    const delta = Math.max(0, seconds);
+    this.animationSeconds += delta;
+    this.tickAge = Math.min(1 / TICKS_PER_SECOND, this.tickAge + delta);
+    const visualTick = this.tick + this.tickAge * TICKS_PER_SECOND;
+    const alpha = 1 - Math.exp(-delta * 20);
+    for (const [id, visual] of this.villagers) {
+      visual.position.lerp(visual.destination, alpha);
+      const moving = this.animationSeconds < visual.movingUntil ||
+        visual.position.distanceToSquared(visual.destination) > .0025;
+      const base: GroundPoint = { x: visual.position.x, z: visual.position.z };
+      const pose = unitPose(base, visualTick, id, moving, visual.action);
+      visual.sprite.position.set(base.x + pose.x, .04 + pose.lift, base.z + pose.z);
+      visual.marker.position.set(base.x, .08, base.z);
+      visual.health.position.set(visual.sprite.position.x, 4.2 + pose.lift, visual.sprite.position.z);
     }
   }
   dispose(): void { disposeGroup(this.root); this.resources.clear(); this.buildings.clear(); this.villagers.clear(); }
