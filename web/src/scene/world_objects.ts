@@ -184,7 +184,7 @@ export function createVillagerSprite(id: number, carrying: boolean, seed = 1): S
   const pixels = generateVillagerPixels(id, carrying, seed);
   const art = new PixelArt(pixels.width, pixels.height);
   art.data.set(pixels.data);
-  const result = sprite(art, 2.4, 3.6);
+  const result = sprite(art, 2.6, 3.9);
   result.name = `villager-${id}`;
   result.userData = { kind: "villager", id };
   return result;
