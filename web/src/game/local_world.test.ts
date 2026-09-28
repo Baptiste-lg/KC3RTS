@@ -34,6 +34,15 @@ describe("RTS simulation", () => {
     const recruit = applyLocalCommand(built, { type: "spawn_villager", building_id: built.buildings.at(-1)!.id });
     expect(recruit.ok).toBe(true);
   });
+  it("stops selected villagers without changing other orders", () => {
+    const start = createLocalWorld();
+    const moving = applyLocalCommand(start, { type: "order", villager_ids: [1, 2], order: { kind: "move", x: 10, z: 0 } });
+    expect(moving.ok).toBe(true); if (!moving.ok) return;
+    const stopped = applyLocalCommand(moving.world, { type: "stop", villager_ids: [1] });
+    expect(stopped.ok).toBe(true); if (!stopped.ok) return;
+    expect(stopped.world.villagers[0].order).toBeNull();
+    expect(stopped.world.villagers[1].order).toEqual({ kind: "move", x: 10, z: 0 });
+  });
   it("lets villagers destroy the passive enemy base and records victory", () => {
     const start = createLocalWorld(); const enemy = start.buildings[1];
     const nearby = { ...start, villagers: start.villagers.map((v) => ({ ...v, x: enemy.x + 3, z: enemy.z })) };

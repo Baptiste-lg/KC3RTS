@@ -43,6 +43,21 @@ defmodule KC3RTS.Game.WorldTest do
     assert length(recruited.villagers) == 4
   end
 
+  test "stop cancels only selected villagers' orders" do
+    world = World.new(seed: 1234)
+
+    assert {:ok, moving} =
+             World.command(world, %{
+               type: :order,
+               villager_ids: [1, 2],
+               order: {:move, %{x: 10, z: 0}}
+             })
+
+    assert {:ok, stopped} = World.command(moving, %{type: :stop, villager_ids: [1]})
+    assert Enum.at(stopped.villagers, 0).order == nil
+    assert match?({:move, _}, Enum.at(stopped.villagers, 1).order)
+  end
+
   test "villagers can destroy the enemy base and win" do
     world = World.new(seed: 1234)
     enemy = Enum.at(world.buildings, 1)

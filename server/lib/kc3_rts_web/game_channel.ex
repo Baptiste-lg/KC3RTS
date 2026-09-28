@@ -48,6 +48,9 @@ defmodule KC3RTSWeb.GameChannel do
   defp parse_command(%{"type" => "spawn_villager", "building_id" => id}) when is_integer(id),
     do: {:ok, %{type: :spawn_villager, building_id: id}}
 
+  defp parse_command(%{"type" => "stop", "villager_ids" => ids}) when is_list(ids),
+    do: {:ok, %{type: :stop, villager_ids: ids}}
+
   defp parse_command(%{"type" => "build", "villager_ids" => ids, "x" => x, "z" => z})
        when is_list(ids) and is_number(x) and is_number(z),
        do: {:ok, %{type: :build, villager_ids: ids, x: x, z: z}}

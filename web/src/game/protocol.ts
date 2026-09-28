@@ -25,7 +25,8 @@ export interface WorldSnapshot {
 export type GameCommand =
   | { type: "spawn_villager"; building_id: number }
   | { type: "order"; villager_ids: number[]; order: Exclude<VillagerOrder, null> }
-  | { type: "build"; villager_ids: number[]; x: number; z: number };
+  | { type: "build"; villager_ids: number[]; x: number; z: number }
+  | { type: "stop"; villager_ids: number[] };
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

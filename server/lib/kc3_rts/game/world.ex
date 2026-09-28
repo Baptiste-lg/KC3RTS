@@ -93,6 +93,24 @@ defmodule KC3RTS.Game.World do
     end
   end
 
+  def command(world, %{type: :stop, villager_ids: ids})
+      when is_list(ids) and length(ids) in 1..100 do
+    chosen = MapSet.new(ids)
+
+    if valid_selection?(world, ids, chosen) do
+      {:ok,
+       %{
+         world
+         | villagers:
+             Enum.map(world.villagers, fn v ->
+               if MapSet.member?(chosen, v.id), do: %{v | order: nil}, else: v
+             end)
+       }}
+    else
+      {:error, :invalid_selection}
+    end
+  end
+
   def command(world, %{type: :build, villager_ids: ids, x: x, z: z})
       when is_list(ids) and length(ids) in 1..100 do
     chosen = MapSet.new(ids)

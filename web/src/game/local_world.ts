@@ -50,6 +50,9 @@ export function applyLocalCommand(world: LocalWorld, command: GameCommand): Comm
   if (!Array.isArray(command.villager_ids) || command.villager_ids.length === 0 || command.villager_ids.length > 100 || !command.villager_ids.every(Number.isSafeInteger)) return { ok: false, reason: "invalid_selection" };
   const ids = new Set(command.villager_ids);
   if (!world.villagers.some((v) => ids.has(v.id) && v.hp > 0)) return { ok: false, reason: "invalid_selection" };
+  if (command.type === "stop") {
+    return { ok: true, world: { ...world, villagers: world.villagers.map((v) => ids.has(v.id) ? { ...v, order: null } : v) } };
+  }
   if (command.type === "build") {
     const p = { x: command.x, z: command.z };
     if (!inside(p, world.map_radius) || world.buildings.some((b) => b.hp > 0 && distance(p, b) < 8) || world.resources.some((r) => r.amount > 0 && distance(p, r) < 5)) return { ok: false, reason: "invalid_location" };
