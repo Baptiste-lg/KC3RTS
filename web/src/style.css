@@ -43,29 +43,11 @@ button { font: inherit; }
   right: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 20px;
   padding: 28px 32px;
   pointer-events: none;
 }
-
-.brand { display: flex; gap: 13px; align-items: center; }
-.brand-mark { width: 32px; height: 35px; position: relative; transform: rotate(-30deg); }
-.brand-mark span {
-  position: absolute;
-  display: block;
-  width: 15px;
-  height: 15px;
-  border: 2px solid #e3b66e;
-  background: rgba(227, 182, 110, .11);
-  transform: rotate(45deg);
-}
-.brand-mark span:nth-child(1) { left: 2px; top: 1px; }
-.brand-mark span:nth-child(2) { left: 15px; top: 12px; border-color: #96c29a; }
-.brand-mark span:nth-child(3) { left: 2px; top: 24px; }
-.brand-name { font-weight: 900; font-size: 22px; letter-spacing: .16em; line-height: 1; }
-.brand-name span { color: #eac17e; }
-.brand-subtitle { margin-top: 6px; color: #c5d4bd; font-size: 11px; letter-spacing: .065em; }
 
 .connection {
   display: flex;
@@ -148,7 +130,6 @@ button { font: inherit; }
 
 .controls-hint { position: absolute; z-index: 2; right: 32px; bottom: 32px; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; color: #d1ddcb; font-size: 11px; text-shadow: 0 2px 8px #0a1a11; pointer-events: none; }
 .controls-hint span { display: flex; align-items: center; gap: 3px; }
-kbd { min-width: 19px; padding: 3px 5px; border: 1px solid rgba(224, 239, 217, .4); border-radius: 4px; background: rgba(12, 31, 22, .75); font: 10px ui-monospace, monospace; text-align: center; }
 
 .loading-overlay, .fallback-overlay { position: absolute; z-index: 4; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: radial-gradient(circle, #214332, #0e1e17 75%); text-align: center; }
 .loading-overlay strong, .fallback-overlay strong { margin-top: 16px; font-size: 19px; letter-spacing: .025em; }
@@ -159,8 +140,6 @@ kbd { min-width: 19px; padding: 3px 5px; border: 1px solid rgba(224, 239, 217, .
 
 @media (max-width: 700px) {
   .topbar { padding: 16px; gap: 8px; }
-  .brand-name { font-size: 18px; }
-  .brand-subtitle { display: none; }
   .connection { font-size: 0; padding: 8px; }
   .connection-dot { width: 9px; height: 9px; }
   .resources-panel { top: 68px; right: 16px; width: min(240px, calc(100vw - 32px)); padding: 13px; }
