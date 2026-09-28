@@ -1,4 +1,4 @@
-import type { Building, GameCommand, GroundPoint, Villager, WorldSnapshot } from "./protocol";
+import type { Building, GameCommand, GroundPoint, ResourceNode, Villager, WorldSnapshot } from "./protocol";
 import { generateMap } from "./map_generation";
 
 const MOD = 2_147_483_647;
@@ -8,6 +8,8 @@ const COST = { villager: { wood: 5, gold: 5 }, center: { wood: 25, stone: 15 } }
 export interface LocalWorld extends WorldSnapshot { nextVillagerId: number; nextBuildingId: number }
 export type CommandResult = { ok: true; world: LocalWorld } | { ok: false; reason: string };
 const distance = (a: GroundPoint, b: GroundPoint): number => Math.hypot(a.x - b.x, a.z - b.z);
+const gatherRange = (resource: ResourceNode): number => resource.kind === "wood" ? 1.3 : 1.95;
+const buildClearance = (resource: ResourceNode): number => resource.kind === "wood" ? 5 : 7.5;
 const inside = (p: GroundPoint, radius: number): boolean => Number.isFinite(p.x) && Number.isFinite(p.z) && Math.abs(p.x) <= radius - 3 && Math.abs(p.z) <= radius - 3;
 function spawn(world: LocalWorld, building: Building): LocalWorld {
   const id = world.nextVillagerId;
@@ -37,7 +39,7 @@ export function applyLocalCommand(world: LocalWorld, command: GameCommand): Comm
   }
   if (command.type === "build") {
     const p = { x: command.x, z: command.z };
-    if (!inside(p, world.map_radius) || world.buildings.some((b) => b.hp > 0 && distance(p, b) < 8) || world.resources.some((r) => r.amount > 0 && distance(p, r) < 5)) return { ok: false, reason: "invalid_location" };
+    if (!inside(p, world.map_radius) || world.buildings.some((b) => b.hp > 0 && distance(p, b) < 8) || world.resources.some((r) => r.amount > 0 && distance(p, r) < buildClearance(r))) return { ok: false, reason: "invalid_location" };
     if (world.stockpile.wood < COST.center.wood || world.stockpile.stone < COST.center.stone) return { ok: false, reason: "insufficient_resources" };
     const id = world.nextBuildingId;
     const building: Building = { id, owner: "player", ...p, hp: 1, max_hp: 350, progress: 0 };
@@ -79,7 +81,7 @@ function once(world: LocalWorld): LocalWorld {
         if (r.amount <= 0) v.order = null;
         return v;
       }
-      if (distance(v, r) > 1.3) return move(v, r);
+      if (distance(v, r) > gatherRange(r)) return move(v, r);
       if ((tick + v.id) % 3 === 0) { r.amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
       return v;
     }

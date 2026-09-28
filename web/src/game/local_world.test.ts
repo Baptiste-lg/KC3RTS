@@ -29,6 +29,11 @@ describe("RTS simulation", () => {
     expect(later.stockpile.stone).toBe(start.stockpile.stone);
     expect(later.resources.find((r) => r.id === node.id)!.amount).toBeLessThan(node.amount);
   });
+  it("reserves a larger building footprint around stone and gold", () => {
+    const world = createLocalWorld(1234);
+    const ore = world.resources.find((r) => r.kind === "stone")!;
+    expect(applyLocalCommand(world, { type: "build", villager_ids: [1], x: ore.x + 6, z: ore.z })).toEqual({ ok: false, reason: "invalid_location" });
+  });
   it("builds only a center in free space, then recruits with separate costs", () => {
     const start = createLocalWorld();
     expect(applyLocalCommand(start, { type: "build", villager_ids: [1], x: 0, z: 0 })).toEqual({ ok: false, reason: "invalid_location" });

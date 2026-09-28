@@ -133,7 +133,7 @@ defmodule KC3RTS.Game.World do
   defp valid_site?(world, point) do
     inside?(point, world.map_radius) and
       Enum.all?(world.buildings, &(&1.hp == 0 or distance(point, &1) >= 8)) and
-      Enum.all?(world.resources, &(&1.amount == 0 or distance(point, &1) >= 5))
+      Enum.all?(world.resources, &(&1.amount == 0 or distance(point, &1) >= build_clearance(&1)))
   end
 
   defp start_building(world, chosen, %{x: x, z: z}) do
@@ -214,7 +214,7 @@ defmodule KC3RTS.Game.World do
       returning?(v, resource) ->
         deliver_or_move(v, resource, center, resources, buildings, stockpile)
 
-      distance(v, resource) > 1.3 ->
+      distance(v, resource) > gather_range(resource) ->
         {move(v, resource), resources, buildings, stockpile}
 
       rem(tick + v.id, 3) != 0 ->
@@ -341,6 +341,11 @@ defmodule KC3RTS.Game.World do
       do: %{v | x: point.x, z: point.z},
       else: %{v | x: v.x + (point.x - v.x) / d * @speed, z: v.z + (point.z - v.z) / d * @speed}
   end
+
+  defp gather_range(%{kind: :wood}), do: 1.3
+  defp gather_range(_ore), do: 1.95
+  defp build_clearance(%{kind: :wood}), do: 5
+  defp build_clearance(_ore), do: 7.5
 
   defp distance(a, b), do: :math.sqrt(:math.pow(a.x - b.x, 2) + :math.pow(a.z - b.z, 2))
 

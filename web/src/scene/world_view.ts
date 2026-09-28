@@ -82,7 +82,7 @@ export class WorldView {
     if (Math.abs(point.x) > this.mapRadius - 3 || Math.abs(point.z) > this.mapRadius - 3) return false;
     const distance = (target: GroundPoint): number => Math.hypot(target.x - point.x, target.z - point.z);
     return this.snapshot.buildings.every((b) => b.hp <= 0 || distance(b) >= 8) &&
-      this.snapshot.resources.every((r) => r.amount <= 0 || distance(r) >= 5);
+      this.snapshot.resources.every((r) => r.amount <= 0 || distance(r) >= (r.kind === "wood" ? 5 : 7.5));
   }
   private screen(x: number, y: number): Vector2 { const rect = this.renderer.domElement.getBoundingClientRect(); return new Vector2((x - rect.left) / rect.width * 2 - 1, -(y - rect.top) / rect.height * 2 + 1); }
   private ground(x: number, y: number): GroundPoint | null {
@@ -113,12 +113,12 @@ export class WorldView {
     let nearest: { id: number; gap: number } | null = null;
     for (const resource of this.snapshot.resources) {
       if (resource.amount <= 0) continue;
-      const height = resource.kind === "wood" ? 2.5 : resource.kind === "gold" ? 1.5 : 1;
+      const height = resource.kind === "wood" ? 2.5 : 3.3;
       const projected = new Vector3(resource.x, height, resource.z).project(this.camera);
       const px = rect.left + (projected.x + 1) * rect.width / 2;
       const py = rect.top + (1 - projected.y) * rect.height / 2;
       const gap = Math.hypot(x - px, y - py);
-      if (gap < 18 && (!nearest || gap < nearest.gap)) nearest = { id: resource.id, gap };
+      if (gap < (resource.kind === "wood" ? 18 : 27) && (!nearest || gap < nearest.gap)) nearest = { id: resource.id, gap };
     }
     if (nearest) return { kind: "resource", id: nearest.id };
     const point = this.ground(x, y); return point ? { kind: "ground", point } : null;

@@ -49,6 +49,14 @@ defmodule KC3RTS.Game.WorldTest do
     assert later.stockpile.stone == world.stockpile.stone
   end
 
+  test "a center cannot overlap the enlarged stone or gold footprint" do
+    world = World.new(seed: 1234)
+    ore = Enum.find(world.resources, &(&1.kind == :stone))
+
+    assert {:error, :invalid_location} =
+             World.command(world, %{type: :build, villager_ids: [1], x: ore.x + 6, z: ore.z})
+  end
+
   test "validates building placement, builds a town center and recruits" do
     world = World.new(seed: 1234)
 
