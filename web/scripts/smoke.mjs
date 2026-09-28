@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
@@ -139,23 +140,12 @@ const STATE = `(() => ({
   recruitEnabled: !document.getElementById("recruit")?.disabled
 }))()`;
 
-function woodNodes(initialSeed) {
-  let seed = initialSeed; const resources = [];
-  const next = (span) => { seed = seed * 48_271 % 2_147_483_647; return Math.round((seed / 2_147_483_647 * span * 2 - span) * 10) / 10; };
-  let enemy;
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const x = next(48), z = next(48); if (Math.hypot(x, z) >= 34) { enemy = { x, z }; break; }
-  }
-  for (let id = 1; id <= 90; id += 1) {
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      const span = id <= 18 ? 18 : 48;
-      const x = next(span), z = next(span);
-      if (Math.hypot(x, z) < 9 || Math.hypot(x - enemy.x, z - enemy.z) < 7 ||
-          resources.some((r) => Math.hypot(x - r.x, z - r.z) < 3)) continue;
-      resources.push({ id, x, z }); break;
-    }
-  }
-  return resources.filter((r) => (r.id - 1) % 3 === 0).sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+const mapSource = await readFile(join(webDirectory, "src/game/map_generation.ts"), "utf8");
+const mapModule = ts.transpileModule(mapSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+const { generateMap } = await import(`data:text/javascript;base64,${Buffer.from(mapModule).toString("base64")}`);
+function woodNodes(seed) {
+  return generateMap(seed).resources.filter((r) => r.kind === "wood")
+    .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
 }
 function project(point, rect, y = 0) {
   const height = Math.max(42, 64 / (rect.width / rect.height));
