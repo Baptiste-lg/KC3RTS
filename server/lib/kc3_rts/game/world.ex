@@ -1,5 +1,6 @@
 defmodule KC3RTS.Game.World do
   @moduledoc "Deterministic RTS simulation. One tick is 100 ms."
+  alias KC3RTS.Game.MapGenerator
   @mod 2_147_483_647
   @speed 0.55
   @capacity 5
@@ -21,9 +22,7 @@ defmodule KC3RTS.Game.World do
     seed = rem(abs(Keyword.get(opts, :seed, 12_345)), @mod - 1)
     seed = if seed == 0, do: 1, else: seed
     map_seed = seed
-    {enemy, seed} = place_enemy(seed, 100)
-    count = Keyword.get(opts, :resource_count, 90)
-    {resources, _final_seed} = place_resources(count, 1, seed, enemy, [], 1_000)
+    {enemy, resources} = MapGenerator.generate(seed)
     center = %{id: 1, owner: :player, x: 0.0, z: 0.0, hp: 350, max_hp: 350, progress: 100}
 
     world = %__MODULE__{
@@ -349,43 +348,4 @@ defmodule KC3RTS.Game.World do
     do: abs(x) <= radius - 3 and abs(z) <= radius - 3
 
   defp inside?(_point, _radius), do: false
-
-  defp next(seed, span) do
-    value = rem(seed * 48_271, @mod)
-    {Float.round(value / @mod * span * 2 - span, 1), value}
-  end
-
-  defp place_enemy(seed, 0),
-    do: {%{id: 2, owner: :enemy, x: 38.0, z: 38.0, hp: 250, max_hp: 250, progress: 100}, seed}
-
-  defp place_enemy(seed, attempts) do
-    {x, seed} = next(seed, 48)
-    {z, seed} = next(seed, 48)
-
-    if :math.sqrt(x * x + z * z) >= 34,
-      do: {%{id: 2, owner: :enemy, x: x, z: z, hp: 250, max_hp: 250, progress: 100}, seed},
-      else: place_enemy(seed, attempts - 1)
-  end
-
-  defp place_resources(0, _id, seed, _enemy, resources, _attempts),
-    do: {Enum.reverse(resources), seed}
-
-  defp place_resources(_count, _id, seed, _enemy, resources, 0),
-    do: {Enum.reverse(resources), seed}
-
-  defp place_resources(count, id, seed, enemy, resources, attempts) do
-    span = if id <= 18, do: 18, else: 48
-    {x, seed} = next(seed, span)
-    {z, seed} = next(seed, span)
-    point = %{x: x, z: z}
-
-    if distance(point, %{x: 0.0, z: 0.0}) < 9 or distance(point, enemy) < 7 or
-         Enum.any?(resources, &(distance(point, &1) < 3)) do
-      place_resources(count, id, seed, enemy, resources, attempts - 1)
-    else
-      kind = Enum.at([:wood, :stone, :gold], rem(id - 1, 3))
-      resource = Map.merge(point, %{id: id, kind: kind, amount: 30, initial_amount: 30})
-      place_resources(count - 1, id + 1, seed, enemy, [resource | resources], 1_000)
-    end
-  end
 end
