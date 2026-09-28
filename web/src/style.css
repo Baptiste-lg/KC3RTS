@@ -192,3 +192,16 @@ kbd { min-width: 19px; padding: 3px 5px; border: 1px solid rgba(224, 239, 217, .
 @media (max-width: 700px) { .resources-panel { width: min(290px, calc(100vw - 32px)); } .command-panel { width: min(385px, calc(100vw - 32px)); } }
 
 .selection-box { position: absolute; z-index: 2; pointer-events: none; border: 1px solid #e7dd8c; background: rgba(219, 228, 142, .13); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
+
+.minimap-panel { position: absolute; z-index: 3; right: 32px; bottom: 31px; width: 220px; padding: 13px; border: 1px solid rgba(221, 234, 202, .23); border-radius: 15px; background: rgba(13, 35, 25, .94); box-shadow: 0 18px 45px rgba(4, 17, 10, .35); }
+.minimap-panel .panel-heading { margin-bottom: 9px; }
+.minimap-legend { color: #df8b80; font-size: 10px; }
+.minimap-panel canvas { display: block; width: 100%; aspect-ratio: 1; height: auto; border-radius: 5px; cursor: crosshair; touch-action: none; }
+.controls-hint { right: 270px; bottom: 32px; }
+@media (max-width: 700px) { .minimap-panel { left: 16px; top: 75px; right: auto; bottom: auto; width: 134px; padding: 8px; } .minimap-legend { display: none; } }
+
+.selection-detail { color: #e3d7a3; font-size: 12px; font-weight: 700; min-height: 18px; }
+.stop-button { color: #e8f0e8; background: #364b3c; border-color: #78917d; box-shadow: 0 4px 0 #18291d; }
+.stop-button:hover:not(:disabled) { background: #486652; }
+
+.scene-stage canvas.placing { cursor: crosshair; }
