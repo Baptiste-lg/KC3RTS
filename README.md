@@ -1,13 +1,12 @@
 # KC3RTS
 
-A small browser RTS prototype built with Elixir, Phoenix, TypeScript and
-Three.js. The world is rendered in 3D with an isometric camera. Villagers are
-2D sprites drawn from code and always face the camera. The initial gameplay is
-deliberately small: a town center, villagers, randomly scattered resources,
-gathering and delivery.
+A browser RTS prototype built with Elixir, Phoenix, TypeScript and Three.js.
+The isometric map starts with a town center and three villagers. Wood, stone
+and gold appear as separate resource nodes. You select villagers and give them
+orders to move, gather, build another town center or attack a passive enemy base.
+Units and buildings have hit points. Destroying the enemy base wins the match.
 
-No art assets are required. Terrain, buildings, resource nodes and villager
-sprites are generated mathematically or drawn into a canvas at runtime.
+All terrain, buildings, resources and villager sprites are generated in code.
 
 ## Play online
 
@@ -39,11 +38,16 @@ npm run dev
 Open <http://127.0.0.1:5173/>. Vite relays `/socket` and `/health` to the
 Phoenix server at `127.0.0.1:4000` during development.
 
-Use the button or **B** to recruit a villager for 5 resources. Villagers choose
-resource nodes, gather up to 5 units and deliver them to the town center on
-their own. Drag or use **WASD**/arrow keys to move the camera; use the mouse
-wheel to zoom. The map and resource placement are deterministic for the server
-seed, and the simulation advances at 10 ticks per second.
+Select villagers with a left click or drag a selection box. Shift-click adds
+or removes a villager from the selection. Right-click terrain to move, a
+resource to gather, an unfinished town center to build, or the enemy base to
+attack. Select a completed town center and press **V** or the recruitment button
+to recruit a villager for 5 wood and 5 gold. Select one or more villagers and
+press **B** or the construction button, then click free ground to place a town
+center for 25 wood and 15 stone. Villagers carry up to 5 units and deliver to
+the nearest completed town center. **WASD** or arrow keys pan the camera; the
+mouse wheel zooms. Each new match uses a fresh map seed, shown in the HUD. The enemy base spawns at a random location and has
+250 HP but no AI. There is no opposing army yet.
 
 ## Quality checks
 
@@ -65,8 +69,8 @@ npm run smoke:pages
 ```
 
 The browser smoke command starts both services and headless Chrome, then checks
-the live WebGL scene, WebSocket connection, recruitment and delivery. Chrome or
-Chromium is required for both smoke commands; set `KC3RTS_CHROME` to its
+the live WebGL map, WebSocket connection, recruitment and ordered wood delivery.
+Chrome or Chromium is required for both smoke commands; set `KC3RTS_CHROME` to its
 executable if it is outside the common system paths. `smoke:pages` builds the
 static site at `/KC3RTS/` and checks the solo play loop without Phoenix.
 
