@@ -2,9 +2,10 @@ import { Group, Mesh, MeshBasicMaterial, RingGeometry, Sprite, SpriteMaterial, V
 import type { GroundPoint, Villager, WorldSnapshot } from "../game/protocol";
 import { ATTACK_RANGE, GATHER_INTERVAL_TICKS, gatherRange, TICKS_PER_SECOND } from "../game/action_rules";
 import { createEnemyBase, createGround, createResourceNode, createTownCenter, createVillagerSprite } from "./world_objects";
-import { unitPose, type ActionTarget } from "./unit_motion";
+import { facingFromMovement, type UnitFacing } from "./unit_facing";
+import { unitPose, walkingHop, type ActionTarget } from "./unit_motion";
 
-interface VillagerVisual { sprite: Sprite; carrying: boolean; position: Vector3; destination: Vector3; movingUntil: number; action: ActionTarget | null; marker: Mesh; health: Group }
+interface VillagerVisual { sprite: Sprite; carrying: boolean; facing: UnitFacing; position: Vector3; destination: Vector3; walkDistance: number; walkDirection: Vector3; walkOffset: number; walkLift: number; action: ActionTarget | null; marker: Mesh; health: Group }
 interface BuildingVisual { group: Group; health: Group; marker: Mesh }
 function disposeSprite(sprite: Sprite): void { const material = sprite.material as SpriteMaterial; material.map?.dispose(); material.dispose(); }
 function marker(radius: number): Mesh {
@@ -32,7 +33,6 @@ function disposeGroup(group: Group): void {
 }
 export class SceneModel {
   readonly root = new Group();
-  private animationSeconds = 0;
   private tickAge = 0;
   private tick = 0;
   private readonly resources = new Map<number, Group>();
@@ -86,18 +86,19 @@ export class SceneModel {
       live.add(v.id);
       const carrying = v.cargo > 0;
       let visual = this.villagers.get(v.id);
-      if (visual && visual.carrying !== carrying) {
+      const facing = visual ? facingFromMovement(v.x - visual.destination.x, v.z - visual.destination.z, visual.facing) : "right";
+      if (visual && (visual.carrying !== carrying || visual.facing !== facing)) {
         const pos = visual.sprite.position.clone(); this.root.remove(visual.sprite); disposeSprite(visual.sprite);
-        visual.sprite = createVillagerSprite(v.id, carrying, snapshot.seed); visual.sprite.position.copy(pos); visual.carrying = carrying; this.root.add(visual.sprite);
+        visual.sprite = createVillagerSprite(v.id, carrying, snapshot.seed, facing); visual.sprite.position.copy(pos);
+        visual.carrying = carrying; visual.facing = facing; this.root.add(visual.sprite);
       }
       if (!visual) {
-        const sprite = createVillagerSprite(v.id, carrying, snapshot.seed); sprite.position.set(v.x, .04, v.z);
-        const selection = marker(1.1); this.root.add(selection);
-        const health = healthBar(1.7, 4.2); this.root.add(health);
-        visual = { sprite, carrying, position: new Vector3(v.x, .04, v.z), destination: new Vector3(v.x, .04, v.z), movingUntil: 0, action: null, marker: selection, health };
+        const sprite = createVillagerSprite(v.id, carrying, snapshot.seed, facing); sprite.position.set(v.x, .04, v.z);
+        const selection = marker(.7); this.root.add(selection);
+        const health = healthBar(.9, 1.85); this.root.add(health);
+        visual = { sprite, carrying, facing, position: new Vector3(v.x, .04, v.z), destination: new Vector3(v.x, .04, v.z), walkDistance: 0, walkDirection: new Vector3(1, 0, 0), walkOffset: 0, walkLift: 0, action: null, marker: selection, health };
         this.villagers.set(v.id, visual); this.root.add(sprite);
       }
-      if (Math.hypot(v.x - visual.destination.x, v.z - visual.destination.z) > .01) visual.movingUntil = this.animationSeconds + .17;
       visual.action = this.actionFor(v, snapshot);
       visual.destination.set(v.x, .04, v.z); setHealth(visual.health, v.hp, v.max_hp);
     }
@@ -112,19 +113,30 @@ export class SceneModel {
   }
   advance(seconds: number): void {
     const delta = Math.max(0, seconds);
-    this.animationSeconds += delta;
     this.tickAge = Math.min(1 / TICKS_PER_SECOND, this.tickAge + delta);
     const visualTick = this.tick + this.tickAge * TICKS_PER_SECOND;
     const alpha = 1 - Math.exp(-delta * 20);
     for (const [id, visual] of this.villagers) {
+      const beforeX = visual.position.x, beforeZ = visual.position.z;
       visual.position.lerp(visual.destination, alpha);
-      const moving = this.animationSeconds < visual.movingUntil ||
-        visual.position.distanceToSquared(visual.destination) > .0025;
+      const traveled = Math.hypot(visual.position.x - beforeX, visual.position.z - beforeZ);
+      if (traveled > .0001) {
+        visual.walkDistance += traveled;
+        visual.walkDirection.set((visual.position.x - beforeX) / traveled, 0, (visual.position.z - beforeZ) / traveled);
+        const hop = walkingHop(visual.walkDistance);
+        visual.walkOffset = hop.offset; visual.walkLift = hop.lift;
+      } else {
+        const landing = Math.exp(-delta * 18);
+        visual.walkOffset *= landing; visual.walkLift *= landing;
+        visual.walkDistance = Math.ceil(visual.walkDistance);
+      }
       const base: GroundPoint = { x: visual.position.x, z: visual.position.z };
-      const pose = unitPose(base, visualTick, id, moving, visual.action);
-      visual.sprite.position.set(base.x + pose.x, .04 + pose.lift, base.z + pose.z);
+      const pose = traveled > .0001 ? { x: 0, z: 0, lift: 0 } : unitPose(base, visualTick, id, visual.action);
+      visual.sprite.position.set(base.x + visual.walkDirection.x * visual.walkOffset + pose.x,
+        .04 + visual.walkLift + pose.lift,
+        base.z + visual.walkDirection.z * visual.walkOffset + pose.z);
       visual.marker.position.set(base.x, .08, base.z);
-      visual.health.position.set(visual.sprite.position.x, 4.2 + pose.lift, visual.sprite.position.z);
+      visual.health.position.set(visual.sprite.position.x, 1.85 + visual.walkLift + pose.lift, visual.sprite.position.z);
     }
   }
   dispose(): void { disposeGroup(this.root); this.resources.clear(); this.buildings.clear(); this.villagers.clear(); }

@@ -6,6 +6,33 @@ import { SceneModel } from "./scene_model";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("SceneModel", () => {
+  it("turns the four-pixel peon on screen and makes its travel a sequence of hops", () => {
+    vi.stubGlobal("document", {
+      createElement: () => ({ width: 0, height: 0, getContext: () => ({
+        createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+        putImageData: () => undefined,
+      }) }),
+    });
+    const world: WorldSnapshot = {
+      protocol_version: 3, seed: 12345, tick: 0, map_radius: 32,
+      stockpile: { wood: 30, stone: 15, gold: 20 }, outcome: "playing",
+      resources: [], buildings: [],
+      villagers: [{ id: 1, x: 0, z: 0, cargo: 0, cargo_kind: null, hp: 30, max_hp: 30, attack_interval_ticks: 6, order: null }],
+    };
+    const model = new SceneModel(world);
+    model.update({ ...world, tick: 1, villagers: [{ ...world.villagers[0], x: 1, z: 0 }] });
+    let sprite = model.root.getObjectByName("villager-1") as Sprite;
+    expect(sprite.userData.facing).toBe("right");
+    model.advance(Math.log(2) / 20);
+    expect(sprite.position.y).toBeGreaterThan(.6);
+    model.update({ ...world, tick: 2, villagers: [{ ...world.villagers[0], x: 0, z: 1 }] });
+    sprite = model.root.getObjectByName("villager-1") as Sprite;
+    expect(sprite.userData.facing).toBe("left");
+    model.update({ ...world, tick: 3, villagers: [{ ...world.villagers[0], x: 1, z: 2 }] });
+    expect((model.root.getObjectByName("villager-1") as Sprite).userData.facing).toBe("left");
+    model.dispose();
+  });
+
   it("tracks depleted resources and arriving villagers from server snapshots", () => {
     vi.stubGlobal("document", {
       createElement: () => ({

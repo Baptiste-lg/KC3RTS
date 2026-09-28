@@ -3,6 +3,13 @@ import type { GroundPoint } from "../game/protocol";
 export interface ActionTarget extends GroundPoint { intervalTicks: number }
 export interface UnitPose { x: number; z: number; lift: number }
 
+export function walkingHop(distance: number): { offset: number; lift: number } {
+  const phase = ((distance % 1) + 1) % 1;
+  // Ease the ground travel itself, so the peon launches, crosses the metre, then lands.
+  const eased = (1 - Math.cos(Math.PI * phase)) / 2;
+  return { offset: eased - phase, lift: .65 * Math.sin(Math.PI * phase) };
+}
+
 export function actionPulse(visualTick: number, id: number, intervalTicks: number): number {
   const interval = Math.max(1, intervalTicks);
   const phase = ((visualTick + id) % interval + interval) % interval;
@@ -13,11 +20,7 @@ export function actionPulse(visualTick: number, id: number, intervalTicks: numbe
   return untilImpact < preparation ? 1 - untilImpact / preparation : 0;
 }
 
-export function unitPose(position: GroundPoint, visualTick: number, id: number, moving: boolean, target: ActionTarget | null): UnitPose {
-  if (moving) {
-    const step = Math.max(0, Math.sin(visualTick * Math.PI * .64 + id * .6));
-    return { x: 0, z: 0, lift: step * .38 };
-  }
+export function unitPose(position: GroundPoint, visualTick: number, id: number, target: ActionTarget | null): UnitPose {
   if (!target) return { x: 0, z: 0, lift: 0 };
   const distance = Math.hypot(target.x - position.x, target.z - position.z);
   if (distance < .01) return { x: 0, z: 0, lift: 0 };
