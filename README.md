@@ -1,12 +1,15 @@
 # KC3RTS
 
 A browser RTS prototype built with Elixir, Phoenix, TypeScript and Three.js.
-The isometric map starts with a town center and three villagers. Wood, stone
-and gold appear as separate resource nodes. You select villagers and give them
+The large isometric map starts with a town center and three villagers. Its
+terrain, buildings, trees, rocks and villagers are pixel art drawn as flat
+textures and camera-facing sprites. Wood, stone and gold appear as separate
+resource nodes, with an initial cluster near the town center. You select villagers and give them
 orders to move, gather, build another town center or attack a passive enemy base.
 Units and buildings have hit points. Destroying the enemy base wins the match.
 
-All terrain, buildings, resources and villager sprites are generated in code.
+All artwork is generated in code. Units move briskly, and an order marker
+appears immediately when you right-click a target.
 
 ## Play online
 
@@ -49,7 +52,7 @@ to recruit a villager for 5 wood and 5 gold. Select one or more villagers and
 press **B** or the construction button, then click free ground to place a town
 center for 25 wood and 15 stone. Villagers carry up to 5 units and deliver to
 the nearest completed town center. Press **X** to stop selected villagers.
-**WASD** or arrow keys pan the camera; the mouse wheel zooms. Click the
+**WASD**, arrow keys or the screen edges pan the camera; the mouse wheel zooms. Click the
 mini-map to center the camera elsewhere. The command panel shows the selected
 unit's health, current order and cargo. Each new match uses a fresh map seed,
 shown in the HUD. The enemy base spawns at a random location and has
