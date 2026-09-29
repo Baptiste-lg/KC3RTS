@@ -1,0 +1,21 @@
+{
+  "seed": 12345,
+  "quality": "low",
+  "viewport": {
+    "width": 1100,
+    "height": 550,
+    "dpr": 1
+  },
+  "render": {
+    "drawCalls": 134,
+    "triangles": 322,
+    "textures": 122,
+    "geometries": 4,
+    "renderCpuMs": 2.899999976158142
+  },
+  "frameIntervalP50Ms": 283.2999999999993,
+  "frameIntervalP95Ms": 699.9000000000015,
+  "jsHeapUsedBytes": 4259552,
+  "jsHeapTotalBytes": 5767168,
+  "domNodes": 1336
+}
