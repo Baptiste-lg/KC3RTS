@@ -41,10 +41,9 @@ defmodule KC3RTS.Game.KC3Worker do
 
   @impl true
   def handle_call({:request, payload, timeout}, from, state) do
-    with :ok <- validate_request(payload),
+    with {:ok, encoded} <- encode_request(payload),
          true <- is_integer(timeout) and timeout > 0,
          nil <- state.pending do
-      encoded = Jason.encode!(payload) <> "\n"
       token = make_ref()
       timer = Process.send_after(self(), {:request_timeout, token}, timeout)
       Port.command(state.port, encoded)
@@ -116,23 +115,24 @@ defmodule KC3RTS.Game.KC3Worker do
 
   defp reply_pending(nil, _reply), do: :ok
 
-  defp validate_request(payload) when is_map(payload) do
-    cond do
-      not valid_envelope?(payload) ->
-        {:error, :invalid_request}
+  defp encode_request(payload) when is_map(payload) do
+    if valid_envelope?(payload) and valid_operation?(payload) do
+      case Jason.encode(payload) do
+        {:ok, encoded} when byte_size(encoded) <= @max_request_bytes ->
+          {:ok, encoded <> "\n"}
 
-      not valid_operation?(payload) ->
-        {:error, :invalid_request}
+        {:ok, _encoded} ->
+          {:error, :oversized_request}
 
-      byte_size(Jason.encode!(payload)) > @max_request_bytes ->
-        {:error, :oversized_request}
-
-      true ->
-        :ok
+        {:error, _reason} ->
+          {:error, :invalid_request}
+      end
+    else
+      {:error, :invalid_request}
     end
   end
 
-  defp validate_request(_), do: {:error, :invalid_request}
+  defp encode_request(_), do: {:error, :invalid_request}
 
   defp valid_envelope?(%{
          "protocol_version" => 1,
@@ -145,7 +145,7 @@ defmodule KC3RTS.Game.KC3Worker do
        when is_integer(id) and id > 0 and is_binary(match_id) and byte_size(match_id) in 1..48 and
               is_integer(revision) and revision >= 0 and
               operation in ["new_match", "command", "tick", "snapshot"] do
-    String.match?(match_id, ~r/\A[a-zA-Z0-9_-]+\z/)
+    String.valid?(match_id) and String.match?(match_id, ~r/\A[a-zA-Z0-9_-]+\z/)
   end
 
   defp valid_envelope?(_), do: false

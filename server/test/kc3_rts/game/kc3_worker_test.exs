@@ -173,6 +173,12 @@ defmodule KC3RTS.Game.KC3WorkerTest do
              KC3Worker.request(worker, request(1, "tick", 0) |> Map.put("match_id", "bad/id"))
 
     assert {:error, :invalid_request} =
+             KC3Worker.request(worker, request(1, "tick", 0) |> Map.put("match_id", <<255>>))
+
+    assert {:error, :invalid_request} =
+             KC3Worker.request(worker, request(1, "tick", 0) |> Map.put("padding", self()))
+
+    assert {:error, :invalid_request} =
              KC3Worker.request(
                worker,
                command_request(1, 0, %{
