@@ -105,6 +105,7 @@ integration tests and coverage:
 ```sh
 sh scripts/setup-kc3.sh
 cd server
+export LD_LIBRARY_PATH="../.toolchain/kc3/libkc3:../.toolchain/kc3/lib/kc3/0.1"
 KC3RTS_KC3S=../.toolchain/kc3/kc3s/kc3s mix test --cover
 ```
 
