@@ -543,7 +543,11 @@ defmodule KC3RTS.Game.World do
   defp build_clearance(%{kind: :wood}), do: 5
   defp build_clearance(_ore), do: 7.5
 
-  defp distance(a, b), do: :math.sqrt(:math.pow(a.x - b.x, 2) + :math.pow(a.z - b.z, 2))
+  defp distance(a, b) do
+    dx = a.x - b.x
+    dz = a.z - b.z
+    :math.sqrt(dx * dx + dz * dz)
+  end
 
   defp inside?(%{x: x, z: z}, radius) when is_number(x) and is_number(z),
     do: abs(x) <= radius - 3 and abs(z) <= radius - 3
