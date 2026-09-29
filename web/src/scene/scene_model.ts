@@ -1,6 +1,6 @@
 import { Group, Mesh, MeshBasicMaterial, RingGeometry, Sprite, SpriteMaterial, Vector3 } from "three";
 import type { GroundPoint, Villager, WorldSnapshot } from "../game/protocol";
-import { ATTACK_RANGE, GATHER_INTERVAL_TICKS, gatherRange, TICKS_PER_SECOND } from "../game/action_rules";
+import { ATTACK_RANGE, GATHER_INTERVAL_TICKS, UNIT_HITBOX_RADIUS, gatherRange, TICKS_PER_SECOND } from "../game/action_rules";
 import { createEnemyBase, createGround, createResourceNode, createTownCenter, createVillagerSprite } from "./world_objects";
 import { facingFromMovement, type UnitFacing } from "./unit_facing";
 import { unitPose, walkingHop, type ActionTarget } from "./unit_motion";
@@ -94,7 +94,7 @@ export class SceneModel {
       }
       if (!visual) {
         const sprite = createVillagerSprite(v.id, carrying, snapshot.seed, facing); sprite.position.set(v.x, .04, v.z);
-        const selection = marker(.7); this.root.add(selection);
+        const selection = marker(UNIT_HITBOX_RADIUS); this.root.add(selection);
         const health = healthBar(.9, 1.85); this.root.add(health);
         visual = { sprite, carrying, facing, position: new Vector3(v.x, .04, v.z), destination: new Vector3(v.x, .04, v.z), walkDistance: 0, walkDirection: new Vector3(1, 0, 0), walkOffset: 0, walkLift: 0, action: null, marker: selection, health };
         this.villagers.set(v.id, visual); this.root.add(sprite);

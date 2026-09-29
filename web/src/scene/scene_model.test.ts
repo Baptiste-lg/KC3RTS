@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Group, Sprite } from "three";
+import { Group, Mesh, RingGeometry, Sprite } from "three";
+import { UNIT_HITBOX_RADIUS } from "../game/action_rules";
 import type { WorldSnapshot } from "../game/protocol";
 import { SceneModel } from "./scene_model";
 
@@ -20,6 +21,8 @@ describe("SceneModel", () => {
       villagers: [{ id: 1, x: 0, z: 0, cargo: 0, cargo_kind: null, hp: 30, max_hp: 30, attack_interval_ticks: 6, order: null }],
     };
     const model = new SceneModel(world);
+    const selection = model.root.children.find((child) => child instanceof Mesh && child.geometry instanceof RingGeometry) as Mesh<RingGeometry>;
+    expect(selection.geometry.parameters.outerRadius).toBe(UNIT_HITBOX_RADIUS);
     model.update({ ...world, tick: 1, villagers: [{ ...world.villagers[0], x: 1, z: 0 }] });
     let sprite = model.root.getObjectByName("villager-1") as Sprite;
     expect(sprite.userData.facing).toBe("right");

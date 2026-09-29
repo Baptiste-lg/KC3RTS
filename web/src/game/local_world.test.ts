@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { RESOURCE_AMOUNTS, RESOURCE_COUNTS } from "./map_generation";
-import { applyLocalCommand, createLocalWorld, stepLocalWorld } from "./local_world";
+import { UNIT_HITBOX_RADIUS } from "./action_rules";
+import { applyLocalCommand, createLocalWorld, stepLocalWorld, type LocalWorld } from "./local_world";
+
+function expectSpaced(world: LocalWorld): void {
+  let closest = Number.POSITIVE_INFINITY;
+  let pair = "";
+  for (let i = 0; i < world.villagers.length; i += 1) {
+    for (let j = i + 1; j < world.villagers.length; j += 1) {
+      const left = world.villagers[i]; const right = world.villagers[j];
+      const distance = Math.hypot(left.x - right.x, left.z - right.z);
+      if (distance < closest) { closest = distance; pair = `${left.id} and ${right.id}`; }
+    }
+  }
+  expect(closest, `villagers ${pair} overlap`).toBeGreaterThanOrEqual(UNIT_HITBOX_RADIUS * 2 - 1e-8);
+}
 
 describe("RTS simulation", () => {
   it("starts with villagers, three resource types, centers and a seeded passive enemy", () => {
@@ -66,6 +80,22 @@ describe("RTS simulation", () => {
     expect(stopped.world.villagers[0].order).toBeNull();
     expect(stopped.world.villagers[1].order).toEqual({ kind: "move", x: 10, z: 0 });
   });
+  it("rejects mixed, dead and duplicate selections before changing state", () => {
+    const start = createLocalWorld(1234);
+    const world = { ...start, villagers: start.villagers.map((v) => v.id === 3 ? { ...v, hp: 0 } : v) };
+    for (const villager_ids of [[1, 999], [1, 0], [1, -2], [1, 3], [1, 1], [], Array(101).fill(1)]) {
+      expect(applyLocalCommand(world, { type: "stop", villager_ids })).toEqual({ ok: false, reason: "invalid_selection" });
+      expect(applyLocalCommand(world, { type: "order", villager_ids, order: { kind: "move", x: 5, z: 5 } })).toEqual({ ok: false, reason: "invalid_selection" });
+      expect(applyLocalCommand(world, { type: "build", villager_ids, x: 22, z: -22 })).toEqual({ ok: false, reason: "invalid_selection" });
+    }
+    expect(world).toEqual({ ...start, villagers: world.villagers });
+  });
+  it("rejects nonfinite points and unknown orders at the runtime boundary", () => {
+    const world = createLocalWorld(1234);
+    expect(applyLocalCommand(world, { type: "build", villager_ids: [1], x: Number.NaN, z: 4 })).toEqual({ ok: false, reason: "invalid_location" });
+    expect(applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "move", x: Number.POSITIVE_INFINITY, z: 0 } })).toEqual({ ok: false, reason: "invalid_location" });
+    expect(applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "dance" } as never })).toEqual({ ok: false, reason: "invalid_target" });
+  });
   it("moves villagers quickly enough to cross the expanded map", () => {
     const start = createLocalWorld();
     const ordered = applyLocalCommand(start, { type: "order", villager_ids: [1], order: { kind: "move", x: 40, z: 0 } });
@@ -74,9 +104,65 @@ describe("RTS simulation", () => {
     expect(moved.x).toBe(40);
     expect(moved.order).toBeNull();
   });
+  it("recruits into free spaces and does not charge when no spawn position exists", () => {
+    let world = { ...createLocalWorld(1234), stockpile: { wood: 1000, stone: 15, gold: 1000 } };
+    for (let i = 0; i < 37; i += 1) {
+      const result = applyLocalCommand(world, { type: "spawn_villager", building_id: 1 });
+      expect(result.ok).toBe(true); if (!result.ok) return;
+      world = result.world;
+      expectSpaced(world);
+    }
+    expect(world.villagers).toHaveLength(40);
+    const full = { ...world, map_radius: 4 };
+    expect(applyLocalCommand(full, { type: "spawn_villager", building_id: 1 })).toEqual({ ok: false, reason: "no_spawn_space" });
+    expect(full.stockpile).toEqual(world.stockpile);
+  });
+  it("keeps a crowd separated while moving to a shared point", () => {
+    let world = { ...createLocalWorld(1234), stockpile: { wood: 1000, stone: 15, gold: 1000 } };
+    for (let i = 0; i < 21; i += 1) {
+      const result = applyLocalCommand(world, { type: "spawn_villager", building_id: 1 });
+      expect(result.ok).toBe(true); if (!result.ok) return;
+      world = result.world;
+    }
+    const ordered = applyLocalCommand(world, { type: "order", villager_ids: world.villagers.map((v) => v.id), order: { kind: "move", x: 13, z: 13 } });
+    expect(ordered.ok).toBe(true); if (!ordered.ok) return;
+    world = ordered.world;
+    for (let tick = 0; tick < 90; tick += 1) {
+      world = stepLocalWorld(world);
+      expectSpaced(world);
+    }
+    expect(world.villagers.some((v) => Math.hypot(v.x - 13, v.z - 13) < 2)).toBe(true);
+  });
+  it("keeps one hundred recruited villagers separated around a shared destination", () => {
+    let world = { ...createLocalWorld(7), stockpile: { wood: 1000, stone: 15, gold: 1000 } };
+    for (let i = 0; i < 97; i += 1) {
+      const result = applyLocalCommand(world, { type: "spawn_villager", building_id: 1 });
+      expect(result.ok).toBe(true); if (!result.ok) return;
+      world = result.world;
+    }
+    const ordered = applyLocalCommand(world, { type: "order", villager_ids: world.villagers.map((v) => v.id), order: { kind: "move", x: 13, z: 13 } });
+    expect(ordered.ok).toBe(true); if (!ordered.ok) return;
+    world = ordered.world;
+    for (let tick = 1; tick <= 120; tick += 1) {
+      world = stepLocalWorld(world);
+      if (tick % 10 === 0) expectSpaced(world);
+    }
+  });
+  it("steers opposing movers around one another", () => {
+    const start = createLocalWorld(1234);
+    let world = { ...start, villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: -2, z: 0 } : v.id === 2 ? { ...v, x: 2, z: 0 } : { ...v, x: 0, z: 5 }) };
+    const first = applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "move", x: 2, z: 0 } });
+    expect(first.ok).toBe(true); if (!first.ok) return; world = first.world;
+    const second = applyLocalCommand(world, { type: "order", villager_ids: [2], order: { kind: "move", x: -2, z: 0 } });
+    expect(second.ok).toBe(true); if (!second.ok) return; world = second.world;
+    for (let tick = 0; tick < 30; tick += 1) { world = stepLocalWorld(world); expectSpaced(world); }
+    expect(world.villagers[0].x).toBeGreaterThan(0);
+    expect(world.villagers[1].x).toBeLessThan(0);
+  });
   it("lets villagers destroy the passive enemy base and records victory", () => {
     const start = createLocalWorld(); const enemy = start.buildings[1];
-    const nearby = { ...start, villagers: start.villagers.map((v) => ({ ...v, x: enemy.x + 3, z: enemy.z })) };
+    const nearby = { ...start, villagers: start.villagers.map((v) => ({ ...v, x: enemy.x + 3, z: enemy.z + v.id - 2 })) };
+    expectSpaced(nearby);
     const result = applyLocalCommand(nearby, { type: "order", villager_ids: [1, 2, 3], order: { kind: "attack", id: enemy.id } });
     expect(result.ok).toBe(true); if (!result.ok) return;
     const end = stepLocalWorld(result.world, 200);

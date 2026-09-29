@@ -112,6 +112,33 @@ defmodule KC3RTS.Game.WorldTest do
     assert match?({:move, _}, Enum.at(stopped.villagers, 1).order)
   end
 
+  test "every selected villager must exist and be alive before any command changes state" do
+    world = World.new(seed: 1234)
+
+    world = %{
+      world
+      | villagers: Enum.map(world.villagers, fn v -> if v.id == 3, do: %{v | hp: 0}, else: v end)
+    }
+
+    for ids <- [[1, 999], [1, 0], [1, -2], [1, 3], [1, 1], [], List.duplicate(1, 101)] do
+      assert {:error, :invalid_selection} =
+               World.command(world, %{type: :stop, villager_ids: ids})
+
+      assert {:error, :invalid_selection} =
+               World.command(world, %{
+                 type: :order,
+                 villager_ids: ids,
+                 order: {:move, %{x: 5, z: 5}}
+               })
+
+      assert {:error, :invalid_selection} =
+               World.command(world, %{type: :build, villager_ids: ids, x: 22, z: -22})
+    end
+
+    assert world.stockpile == %{wood: 30, stone: 15, gold: 20}
+    assert length(world.buildings) == 2
+  end
+
   test "villagers cross the expanded map quickly" do
     world = World.new(seed: 1234)
 
@@ -127,10 +154,119 @@ defmodule KC3RTS.Game.WorldTest do
     assert moved.order == nil
   end
 
+  test "recruitment finds free positions without charging for a full spawn area" do
+    world = World.new(seed: 1234, starting_stockpile: %{wood: 1_000, stone: 15, gold: 1_000})
+
+    crowded =
+      Enum.reduce(1..37, world, fn _, current ->
+        assert {:ok, next} = World.command(current, %{type: :spawn_villager, building_id: 1})
+        assert_spaced(next.villagers)
+        next
+      end)
+
+    assert length(crowded.villagers) == 40
+
+    full = %{crowded | map_radius: 4.0}
+
+    assert {:error, :no_spawn_space} =
+             World.command(full, %{type: :spawn_villager, building_id: 1})
+
+    assert full.stockpile == crowded.stockpile
+    assert full.next_villager_id == crowded.next_villager_id
+  end
+
+  test "crowded move orders preserve hitboxes at every tick" do
+    world = World.new(seed: 1234, starting_stockpile: %{wood: 1_000, stone: 15, gold: 1_000})
+
+    world =
+      Enum.reduce(1..21, world, fn _, current ->
+        {:ok, next} = World.command(current, %{type: :spawn_villager, building_id: 1})
+        next
+      end)
+
+    ids = Enum.map(world.villagers, & &1.id)
+
+    assert {:ok, ordered} =
+             World.command(world, %{
+               type: :order,
+               villager_ids: ids,
+               order: {:move, %{x: 13.0, z: 13.0}}
+             })
+
+    final =
+      Enum.reduce(1..90, ordered, fn _, current ->
+        next = World.step(current)
+        assert_spaced(next.villagers)
+        next
+      end)
+
+    assert Enum.any?(final.villagers, &(distance(&1, %{x: 13, z: 13}) < 2))
+  end
+
+  test "a hundred villagers retain spacing around one destination" do
+    world = World.new(seed: 7, starting_stockpile: %{wood: 1_000, stone: 15, gold: 1_000})
+
+    world =
+      Enum.reduce(1..97, world, fn _, current ->
+        {:ok, next} = World.command(current, %{type: :spawn_villager, building_id: 1})
+        next
+      end)
+
+    assert {:ok, ordered} =
+             World.command(world, %{
+               type: :order,
+               villager_ids: Enum.map(world.villagers, & &1.id),
+               order: {:move, %{x: 13.0, z: 13.0}}
+             })
+
+    Enum.reduce(1..120, ordered, fn tick, current ->
+      next = World.step(current)
+      if rem(tick, 10) == 0, do: assert_spaced(next.villagers)
+      next
+    end)
+  end
+
+  test "opposing moving villagers steer around each other" do
+    world = World.new(seed: 1234)
+
+    villagers =
+      Enum.map(world.villagers, fn v ->
+        case v.id do
+          1 -> %{v | x: -2.0, z: 0.0}
+          2 -> %{v | x: 2.0, z: 0.0}
+          _ -> %{v | x: 0.0, z: 5.0}
+        end
+      end)
+
+    world = %{world | villagers: villagers}
+
+    {:ok, world} =
+      World.command(world, %{type: :order, villager_ids: [1], order: {:move, %{x: 2.0, z: 0.0}}})
+
+    {:ok, world} =
+      World.command(world, %{type: :order, villager_ids: [2], order: {:move, %{x: -2.0, z: 0.0}}})
+
+    final =
+      Enum.reduce(1..30, world, fn _, current ->
+        next = World.step(current)
+        assert_spaced(next.villagers)
+        next
+      end)
+
+    assert Enum.at(final.villagers, 0).x > 0
+    assert Enum.at(final.villagers, 1).x < 0
+  end
+
   test "villagers can destroy the enemy base and win" do
     world = World.new(seed: 1234)
     enemy = Enum.at(world.buildings, 1)
-    world = %{world | villagers: Enum.map(world.villagers, &%{&1 | x: enemy.x + 3, z: enemy.z})}
+
+    world = %{
+      world
+      | villagers: Enum.map(world.villagers, &%{&1 | x: enemy.x + 3, z: enemy.z + (&1.id - 2)})
+    }
+
+    assert_spaced(world.villagers)
 
     assert {:ok, ordered} =
              World.command(world, %{type: :order, villager_ids: [1, 2, 3], order: {:attack, 2}})
@@ -170,4 +306,11 @@ defmodule KC3RTS.Game.WorldTest do
   end
 
   defp distance(a, b), do: :math.sqrt(:math.pow(a.x - b.x, 2) + :math.pow(a.z - b.z, 2))
+
+  defp assert_spaced(villagers) do
+    for {left, index} <- Enum.with_index(villagers), right <- Enum.drop(villagers, index + 1) do
+      assert distance(left, right) >= World.unit_hitbox_radius() * 2 - 1.0e-8,
+             "villagers #{left.id} and #{right.id} overlap"
+    end
+  end
 end

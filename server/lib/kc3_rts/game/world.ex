@@ -3,6 +3,20 @@ defmodule KC3RTS.Game.World do
   alias KC3RTS.Game.MapGenerator
   @mod 2_147_483_647
   @speed 0.55
+  @unit_radius 0.45
+  @unit_spacing @unit_radius * 2
+  @collision_cell_size 1.8
+  @diagonal 0.7071067811865476
+  @spawn_directions [
+    {0.0, 1.0},
+    {@diagonal, @diagonal},
+    {1.0, 0.0},
+    {@diagonal, -@diagonal},
+    {0.0, -1.0},
+    {-@diagonal, -@diagonal},
+    {-1.0, 0.0},
+    {-@diagonal, @diagonal}
+  ]
   @capacity 5
   @gather_interval_ticks 3
   @attack_range 6.0
@@ -19,6 +33,8 @@ defmodule KC3RTS.Game.World do
 
   @type t :: %__MODULE__{}
 
+  def unit_hitbox_radius, do: @unit_radius
+
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
     seed = rem(abs(Keyword.get(opts, :seed, 12_345)), @mod - 1)
@@ -34,7 +50,10 @@ defmodule KC3RTS.Game.World do
       stockpile: Keyword.get(opts, :starting_stockpile, %{wood: 30, stone: 15, gold: 20})
     }
 
-    Enum.reduce(1..3, world, fn _, current -> spawn_free(current, center) end)
+    Enum.reduce(1..3, world, fn _, current ->
+      {:ok, spawned} = spawn_free(current, center)
+      spawned
+    end)
   end
 
   @spec command(t(), map()) :: {:ok, t()} | {:error, atom()}
@@ -56,18 +75,17 @@ defmodule KC3RTS.Game.World do
         {:error, :insufficient_resources}
 
       true ->
-        {:ok,
-         spawn_free(
+        with {:ok, spawned} <- spawn_free(world, center) do
+          {:ok,
            %{
-             world
+             spawned
              | stockpile: %{
-                 world.stockpile
-                 | wood: world.stockpile.wood - 5,
-                   gold: world.stockpile.gold - 5
+                 spawned.stockpile
+                 | wood: spawned.stockpile.wood - 5,
+                   gold: spawned.stockpile.gold - 5
                }
-           },
-           center
-         )}
+           }}
+        end
     end
   end
 
@@ -78,6 +96,9 @@ defmodule KC3RTS.Game.World do
     cond do
       not valid_selection?(world, ids, chosen) ->
         {:error, :invalid_selection}
+
+      invalid_move_location?(world, order) ->
+        {:error, :invalid_location}
 
       not valid_order?(world, order) ->
         {:error, :invalid_target}
@@ -125,11 +146,19 @@ defmodule KC3RTS.Game.World do
     end
   end
 
+  def command(_world, %{type: type, villager_ids: _ids})
+      when type in [:order, :stop, :build],
+      do: {:error, :invalid_selection}
+
   def command(_world, _command), do: {:error, :unknown_command}
 
   defp valid_selection?(world, ids, chosen) do
     Enum.all?(ids, &(is_integer(&1) and &1 > 0)) and
-      Enum.any?(world.villagers, &MapSet.member?(chosen, &1.id))
+      MapSet.size(chosen) == length(ids) and
+      MapSet.subset?(
+        chosen,
+        world.villagers |> Enum.filter(&(&1.hp > 0)) |> Enum.map(& &1.id) |> MapSet.new()
+      )
   end
 
   defp valid_site?(world, point) do
@@ -170,17 +199,24 @@ defmodule KC3RTS.Game.World do
   defp step_once(world) do
     tick = world.tick + 1
 
-    {villagers, resources, buildings, stockpile} =
-      Enum.reduce(world.villagers, {[], world.resources, world.buildings, world.stockpile}, fn v,
-                                                                                               {acc,
-                                                                                                resources,
-                                                                                                buildings,
-                                                                                                stockpile} ->
-        {v, resources, buildings, stockpile} =
-          step_villager(v, resources, buildings, stockpile, tick)
+    living = Enum.filter(world.villagers, &(&1.hp > 0))
+    positions = Map.new(living, &{&1.id, &1})
+    cells = Enum.reduce(living, %{}, &put_in_cell(&2, &1))
 
-        {[v | acc], resources, buildings, stockpile}
-      end)
+    {villagers, resources, buildings, stockpile, _positions, _cells} =
+      Enum.reduce(
+        living,
+        {[], world.resources, world.buildings, world.stockpile, positions, cells},
+        fn v, {acc, resources, buildings, stockpile, positions, cells} ->
+          blockers = movement_blockers(v, positions, cells)
+
+          {moved, resources, buildings, stockpile} =
+            step_villager(v, resources, buildings, stockpile, tick, blockers, world.map_radius)
+
+          {[moved | acc], resources, buildings, stockpile, Map.put(positions, v.id, moved),
+           update_cell(cells, v, moved)}
+        end
+      )
 
     outcome =
       if Enum.any?(buildings, &(&1.owner == :enemy and &1.hp > 0)), do: :playing, else: :victory
@@ -196,16 +232,48 @@ defmodule KC3RTS.Game.World do
     }
   end
 
-  defp step_villager(%{order: nil} = v, resources, buildings, stockpile, _tick),
-    do: {v, resources, buildings, stockpile}
+  defp step_villager(
+         %{order: nil} = v,
+         resources,
+         buildings,
+         stockpile,
+         _tick,
+         _blockers,
+         _radius
+       ),
+       do: {v, resources, buildings, stockpile}
 
-  defp step_villager(%{order: {:move, point}} = v, resources, buildings, stockpile, _tick) do
-    v = move(v, point)
-    v = if distance(v, point) < 0.1, do: %{v | order: nil}, else: v
+  defp step_villager(
+         %{order: {:move, point}} = v,
+         resources,
+         buildings,
+         stockpile,
+         _tick,
+         blockers,
+         radius
+       ) do
+    v = move(v, point, 0, blockers, radius)
+
+    arrived = distance(v, point) < 0.1
+    shared_goal = Enum.any?(blockers, &(distance(&1, point) < @unit_spacing))
+
+    v =
+      if arrived or (shared_goal and distance(v, point) <= @unit_spacing * 2),
+        do: %{v | order: nil},
+        else: v
+
     {v, resources, buildings, stockpile}
   end
 
-  defp step_villager(%{order: {:gather, id}} = v, resources, buildings, stockpile, tick) do
+  defp step_villager(
+         %{order: {:gather, id}} = v,
+         resources,
+         buildings,
+         stockpile,
+         tick,
+         blockers,
+         radius
+       ) do
     resource = Enum.find(resources, &(&1.id == id))
     center = nearest_center(v, buildings)
 
@@ -214,10 +282,11 @@ defmodule KC3RTS.Game.World do
         {%{v | order: nil}, resources, buildings, stockpile}
 
       returning?(v, resource) ->
-        deliver_or_move(v, resource, center, resources, buildings, stockpile)
+        deliver_or_move(v, resource, center, resources, buildings, stockpile, blockers, radius)
 
       distance(v, resource) > gather_range(resource) + 0.01 ->
-        {approach(v, resource, gather_range(resource)), resources, buildings, stockpile}
+        {move(v, resource, gather_range(resource), blockers, radius), resources, buildings,
+         stockpile}
 
       rem(tick + v.id, @gather_interval_ticks) != 0 ->
         {v, resources, buildings, stockpile}
@@ -230,7 +299,15 @@ defmodule KC3RTS.Game.World do
     end
   end
 
-  defp step_villager(%{order: {:build, id}} = v, resources, buildings, stockpile, _tick) do
+  defp step_villager(
+         %{order: {:build, id}} = v,
+         resources,
+         buildings,
+         stockpile,
+         _tick,
+         blockers,
+         radius
+       ) do
     building = Enum.find(buildings, &(&1.id == id))
 
     cond do
@@ -238,7 +315,7 @@ defmodule KC3RTS.Game.World do
         {%{v | order: nil}, resources, buildings, stockpile}
 
       distance(v, building) > 3.5 ->
-        {move(v, building), resources, buildings, stockpile}
+        {move(v, building, 3.5, blockers, radius), resources, buildings, stockpile}
 
       true ->
         buildings = Enum.map(buildings, &progress_building(&1, id))
@@ -246,7 +323,15 @@ defmodule KC3RTS.Game.World do
     end
   end
 
-  defp step_villager(%{order: {:attack, id}} = v, resources, buildings, stockpile, tick) do
+  defp step_villager(
+         %{order: {:attack, id}} = v,
+         resources,
+         buildings,
+         stockpile,
+         tick,
+         blockers,
+         radius
+       ) do
     building = Enum.find(buildings, &(&1.id == id))
 
     cond do
@@ -254,7 +339,7 @@ defmodule KC3RTS.Game.World do
         {%{v | order: nil}, resources, buildings, stockpile}
 
       distance(v, building) > @attack_range + 0.01 ->
-        {approach(v, building, @attack_range), resources, buildings, stockpile}
+        {move(v, building, @attack_range, blockers, radius), resources, buildings, stockpile}
 
       rem(tick + v.id, v.attack_interval_ticks) != 0 ->
         {v, resources, buildings, stockpile}
@@ -281,13 +366,13 @@ defmodule KC3RTS.Game.World do
       (v.cargo > 0 and v.cargo_kind != resource.kind)
   end
 
-  defp deliver_or_move(v, resource, center, resources, buildings, stockpile) do
+  defp deliver_or_move(v, resource, center, resources, buildings, stockpile, blockers, radius) do
     cond do
       is_nil(center) ->
         {v, resources, buildings, stockpile}
 
       distance(v, center) > 3.5 ->
-        {move(v, center), resources, buildings, stockpile}
+        {move(v, center, 3.5, blockers, radius), resources, buildings, stockpile}
 
       true ->
         stockpile = Map.update!(stockpile, v.cargo_kind, &(&1 + v.cargo))
@@ -319,47 +404,139 @@ defmodule KC3RTS.Game.World do
 
   defp valid_order?(_world, _order), do: false
 
+  defp invalid_move_location?(world, {:move, point}),
+    do: not inside?(point, world.map_radius)
+
+  defp invalid_move_location?(_world, _order), do: false
+
   defp spawn_free(world, center) do
     id = world.next_villager_id
 
-    v = %{
-      id: id,
-      x: center.x + (rem(id, 3) - 1) * 0.5,
-      z: center.z + 3.4,
-      hp: 30,
-      max_hp: 30,
-      attack_interval_ticks: 6,
-      cargo: 0,
-      cargo_kind: nil,
-      order: nil
-    }
+    point =
+      Enum.find_value(0..255, fn slot ->
+        {dx, dz} = Enum.at(@spawn_directions, rem(slot, 8))
+        ring_radius = 3.4 + div(slot, 8) * 1.05
+        candidate = %{x: center.x + dx * ring_radius, z: center.z + dz * ring_radius}
 
-    %{world | villagers: world.villagers ++ [v], next_villager_id: id + 1}
-  end
+        if free?(candidate, world.villagers, world.map_radius), do: candidate
+      end)
 
-  defp move(v, point) do
-    d = distance(v, point)
-
-    if d <= @speed,
-      do: %{v | x: point.x, z: point.z},
-      else: %{v | x: v.x + (point.x - v.x) / d * @speed, z: v.z + (point.z - v.z) / d * @speed}
-  end
-
-  defp approach(v, point, range) do
-    distance = distance(v, point)
-
-    if distance <= range do
-      v
-    else
-      step = min(@speed, distance - range)
-
-      %{
-        v
-        | x: v.x + (point.x - v.x) / distance * step,
-          z: v.z + (point.z - v.z) / distance * step
+    if point do
+      v = %{
+        id: id,
+        x: point.x,
+        z: point.z,
+        hp: 30,
+        max_hp: 30,
+        attack_interval_ticks: 6,
+        cargo: 0,
+        cargo_kind: nil,
+        order: nil
       }
+
+      {:ok, %{world | villagers: world.villagers ++ [v], next_villager_id: id + 1}}
+    else
+      {:error, :no_spawn_space}
     end
   end
+
+  defp move(v, point, range, blockers, radius) do
+    d = distance(v, point)
+
+    if d <= range do
+      v
+    else
+      dx = (point.x - v.x) / d
+      dz = (point.z - v.z) / d
+      step = min(@speed, d - range)
+      candidate = movement_candidate(v, dx, dz, step, blockers, radius)
+
+      if candidate, do: %{v | x: candidate.x, z: candidate.z}, else: v
+    end
+  end
+
+  defp movement_candidate(v, dx, dz, step, blockers, radius) do
+    direct = %{x: v.x + dx * step, z: v.z + dz * step}
+
+    if free?(direct, blockers, radius) do
+      direct
+    else
+      steering_candidate(v, dx, dz, blockers, radius)
+    end
+  end
+
+  defp steering_candidate(v, dx, dz, blockers, radius) do
+    side = if rem(v.id, 2) == 1, do: 1.0, else: -1.0
+
+    Enum.find_value(
+      [
+        {@diagonal, side * @diagonal},
+        {@diagonal, -side * @diagonal},
+        {0.0, side},
+        {0.0, -side},
+        {-@diagonal, side * @diagonal},
+        {-@diagonal, -side * @diagonal},
+        {-1.0, 0.0}
+      ],
+      fn {cosine, sine} ->
+        alternative = %{
+          x: v.x + (dx * cosine - dz * sine) * @speed,
+          z: v.z + (dx * sine + dz * cosine) * @speed
+        }
+
+        if free?(alternative, blockers, radius), do: alternative
+      end
+    )
+  end
+
+  defp free?(point, villagers, radius) do
+    inside?(point, radius) and
+      Enum.all?(villagers, fn v ->
+        dx = point.x - v.x
+        dz = point.z - v.z
+        v.hp <= 0 or dx * dx + dz * dz >= @unit_spacing * @unit_spacing - 1.0e-9
+      end)
+  end
+
+  defp cell(v), do: {floor(v.x / @collision_cell_size), floor(v.z / @collision_cell_size)}
+
+  defp put_in_cell(cells, v) do
+    Map.update(cells, cell(v), [v.id], &[v.id | &1])
+  end
+
+  defp update_cell(cells, old, moved) do
+    if cell(old) == cell(moved) do
+      cells
+    else
+      cells
+      |> Map.update!(cell(old), &List.delete(&1, old.id))
+      |> put_in_cell(moved)
+    end
+  end
+
+  defp nearby_units(v, positions, cells) do
+    {x, z} = cell(v)
+
+    for dx <- -1..1,
+        dz <- -1..1,
+        id <- Map.get(cells, {x + dx, z + dz}, []),
+        id != v.id,
+        do: Map.fetch!(positions, id)
+  end
+
+  defp movement_blockers(%{order: nil}, _positions, _cells), do: []
+
+  defp movement_blockers(%{order: {:move, point}} = v, positions, cells) do
+    nearby = nearby_units(v, positions, cells)
+
+    if distance(v, point) <= @unit_spacing * 2 do
+      nearby ++ nearby_units(%{v | x: point.x, z: point.z}, positions, cells)
+    else
+      nearby
+    end
+  end
+
+  defp movement_blockers(v, positions, cells), do: nearby_units(v, positions, cells)
 
   defp gather_range(%{kind: :wood}), do: 3.0
   defp gather_range(_ore), do: 4.3
