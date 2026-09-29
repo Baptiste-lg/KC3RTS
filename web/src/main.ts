@@ -16,6 +16,9 @@ const recruitButton = element<HTMLButtonElement>("recruit"), buildButton = eleme
 const selectionLabel = element<HTMLElement>("selection"), selectionDetail = element<HTMLElement>("selection-detail"), commandHelp = element<HTMLElement>("command-help"), notice = element<HTMLElement>("notice");
 const loading = element<HTMLElement>("loading"), fallback = element<HTMLElement>("fallback");
 let view: WorldView | null = null, world: WorldSnapshot | null = null;
+if (new URLSearchParams(window.location.search).has("profile")) {
+  (window as Window & { __kc3rtsStats?: () => ReturnType<WorldView["getRenderInfo"]> | null }).__kc3rtsStats = () => view?.getRenderInfo() ?? null;
+}
 let status: GameConnectionStatus = "connecting", graphicsFailed = false, placing = false, noticeTimer = 0;
 let selectedBuilding: number | null = 1;
 let selectedInfo: { kind: "resource" | "enemy"; id: number } | null = null;

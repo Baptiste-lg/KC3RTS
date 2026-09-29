@@ -19,6 +19,7 @@ export class WorldView {
   private readonly edgePan = { x: 0, y: 0 };
   private pointer: { x: number; y: number; startX: number; startY: number; id: number; button: number } | null = null;
   private frame = 0; private lastFrame = 0; private lastRender = 0; private snapshot: WorldSnapshot;
+  private lastRenderMs = 0;
   private readonly lowQuality = new URLSearchParams(window.location.search).get("quality") === "low";
   constructor(private readonly mount: HTMLElement, snapshot: WorldSnapshot, private readonly actions: MapActions) {
     this.snapshot = snapshot; this.mapRadius = snapshot.map_radius; this.model = new SceneModel(snapshot);
@@ -49,6 +50,15 @@ export class WorldView {
     this.camera.lookAt(this.pan);
   }
   getFocus(): GroundPoint { return { x: this.pan.x, z: this.pan.z }; }
+  getRenderInfo(): { drawCalls: number; triangles: number; textures: number; geometries: number; renderCpuMs: number } {
+    return {
+      drawCalls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
+      textures: this.renderer.info.memory.textures,
+      geometries: this.renderer.info.memory.geometries,
+      renderCpuMs: this.lastRenderMs,
+    };
+  }
   getViewport(): GroundPoint[] {
     const plane = new Plane(new Vector3(0, 1, 0), 0);
     return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => {
@@ -215,7 +225,12 @@ export class WorldView {
       if (progress >= 1) this.orderMarker.visible = false;
     }
     this.model.advance(delta);
-    if (!this.lowQuality || time - this.lastRender >= 100) { this.renderer.render(this.scene, this.camera); this.lastRender = time; }
+    if (!this.lowQuality || time - this.lastRender >= 100) {
+      const start = performance.now();
+      this.renderer.render(this.scene, this.camera);
+      this.lastRenderMs = performance.now() - start;
+      this.lastRender = time;
+    }
     this.frame = requestAnimationFrame(this.animate);
   };
 }

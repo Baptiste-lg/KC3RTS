@@ -12,6 +12,7 @@ const pagesMode = process.argv.includes("--pages");
 const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}?${new URLSearchParams({
   ...(process.env.KC3RTS_SMOKE_QUALITY === "normal" ? {} : { quality: "low" }),
   ...(pagesMode ? { seed: "12345" } : {}),
+  ...(process.env.KC3RTS_METRICS_PATH ? { profile: "1" } : {}),
 })}`;
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 const processes = [];
@@ -202,13 +203,57 @@ try {
   devtools = new DevTools(pages.webSocketDebuggerUrl);
   await devtools.ready();
 
+  if (process.env.KC3RTS_VIEWPORT_WIDTH && process.env.KC3RTS_VIEWPORT_HEIGHT) {
+    await devtools.send("Emulation.setDeviceMetricsOverride", {
+      width: Number(process.env.KC3RTS_VIEWPORT_WIDTH),
+      height: Number(process.env.KC3RTS_VIEWPORT_HEIGHT),
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  }
+
   const initial = await until(async () => {
     const state = await devtools.evaluate(STATE);
     return state.mode === (pagesMode ? "local" : "connected") && state.canvas &&
       state.loadingHidden && state.fallbackHidden && state.recruitEnabled &&
       state.wood === 30 && state.stone === 15 && state.gold === 20 &&
       state.villagers === 3 && state.enemyHp === 250 ? state : false;
-  }, 30_000, "live RTS map");
+  }, process.env.KC3RTS_SMOKE_QUALITY === "normal" ? 90_000 : 30_000, "live RTS map");
+
+  if (process.env.KC3RTS_OPENING_SCREENSHOT) {
+    const jpeg = /\.jpe?g$/i.test(process.env.KC3RTS_OPENING_SCREENSHOT);
+    const screenshot = await devtools.send("Page.captureScreenshot", jpeg ? { format: "jpeg", quality: 80 } : { format: "png" });
+    await writeFile(process.env.KC3RTS_OPENING_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
+  }
+
+  if (process.env.KC3RTS_METRICS_PATH) {
+    await devtools.send("Performance.enable");
+    const frameIntervals = await devtools.evaluate(`new Promise((resolve) => {
+      const samples = []; let previous = 0;
+      const sample = (time) => {
+        if (previous) samples.push(time - previous);
+        previous = time;
+        if (samples.length < 60) requestAnimationFrame(sample);
+        else resolve(samples);
+      };
+      requestAnimationFrame(sample);
+    })`);
+    const render = await devtools.evaluate("window.__kc3rtsStats?.()");
+    const performanceMetrics = await devtools.send("Performance.getMetrics");
+    const values = Object.fromEntries(performanceMetrics.metrics.map((metric) => [metric.name, metric.value]));
+    frameIntervals.sort((a, b) => a - b);
+    await writeFile(process.env.KC3RTS_METRICS_PATH, `${JSON.stringify({
+      seed: initial.mapSeed,
+      quality: process.env.KC3RTS_SMOKE_QUALITY === "normal" ? "normal" : "low",
+      viewport: { width: Number(process.env.KC3RTS_VIEWPORT_WIDTH) || 1100, height: Number(process.env.KC3RTS_VIEWPORT_HEIGHT) || 700, dpr: 1 },
+      render,
+      frameIntervalP50Ms: frameIntervals[29],
+      frameIntervalP95Ms: frameIntervals[56],
+      jsHeapUsedBytes: values.JSHeapUsedSize,
+      jsHeapTotalBytes: values.JSHeapTotalSize,
+      domNodes: values.Nodes,
+    }, null, 2)}\n`);
+  }
 
   await devtools.evaluate('document.getElementById("recruit").click()');
   const recruited = await until(async () => {
