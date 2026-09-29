@@ -19,11 +19,11 @@ class FakeChannel {
 }
 class FakeSocket {
   gameChannel = new FakeChannel(); connected = false; channels = 0;
-  onCloseHandler: (() => void) | null = null; onErrorHandler: (() => void) | null = null;
-  onClose(handler: () => void): void { this.onCloseHandler = handler; }
-  onError(handler: () => void): void { this.onErrorHandler = handler; }
+  onCloseHandlers: (() => void)[] = []; onErrorHandlers: (() => void)[] = [];
+  onClose(handler: () => void): void { this.onCloseHandlers.push(handler); }
+  onError(handler: () => void): void { this.onErrorHandlers.push(handler); }
   disconnect(): void { this.connected = false; } connect(): void { this.connected = true; }
-  channel(): FakeChannel { this.channels += 1; return this.gameChannel; }
+  channel(): FakeChannel { this.channels += 1; return this.channels === 1 ? this.gameChannel : this.gameChannel = new FakeChannel(); }
 }
 describe("GameConnection", () => {
   it("joins, validates snapshots and sends RTS commands", () => {
@@ -77,8 +77,35 @@ describe("GameConnection", () => {
     socket.gameChannel.joinPush.resolve("timeout", {});
     expect(statuses.at(-1)).toBe("offline");
     socket.gameChannel.emit("world_snapshot", { world: createLocalWorld() });
-    socket.onCloseHandler?.();
+    socket.onCloseHandlers.forEach((handler) => handler());
     expect(statuses.at(-1)).toBe("offline");
     expect(statuses.filter((status) => status === "offline")).toHaveLength(2);
+  });
+  it("ignores responses and events from a disconnected channel after reconnecting", () => {
+    const socket = new FakeSocket(); const statuses: string[] = []; const snapshots: number[] = []; const outcomes: unknown[] = [];
+    const connection = new GameConnection({ onSnapshot: (world) => snapshots.push(world.tick), onStatus: (status) => statuses.push(status), onCommand: (outcome) => outcomes.push(outcome) }, socket as unknown as Socket);
+    const world = createLocalWorld();
+    connection.connect();
+    const oldChannel = socket.gameChannel;
+    oldChannel.joinPush.resolve("ok", { world });
+    connection.command({ type: "spawn_villager", building_id: 1 });
+    connection.disconnect();
+    expect(statuses.at(-1)).toBe("offline");
+    connection.connect();
+    const currentChannel = socket.gameChannel;
+    currentChannel.joinPush.resolve("ok", { world: { ...world, tick: 2 } });
+    oldChannel.emit("world_snapshot", { world: { ...world, tick: 99 } });
+    oldChannel.joinPush.resolve("timeout", {});
+    oldChannel.commandPush.resolve("ok", { world: { ...world, tick: 100 } });
+    oldChannel.commandPush.resolve("error", { reason: "stale" });
+    oldChannel.onCloseHandler?.();
+    socket.onCloseHandlers[0]();
+    expect(snapshots).toEqual([0, 2]);
+    expect(outcomes).toEqual([]);
+    expect(statuses.at(-1)).toBe("connected");
+    connection.command({ type: "spawn_villager", building_id: 1 });
+    currentChannel.commandPush.resolve("ok", { world: { ...world, tick: 3 } });
+    expect(snapshots).toEqual([0, 2, 3]);
+    expect(outcomes).toEqual([{ ok: true }]);
   });
 });

@@ -25,28 +25,38 @@ export class GameConnection implements GameClient {
   connect(): void {
     if (this.started) return;
     this.started = true; this.setStatus("connecting");
-    this.socket.onClose(() => this.markOffline()); this.socket.onError(() => this.markOffline()); this.socket.connect();
     const channel = this.socket.channel("game:lobby", {}); this.channel = channel;
-    channel.on("world_snapshot", (payload) => this.acceptSnapshot(payload));
-    channel.onError(() => this.markOffline()); channel.onClose(() => this.markOffline());
-    channel.join().receive("ok", (payload) => this.acceptSnapshot(payload))
-      .receive("error", () => this.markOffline()).receive("timeout", () => this.markOffline());
+    this.socket.onClose(() => this.markOffline(channel)); this.socket.onError(() => this.markOffline(channel)); this.socket.connect();
+    channel.on("world_snapshot", (payload) => this.acceptSnapshot(channel, payload));
+    channel.onError(() => this.markOffline(channel)); channel.onClose(() => this.markOffline(channel));
+    channel.join().receive("ok", (payload) => this.acceptSnapshot(channel, payload))
+      .receive("error", () => this.markOffline(channel)).receive("timeout", () => this.markOffline(channel));
   }
   command(command: GameCommand): void {
     if (!this.ready || !this.channel) { this.handlers.onCommand({ ok: false, reason: "offline" }); return; }
-    this.channel.push("command", command, 30_000).receive("ok", (payload) => {
+    const channel = this.channel;
+    channel.push("command", command, 30_000).receive("ok", (payload) => {
+      if (this.channel !== channel) return;
       const world = readWorld(payload);
       if (!world) { this.ready = false; this.setStatus("incompatible"); this.handlers.onCommand({ ok: false, reason: "invalid_response" }); return; }
       this.handlers.onSnapshot(world); this.handlers.onCommand({ ok: true });
-    }).receive("error", (payload) => this.handlers.onCommand({ ok: false, reason: reason(payload) }))
-      .receive("timeout", () => this.handlers.onCommand({ ok: false, reason: "timeout" }));
+    }).receive("error", (payload) => { if (this.channel === channel) this.handlers.onCommand({ ok: false, reason: reason(payload) }); })
+      .receive("timeout", () => { if (this.channel === channel) this.handlers.onCommand({ ok: false, reason: "timeout" }); });
   }
-  disconnect(): void { this.ready = false; this.started = false; this.channel?.leave(); this.channel = null; this.socket.disconnect(); }
-  private acceptSnapshot(payload: unknown): void {
+  disconnect(): void {
+    const channel = this.channel;
+    this.ready = false; this.started = false; this.channel = null;
+    channel?.leave(); this.socket.disconnect(); this.setStatus("offline");
+  }
+  private acceptSnapshot(channel: Channel, payload: unknown): void {
+    if (this.channel !== channel) return;
     const world = readWorld(payload);
     if (!world) { this.ready = false; this.setStatus("incompatible"); return; }
     this.ready = true; this.handlers.onSnapshot(world); this.setStatus("connected");
   }
-  private markOffline(): void { this.ready = false; this.setStatus("offline"); }
+  private markOffline(channel: Channel): void {
+    if (this.channel !== channel) return;
+    this.ready = false; this.setStatus("offline");
+  }
   private setStatus(status: GameConnectionStatus): void { if (this.status !== status) { this.status = status; this.handlers.onStatus(status); } }
 }
