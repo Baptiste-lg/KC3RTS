@@ -11,3 +11,7 @@ JavaScript and Elixir dependencies are pinned in `web/package-lock.json` and
 packages. KC3 is checked out by `scripts/setup-kc3.sh` from its pinned commit
 into ignored `.toolchain/` and is not redistributed in this repository. Review
 KC3's notice in that commit before packaging a runtime binary.
+
+The setup script also checks out pinned `kmx_sort` and `runj` sources into
+`.toolchain/`; their license notices must be included when distributing those
+executables.
