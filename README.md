@@ -112,9 +112,9 @@ The setup script checks out KC3 commit `4bdffa88b35a496ca0a856a9eb58486cf6e2029c
 and its pinned submodules into ignored `.toolchain/`. It also builds pinned
 `kmx_sort` and `runj` tools there; no system installation of either is needed.
 On Debian or Ubuntu its system build prerequisites are `build-essential`,
-`clang`, `libtool-bin`, `libffi-dev`, `libbsd-dev`, `libevent-dev`, `pkg-config`,
-`ruby` and `git`. CI builds the same commit from a clean checkout. The KC3
-worker owns one match's stockpile, construction reservation and progress,
+`clang`, `libtool-bin`, `libffi-dev`, `libbsd-dev`, `libevent-dev`,
+`libgit2-dev`, `pkg-config`, `ruby` and `git`. CI builds the same commit from a
+clean checkout. The KC3 worker owns one match's stockpile, construction reservation and progress,
 recruitment checks, tick and revision.
 
 ## Architecture
