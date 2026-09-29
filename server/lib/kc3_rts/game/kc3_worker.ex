@@ -103,8 +103,10 @@ defmodule KC3RTS.Game.KC3Worker do
   def handle_info({:request_timeout, _token}, state), do: {:noreply, state}
 
   @impl true
-  def terminate(_reason, state) do
-    if Port.info(state.port), do: Port.close(state.port)
+  def terminate(_reason, %{port: port}) do
+    Port.close(port)
+  rescue
+    ArgumentError -> :ok
   end
 
   defp reply_pending({from, timer, _id, _token}, reply) do
