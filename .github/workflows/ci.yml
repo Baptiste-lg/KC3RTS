@@ -79,12 +79,25 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential clang libtool-bin libffi-dev libbsd-dev libevent-dev libgit2-dev libtls-dev pkg-config ruby
       - name: Build pinned KC3
         run: sh scripts/setup-kc3.sh
+      - name: Probe KC3 rules worker
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/.toolchain/kc3/libkc3:${{ github.workspace }}/.toolchain/kc3/lib/kc3/0.1
+        run: |
+          set +e
+          output=$(printf '%s\n' '{"protocol_version":1,"ruleset_version":1,"request_id":1,"match_id":"ci-probe","expected_revision":0,"operation":"new_match","seed":1}' | timeout 15s .toolchain/kc3/kc3s/kc3s --load kc3/worker.kc3 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] || ! printf '%s\n' "$output" | python3 -c 'import json,sys; reply=json.load(sys.stdin); assert reply["accepted"] and reply["revision"] == 1'; then
+            printf '%s\n' "$output" | head -40 | while IFS= read -r line; do printf '::error::%s\n' "$line"; done
+            exit 1
+          fi
       - run: mix deps.get
         working-directory: server
       - name: KC3 integration tests
         working-directory: server
         env:
           KC3RTS_KC3S: ${{ github.workspace }}/.toolchain/kc3/kc3s/kc3s
+          LD_LIBRARY_PATH: ${{ github.workspace }}/.toolchain/kc3/libkc3:${{ github.workspace }}/.toolchain/kc3/lib/kc3/0.1
         run: mix test --cover
 
   browser:
