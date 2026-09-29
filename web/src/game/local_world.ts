@@ -5,6 +5,7 @@ import { generateMap } from "./map_generation";
 const MOD = 2_147_483_647;
 const SPEED = 0.55;
 const UNIT_SPACING = UNIT_HITBOX_RADIUS * 2;
+const COLLISION_CELL_SIZE = 1.8;
 const DIAGONAL = 0.7071067811865476;
 const SPAWN_DIRECTIONS = [[0, 1], [DIAGONAL, DIAGONAL], [1, 0], [DIAGONAL, -DIAGONAL], [0, -1], [-DIAGONAL, -DIAGONAL], [-1, 0], [-DIAGONAL, DIAGONAL]];
 const CAPACITY = 5;
@@ -89,7 +90,24 @@ function move(v: Villager, p: GroundPoint, range: number, blockers: Villager[], 
   return v;
 }
 function nearestCenter(v: Villager, buildings: Building[]): Building | undefined {
-  return buildings.filter((b) => b.owner === "player" && b.hp > 0 && b.progress === 100).sort((a, b) => distance(v, a) - distance(v, b))[0];
+  let nearest: Building | undefined;
+  let shortest = Number.POSITIVE_INFINITY;
+  for (const building of buildings) {
+    if (building.owner !== "player" || building.hp <= 0 || building.progress !== 100) continue;
+    const dx = v.x - building.x; const dz = v.z - building.z;
+    const squared = dx * dx + dz * dz;
+    if (squared < shortest) { nearest = building; shortest = squared; }
+  }
+  return nearest;
+}
+function cell(v: GroundPoint): string { return `${Math.floor(v.x / COLLISION_CELL_SIZE)},${Math.floor(v.z / COLLISION_CELL_SIZE)}`; }
+function nearby(v: GroundPoint, except: number, positions: Map<number, Villager>, cells: Map<string, Set<number>>): Villager[] {
+  const x = Math.floor(v.x / COLLISION_CELL_SIZE); const z = Math.floor(v.z / COLLISION_CELL_SIZE);
+  const units: Villager[] = [];
+  for (let dx = -1; dx <= 1; dx += 1) for (let dz = -1; dz <= 1; dz += 1) {
+    for (const id of cells.get(`${x + dx},${z + dz}`) ?? []) if (id !== except) units.push(positions.get(id)!);
+  }
+  return units;
 }
 function once(world: LocalWorld): LocalWorld {
   if (world.outcome !== "playing") return world;
@@ -98,15 +116,26 @@ function once(world: LocalWorld): LocalWorld {
   const buildings = world.buildings.map((b) => ({ ...b }));
   const stockpile = { ...world.stockpile };
   const positions = new Map(world.villagers.filter((v) => v.hp > 0).map((v) => [v.id, v]));
+  const cells = new Map<string, Set<number>>();
+  for (const v of positions.values()) {
+    const key = cell(v); const ids = cells.get(key) ?? new Set<number>(); ids.add(v.id); cells.set(key, ids);
+  }
   const villagers = world.villagers.filter((v) => v.hp > 0).map((previous) => {
     let v = { ...previous };
-    const blockers = [...positions.values()].filter((unit) => unit.id !== v.id);
-    const finish = (updated: Villager): Villager => { positions.set(updated.id, updated); return updated; };
+    const finish = (updated: Villager): Villager => {
+      const oldCell = cell(previous); const newCell = cell(updated);
+      if (oldCell !== newCell) {
+        cells.get(oldCell)!.delete(updated.id);
+        const ids = cells.get(newCell) ?? new Set<number>(); ids.add(updated.id); cells.set(newCell, ids);
+      }
+      positions.set(updated.id, updated); return updated;
+    };
     const order = v.order;
     if (!order) return finish(v);
+    const blockers = nearby(v, v.id, positions, cells);
     if (order.kind === "move") {
       v = move(v, order, 0, blockers, world.map_radius);
-      const sharedGoal = blockers.some((unit) => distance(unit, order) < UNIT_SPACING);
+      const sharedGoal = distance(v, order) <= UNIT_SPACING * 2 && nearby(order, v.id, positions, cells).some((unit) => distance(unit, order) < UNIT_SPACING);
       if (distance(v, order) < 0.1 || sharedGoal && distance(v, order) <= UNIT_SPACING * 2) v.order = null;
       return finish(v);
     }
