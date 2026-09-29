@@ -3,6 +3,7 @@ _build/
 deps/
 *.beam
 erl_crash.dump
+server/cover/
 
 # Node / Vite
 node_modules/
@@ -16,6 +17,7 @@ npm-debug.log*
 !.env.example
 !web/.env.pages
 server/config/dev.local.exs
+.toolchain/
 
 # Editors and OS files
 .DS_Store
