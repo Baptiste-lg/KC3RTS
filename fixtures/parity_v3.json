@@ -1,0 +1,5166 @@
+{
+  "scenarios": [
+    {
+      "name": "economy_and_movement",
+      "results": [
+        "ok",
+        "ok",
+        "tick",
+        "ok",
+        "ok",
+        "tick"
+      ],
+      "seed": 12345,
+      "state": {
+        "buildings": [
+          {
+            "hp": 350,
+            "id": 1,
+            "max_hp": 350,
+            "owner": "player",
+            "progress": 100,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "hp": 250,
+            "id": 2,
+            "max_hp": 250,
+            "owner": "enemy",
+            "progress": 100,
+            "x": 19.0,
+            "z": 42.4
+          }
+        ],
+        "map_radius": 52.0,
+        "next_building_id": 3,
+        "next_villager_id": 5,
+        "outcome": "playing",
+        "protocol_version": 3,
+        "resources": [
+          {
+            "amount": 480,
+            "id": 1,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 14.0,
+            "z": -12.0
+          },
+          {
+            "amount": 520,
+            "id": 2,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -14.0,
+            "z": 12.0
+          },
+          {
+            "amount": 480,
+            "id": 3,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -8.2,
+            "z": 20.7
+          },
+          {
+            "amount": 480,
+            "id": 4,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -11.6,
+            "z": -8.1
+          },
+          {
+            "amount": 480,
+            "id": 5,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 7.2,
+            "z": 15.2
+          },
+          {
+            "amount": 480,
+            "id": 6,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -3.1,
+            "z": -45.7
+          },
+          {
+            "amount": 480,
+            "id": 7,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 11.8,
+            "z": -37.6
+          },
+          {
+            "amount": 480,
+            "id": 8,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -24.7,
+            "z": -38.4
+          },
+          {
+            "amount": 480,
+            "id": 9,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -42.7,
+            "z": -17.0
+          },
+          {
+            "amount": 520,
+            "id": 10,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -39.1,
+            "z": 29.8
+          },
+          {
+            "amount": 520,
+            "id": 11,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 21.4,
+            "z": 9.2
+          },
+          {
+            "amount": 520,
+            "id": 12,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -18.9,
+            "z": -21.7
+          },
+          {
+            "amount": 520,
+            "id": 13,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -5.6,
+            "z": -35.1
+          },
+          {
+            "amount": 520,
+            "id": 14,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -11.2,
+            "z": 33.2
+          },
+          {
+            "amount": 155,
+            "id": 15,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.2,
+            "z": 18.9
+          },
+          {
+            "amount": 160,
+            "id": 16,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.3,
+            "z": 6.2
+          },
+          {
+            "amount": 160,
+            "id": 17,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.8,
+            "z": 9.2
+          },
+          {
+            "amount": 160,
+            "id": 18,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.0,
+            "z": 14.9
+          },
+          {
+            "amount": 160,
+            "id": 19,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.3,
+            "z": 17.3
+          },
+          {
+            "amount": 160,
+            "id": 20,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.5,
+            "z": 13.0
+          },
+          {
+            "amount": 160,
+            "id": 21,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.2,
+            "z": 14.8
+          },
+          {
+            "amount": 160,
+            "id": 22,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 11.4,
+            "z": 8.9
+          },
+          {
+            "amount": 160,
+            "id": 23,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 18.9,
+            "z": -26.5
+          },
+          {
+            "amount": 160,
+            "id": 24,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.3,
+            "z": -33.9
+          },
+          {
+            "amount": 160,
+            "id": 25,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.0,
+            "z": -29.6
+          },
+          {
+            "amount": 160,
+            "id": 26,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.5,
+            "z": -13.4
+          },
+          {
+            "amount": 160,
+            "id": 27,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 20.3,
+            "z": -24.5
+          },
+          {
+            "amount": 160,
+            "id": 28,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 36.6,
+            "z": -18.4
+          },
+          {
+            "amount": 160,
+            "id": 29,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 25.1,
+            "z": -19.2
+          },
+          {
+            "amount": 160,
+            "id": 30,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.5,
+            "z": -22.1
+          },
+          {
+            "amount": 160,
+            "id": 31,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.0,
+            "z": -29.8
+          },
+          {
+            "amount": 160,
+            "id": 32,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 34.5,
+            "z": -25.9
+          },
+          {
+            "amount": 160,
+            "id": 33,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 23.4,
+            "z": -15.3
+          },
+          {
+            "amount": 160,
+            "id": 34,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.2,
+            "z": -22.5
+          },
+          {
+            "amount": 160,
+            "id": 35,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 27.5,
+            "z": -17.7
+          },
+          {
+            "amount": 160,
+            "id": 36,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 24.0,
+            "z": -31.1
+          },
+          {
+            "amount": 160,
+            "id": 37,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 21.6,
+            "z": -21.1
+          },
+          {
+            "amount": 160,
+            "id": 38,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.4,
+            "z": -19.5
+          },
+          {
+            "amount": 160,
+            "id": 39,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 16.5,
+            "z": -27.5
+          },
+          {
+            "amount": 160,
+            "id": 40,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 18.7,
+            "z": -22.2
+          },
+          {
+            "amount": 160,
+            "id": 41,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 34.6,
+            "z": -31.2
+          },
+          {
+            "amount": 160,
+            "id": 42,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 38.8,
+            "z": -20.2
+          },
+          {
+            "amount": 160,
+            "id": 43,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 37.1,
+            "z": -31.1
+          },
+          {
+            "amount": 160,
+            "id": 44,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 27.0,
+            "z": -12.7
+          },
+          {
+            "amount": 160,
+            "id": 45,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -11.4,
+            "z": 17.3
+          },
+          {
+            "amount": 160,
+            "id": 46,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.5,
+            "z": 22.4
+          },
+          {
+            "amount": 160,
+            "id": 47,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -13.4,
+            "z": 22.5
+          },
+          {
+            "amount": 160,
+            "id": 48,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -13.5,
+            "z": 26.1
+          },
+          {
+            "amount": 160,
+            "id": 49,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.0,
+            "z": 19.2
+          },
+          {
+            "amount": 160,
+            "id": 50,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -21.1,
+            "z": 29.8
+          },
+          {
+            "amount": 160,
+            "id": 51,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.8,
+            "z": 23.2
+          },
+          {
+            "amount": 160,
+            "id": 52,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.4,
+            "z": 30.3
+          },
+          {
+            "amount": 160,
+            "id": 53,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.1,
+            "z": 16.6
+          },
+          {
+            "amount": 160,
+            "id": 54,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.7,
+            "z": 27.0
+          },
+          {
+            "amount": 160,
+            "id": 55,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -16.9,
+            "z": 33.6
+          },
+          {
+            "amount": 160,
+            "id": 56,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -15.7,
+            "z": 24.7
+          },
+          {
+            "amount": 160,
+            "id": 57,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -22.2,
+            "z": 25.0
+          },
+          {
+            "amount": 160,
+            "id": 58,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -21.8,
+            "z": 37.1
+          },
+          {
+            "amount": 160,
+            "id": 59,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.7,
+            "z": 24.4
+          },
+          {
+            "amount": 160,
+            "id": 60,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -14.1,
+            "z": 18.9
+          },
+          {
+            "amount": 160,
+            "id": 61,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -14.9,
+            "z": 29.0
+          },
+          {
+            "amount": 160,
+            "id": 62,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -8.2,
+            "z": 26.6
+          },
+          {
+            "amount": 160,
+            "id": 63,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.0,
+            "z": 32.7
+          },
+          {
+            "amount": 160,
+            "id": 64,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.5,
+            "z": 37.3
+          },
+          {
+            "amount": 160,
+            "id": 65,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -19.7,
+            "z": 27.5
+          },
+          {
+            "amount": 160,
+            "id": 66,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.1,
+            "z": 35.2
+          },
+          {
+            "amount": 160,
+            "id": 67,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -39.6,
+            "z": 11.3
+          },
+          {
+            "amount": 160,
+            "id": 68,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -36.8,
+            "z": 14.7
+          },
+          {
+            "amount": 160,
+            "id": 69,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.0,
+            "z": 13.1
+          },
+          {
+            "amount": 160,
+            "id": 70,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -21.4,
+            "z": 11.7
+          },
+          {
+            "amount": 160,
+            "id": 71,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.2,
+            "z": 6.0
+          },
+          {
+            "amount": 160,
+            "id": 72,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -39.6,
+            "z": 15.9
+          },
+          {
+            "amount": 160,
+            "id": 73,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -37.2,
+            "z": 12.2
+          },
+          {
+            "amount": 160,
+            "id": 74,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.7,
+            "z": 15.0
+          },
+          {
+            "amount": 160,
+            "id": 75,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.5,
+            "z": -1.7
+          },
+          {
+            "amount": 160,
+            "id": 76,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -42.3,
+            "z": 5.6
+          },
+          {
+            "amount": 160,
+            "id": 77,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.0,
+            "z": 10.0
+          },
+          {
+            "amount": 160,
+            "id": 78,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.1,
+            "z": 19.6
+          },
+          {
+            "amount": 160,
+            "id": 79,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.8,
+            "z": 7.0
+          },
+          {
+            "amount": 160,
+            "id": 80,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.6,
+            "z": 9.2
+          },
+          {
+            "amount": 160,
+            "id": 81,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.7,
+            "z": 9.5
+          },
+          {
+            "amount": 160,
+            "id": 82,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.8,
+            "z": 2.2
+          },
+          {
+            "amount": 160,
+            "id": 83,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.6,
+            "z": -0.1
+          },
+          {
+            "amount": 160,
+            "id": 84,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -37.2,
+            "z": 4.9
+          },
+          {
+            "amount": 160,
+            "id": 85,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.3,
+            "z": 6.4
+          },
+          {
+            "amount": 160,
+            "id": 86,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.8,
+            "z": 2.6
+          },
+          {
+            "amount": 160,
+            "id": 87,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -33.0,
+            "z": 3.4
+          },
+          {
+            "amount": 160,
+            "id": 88,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -41.1,
+            "z": 8.0
+          },
+          {
+            "amount": 160,
+            "id": 89,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.9,
+            "z": -31.3
+          },
+          {
+            "amount": 160,
+            "id": 90,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.8,
+            "z": -33.9
+          },
+          {
+            "amount": 160,
+            "id": 91,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 9.1,
+            "z": -28.9
+          },
+          {
+            "amount": 160,
+            "id": 92,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 11.4,
+            "z": -31.4
+          },
+          {
+            "amount": 160,
+            "id": 93,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.3,
+            "z": -34.9
+          },
+          {
+            "amount": 160,
+            "id": 94,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.1,
+            "z": -37.4
+          },
+          {
+            "amount": 160,
+            "id": 95,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.4,
+            "z": 31.1
+          },
+          {
+            "amount": 160,
+            "id": 96,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 11.9,
+            "z": 29.4
+          },
+          {
+            "amount": 160,
+            "id": 97,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 1.7,
+            "z": 32.5
+          },
+          {
+            "amount": 160,
+            "id": 98,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 3.2,
+            "z": 35.2
+          },
+          {
+            "amount": 160,
+            "id": 99,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 4.9,
+            "z": 32.9
+          },
+          {
+            "amount": 160,
+            "id": 100,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 4.7,
+            "z": 37.1
+          },
+          {
+            "amount": 160,
+            "id": 101,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.3,
+            "z": 33.4
+          },
+          {
+            "amount": 160,
+            "id": 102,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -36.0,
+            "z": 24.3
+          },
+          {
+            "amount": 160,
+            "id": 103,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -31.6,
+            "z": 28.1
+          },
+          {
+            "amount": 160,
+            "id": 104,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.4,
+            "z": 31.1
+          },
+          {
+            "amount": 160,
+            "id": 105,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.3,
+            "z": 30.6
+          },
+          {
+            "amount": 160,
+            "id": 106,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.4,
+            "z": 24.6
+          },
+          {
+            "amount": 160,
+            "id": 107,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 28.7,
+            "z": -5.1
+          },
+          {
+            "amount": 160,
+            "id": 108,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.0,
+            "z": -3.1
+          },
+          {
+            "amount": 160,
+            "id": 109,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 27.5,
+            "z": -3.1
+          },
+          {
+            "amount": 160,
+            "id": 110,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 36.5,
+            "z": -4.5
+          },
+          {
+            "amount": 160,
+            "id": 111,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.5,
+            "z": 0.4
+          },
+          {
+            "amount": 160,
+            "id": 112,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 34.8,
+            "z": -2.1
+          },
+          {
+            "amount": 160,
+            "id": 113,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -37.5,
+            "z": -29.8
+          },
+          {
+            "amount": 160,
+            "id": 114,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -38.1,
+            "z": -34.8
+          },
+          {
+            "amount": 160,
+            "id": 115,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -40.2,
+            "z": -36.7
+          },
+          {
+            "amount": 160,
+            "id": 116,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.2,
+            "z": -37.1
+          },
+          {
+            "amount": 160,
+            "id": 117,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.9,
+            "z": -29.5
+          },
+          {
+            "amount": 160,
+            "id": 118,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -41.4,
+            "z": -29.0
+          }
+        ],
+        "seed": 12345,
+        "stockpile": {
+          "gold": 15,
+          "stone": 15,
+          "wood": 30
+        },
+        "tick": 120,
+        "villagers": [
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 1,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 11.36617,
+            "z": 15.09924
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 2,
+            "max_hp": 30,
+            "order": null,
+            "x": 8.0,
+            "z": 5.0
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 3,
+            "max_hp": 30,
+            "order": null,
+            "x": 3.4,
+            "z": 0.0
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 4,
+            "max_hp": 30,
+            "order": null,
+            "x": 2.404163,
+            "z": -2.404163
+          }
+        ]
+      }
+    },
+    {
+      "name": "depletion_and_invalid_orders",
+      "results": [
+        "ok",
+        "tick",
+        "invalid_location",
+        "invalid_selection",
+        "invalid_location",
+        "tick"
+      ],
+      "seed": 7,
+      "state": {
+        "buildings": [
+          {
+            "hp": 350,
+            "id": 1,
+            "max_hp": 350,
+            "owner": "player",
+            "progress": 100,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "hp": 250,
+            "id": 2,
+            "max_hp": 250,
+            "owner": "enemy",
+            "progress": 100,
+            "x": -48.0,
+            "z": 9.1
+          }
+        ],
+        "map_radius": 52.0,
+        "next_building_id": 3,
+        "next_villager_id": 4,
+        "outcome": "playing",
+        "protocol_version": 3,
+        "resources": [
+          {
+            "amount": 480,
+            "id": 1,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 14.0,
+            "z": -12.0
+          },
+          {
+            "amount": 520,
+            "id": 2,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -14.0,
+            "z": 12.0
+          },
+          {
+            "amount": 480,
+            "id": 3,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -27.3,
+            "z": -24.3
+          },
+          {
+            "amount": 480,
+            "id": 4,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 25.9,
+            "z": -16.2
+          },
+          {
+            "amount": 480,
+            "id": 5,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 9.9,
+            "z": 26.9
+          },
+          {
+            "amount": 480,
+            "id": 6,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 32.0,
+            "z": -27.8
+          },
+          {
+            "amount": 480,
+            "id": 7,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 11.9,
+            "z": 39.7
+          },
+          {
+            "amount": 480,
+            "id": 8,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -39.9,
+            "z": 15.7
+          },
+          {
+            "amount": 480,
+            "id": 9,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -33.5,
+            "z": 7.7
+          },
+          {
+            "amount": 520,
+            "id": 10,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -34.2,
+            "z": 43.8
+          },
+          {
+            "amount": 520,
+            "id": 11,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -39.2,
+            "z": 25.0
+          },
+          {
+            "amount": 520,
+            "id": 12,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -17.8,
+            "z": 21.7
+          },
+          {
+            "amount": 520,
+            "id": 13,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -32.6,
+            "z": -46.4
+          },
+          {
+            "amount": 520,
+            "id": 14,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -14.3,
+            "z": -41.5
+          },
+          {
+            "amount": 0,
+            "id": 15,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 13.8,
+            "z": 19.0
+          },
+          {
+            "amount": 160,
+            "id": 16,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.9,
+            "z": 14.6
+          },
+          {
+            "amount": 160,
+            "id": 17,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.0,
+            "z": 13.4
+          },
+          {
+            "amount": 160,
+            "id": 18,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.9,
+            "z": 17.6
+          },
+          {
+            "amount": 160,
+            "id": 19,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.2,
+            "z": 11.6
+          },
+          {
+            "amount": 160,
+            "id": 20,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.3,
+            "z": 9.5
+          },
+          {
+            "amount": 160,
+            "id": 21,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.3,
+            "z": 6.3
+          },
+          {
+            "amount": 160,
+            "id": 22,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.1,
+            "z": 8.5
+          },
+          {
+            "amount": 160,
+            "id": 23,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.5,
+            "z": 37.3
+          },
+          {
+            "amount": 160,
+            "id": 24,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.4,
+            "z": 20.4
+          },
+          {
+            "amount": 160,
+            "id": 25,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -40.3,
+            "z": 31.6
+          },
+          {
+            "amount": 160,
+            "id": 26,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.3,
+            "z": 25.3
+          },
+          {
+            "amount": 160,
+            "id": 27,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.9,
+            "z": 31.8
+          },
+          {
+            "amount": 160,
+            "id": 28,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -33.2,
+            "z": 17.5
+          },
+          {
+            "amount": 160,
+            "id": 29,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.9,
+            "z": 37.0
+          },
+          {
+            "amount": 160,
+            "id": 30,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.7,
+            "z": 31.3
+          },
+          {
+            "amount": 160,
+            "id": 31,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.8,
+            "z": 17.4
+          },
+          {
+            "amount": 160,
+            "id": 32,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.7,
+            "z": 36.2
+          },
+          {
+            "amount": 160,
+            "id": 33,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.2,
+            "z": 24.3
+          },
+          {
+            "amount": 160,
+            "id": 34,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.1,
+            "z": 29.7
+          },
+          {
+            "amount": 160,
+            "id": 35,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.4,
+            "z": 17.2
+          },
+          {
+            "amount": 160,
+            "id": 36,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -31.8,
+            "z": 20.1
+          },
+          {
+            "amount": 160,
+            "id": 37,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.0,
+            "z": 14.4
+          },
+          {
+            "amount": 160,
+            "id": 38,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.5,
+            "z": 27.6
+          },
+          {
+            "amount": 160,
+            "id": 39,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.4,
+            "z": 26.8
+          },
+          {
+            "amount": 160,
+            "id": 40,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.7,
+            "z": 35.6
+          },
+          {
+            "amount": 160,
+            "id": 41,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.5,
+            "z": 32.4
+          },
+          {
+            "amount": 160,
+            "id": 42,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -31.0,
+            "z": 23.4
+          },
+          {
+            "amount": 160,
+            "id": 43,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.2,
+            "z": 22.5
+          },
+          {
+            "amount": 160,
+            "id": 44,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.5,
+            "z": 32.2
+          },
+          {
+            "amount": 160,
+            "id": 45,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 21.6,
+            "z": -21.8
+          },
+          {
+            "amount": 160,
+            "id": 46,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 24.5,
+            "z": -8.5
+          },
+          {
+            "amount": 160,
+            "id": 47,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.1,
+            "z": -16.7
+          },
+          {
+            "amount": 160,
+            "id": 48,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.9,
+            "z": -14.8
+          },
+          {
+            "amount": 160,
+            "id": 49,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 31.9,
+            "z": -4.0
+          },
+          {
+            "amount": 160,
+            "id": 50,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.0,
+            "z": -4.3
+          },
+          {
+            "amount": 160,
+            "id": 51,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 11.9,
+            "z": -17.1
+          },
+          {
+            "amount": 160,
+            "id": 52,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 33.2,
+            "z": -18.4
+          },
+          {
+            "amount": 160,
+            "id": 53,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.0,
+            "z": -15.1
+          },
+          {
+            "amount": 160,
+            "id": 54,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 26.6,
+            "z": -5.0
+          },
+          {
+            "amount": 160,
+            "id": 55,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.7,
+            "z": -17.3
+          },
+          {
+            "amount": 160,
+            "id": 56,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 16.1,
+            "z": -19.6
+          },
+          {
+            "amount": 160,
+            "id": 57,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.1,
+            "z": -19.1
+          },
+          {
+            "amount": 160,
+            "id": 58,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 20.5,
+            "z": -18.6
+          },
+          {
+            "amount": 160,
+            "id": 59,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.8,
+            "z": -8.3
+          },
+          {
+            "amount": 160,
+            "id": 60,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 13.7,
+            "z": -5.6
+          },
+          {
+            "amount": 160,
+            "id": 61,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 20.6,
+            "z": -2.1
+          },
+          {
+            "amount": 160,
+            "id": 62,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.1,
+            "z": -23.5
+          },
+          {
+            "amount": 160,
+            "id": 63,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 22.2,
+            "z": -7.2
+          },
+          {
+            "amount": 160,
+            "id": 64,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 22.8,
+            "z": -19.7
+          },
+          {
+            "amount": 160,
+            "id": 65,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 28.2,
+            "z": -12.1
+          },
+          {
+            "amount": 160,
+            "id": 66,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.1,
+            "z": -10.9
+          },
+          {
+            "amount": 160,
+            "id": 67,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.2,
+            "z": 1.2
+          },
+          {
+            "amount": 160,
+            "id": 68,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -15.9,
+            "z": 1.0
+          },
+          {
+            "amount": 160,
+            "id": 69,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.7,
+            "z": -3.8
+          },
+          {
+            "amount": 160,
+            "id": 70,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.3,
+            "z": 11.2
+          },
+          {
+            "amount": 160,
+            "id": 71,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.9,
+            "z": -1.7
+          },
+          {
+            "amount": 160,
+            "id": 72,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.2,
+            "z": 1.3
+          },
+          {
+            "amount": 160,
+            "id": 73,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.2,
+            "z": 11.3
+          },
+          {
+            "amount": 160,
+            "id": 74,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.4,
+            "z": -3.8
+          },
+          {
+            "amount": 160,
+            "id": 75,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.5,
+            "z": -4.8
+          },
+          {
+            "amount": 160,
+            "id": 76,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.8,
+            "z": -0.7
+          },
+          {
+            "amount": 160,
+            "id": 77,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.4,
+            "z": 5.1
+          },
+          {
+            "amount": 160,
+            "id": 78,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -21.8,
+            "z": 8.4
+          },
+          {
+            "amount": 160,
+            "id": 79,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -17.6,
+            "z": 4.6
+          },
+          {
+            "amount": 160,
+            "id": 80,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -22.0,
+            "z": 4.0
+          },
+          {
+            "amount": 160,
+            "id": 81,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.5,
+            "z": 12.9
+          },
+          {
+            "amount": 160,
+            "id": 82,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.0,
+            "z": -3.8
+          },
+          {
+            "amount": 160,
+            "id": 83,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.5,
+            "z": 9.9
+          },
+          {
+            "amount": 160,
+            "id": 84,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -11.4,
+            "z": 5.2
+          },
+          {
+            "amount": 160,
+            "id": 85,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.3,
+            "z": -6.6
+          },
+          {
+            "amount": 160,
+            "id": 86,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -14.3,
+            "z": 3.2
+          },
+          {
+            "amount": 160,
+            "id": 87,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -14.7,
+            "z": -1.7
+          },
+          {
+            "amount": 160,
+            "id": 88,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -13.0,
+            "z": 7.4
+          },
+          {
+            "amount": 160,
+            "id": 89,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 39.6,
+            "z": 5.4
+          },
+          {
+            "amount": 160,
+            "id": 90,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 34.2,
+            "z": 4.7
+          },
+          {
+            "amount": 160,
+            "id": 91,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 39.2,
+            "z": 9.7
+          },
+          {
+            "amount": 160,
+            "id": 92,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 31.7,
+            "z": 5.4
+          },
+          {
+            "amount": 160,
+            "id": 93,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 41.6,
+            "z": 3.8
+          },
+          {
+            "amount": 160,
+            "id": 94,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.2,
+            "z": 8.6
+          },
+          {
+            "amount": 160,
+            "id": 95,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 9.5,
+            "z": -30.1
+          },
+          {
+            "amount": 160,
+            "id": 96,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 13.5,
+            "z": -25.8
+          },
+          {
+            "amount": 160,
+            "id": 97,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.8,
+            "z": -34.9
+          },
+          {
+            "amount": 160,
+            "id": 98,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.1,
+            "z": -34.0
+          },
+          {
+            "amount": 160,
+            "id": 99,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.0,
+            "z": -28.1
+          },
+          {
+            "amount": 160,
+            "id": 100,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.2,
+            "z": -24.1
+          },
+          {
+            "amount": 160,
+            "id": 101,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.4,
+            "z": -34.2
+          },
+          {
+            "amount": 160,
+            "id": 102,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -17.2,
+            "z": -35.9
+          },
+          {
+            "amount": 160,
+            "id": 103,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -19.9,
+            "z": -30.1
+          },
+          {
+            "amount": 160,
+            "id": 104,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -12.3,
+            "z": -35.8
+          },
+          {
+            "amount": 160,
+            "id": 105,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -12.5,
+            "z": -31.7
+          },
+          {
+            "amount": 160,
+            "id": 106,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.2,
+            "z": -26.5
+          },
+          {
+            "amount": 160,
+            "id": 107,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -8.4,
+            "z": 24.2
+          },
+          {
+            "amount": 160,
+            "id": 108,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -13.6,
+            "z": 19.5
+          },
+          {
+            "amount": 160,
+            "id": 109,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -13.2,
+            "z": 28.7
+          },
+          {
+            "amount": 160,
+            "id": 110,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -9.1,
+            "z": 28.2
+          },
+          {
+            "amount": 160,
+            "id": 111,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -11.5,
+            "z": 21.1
+          },
+          {
+            "amount": 160,
+            "id": 112,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -15.8,
+            "z": 27.8
+          },
+          {
+            "amount": 160,
+            "id": 113,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -4.8,
+            "z": 21.2
+          },
+          {
+            "amount": 160,
+            "id": 114,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 2.2,
+            "z": 22.4
+          },
+          {
+            "amount": 160,
+            "id": 115,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.4,
+            "z": 14.8
+          },
+          {
+            "amount": 160,
+            "id": 116,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.9,
+            "z": 23.4
+          },
+          {
+            "amount": 160,
+            "id": 117,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -3.8,
+            "z": 15.5
+          },
+          {
+            "amount": 160,
+            "id": 118,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -5.1,
+            "z": 25.1
+          }
+        ],
+        "seed": 7,
+        "stockpile": {
+          "gold": 20,
+          "stone": 15,
+          "wood": 31
+        },
+        "tick": 101,
+        "villagers": [
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 1,
+            "max_hp": 30,
+            "order": null,
+            "x": 11.304208,
+            "z": 17.335361
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 2,
+            "max_hp": 30,
+            "order": null,
+            "x": 2.012752,
+            "z": 2.86336
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 3,
+            "max_hp": 30,
+            "order": null,
+            "x": 12.37844,
+            "z": 15.592938
+          }
+        ]
+      }
+    },
+    {
+      "name": "construction_and_recruitment",
+      "results": [
+        "ok",
+        "tick",
+        "ok"
+      ],
+      "seed": 1234,
+      "state": {
+        "buildings": [
+          {
+            "hp": 350,
+            "id": 1,
+            "max_hp": 350,
+            "owner": "player",
+            "progress": 100,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "hp": 250,
+            "id": 2,
+            "max_hp": 250,
+            "owner": "enemy",
+            "progress": 100,
+            "x": -45.3,
+            "z": 41.3
+          },
+          {
+            "hp": 350,
+            "id": 3,
+            "max_hp": 350,
+            "owner": "player",
+            "progress": 100,
+            "x": 22,
+            "z": -22
+          }
+        ],
+        "map_radius": 52.0,
+        "next_building_id": 4,
+        "next_villager_id": 5,
+        "outcome": "playing",
+        "protocol_version": 3,
+        "resources": [
+          {
+            "amount": 480,
+            "id": 1,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 14.0,
+            "z": -12.0
+          },
+          {
+            "amount": 520,
+            "id": 2,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -14.0,
+            "z": 12.0
+          },
+          {
+            "amount": 480,
+            "id": 3,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -40.5,
+            "z": -23.7
+          },
+          {
+            "amount": 480,
+            "id": 4,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -4.0,
+            "z": -39.7
+          },
+          {
+            "amount": 480,
+            "id": 5,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 25.0,
+            "z": 40.8
+          },
+          {
+            "amount": 480,
+            "id": 6,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -33.3,
+            "z": 28.1
+          },
+          {
+            "amount": 480,
+            "id": 7,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 11.7,
+            "z": 23.2
+          },
+          {
+            "amount": 480,
+            "id": 8,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 45.1,
+            "z": 28.2
+          },
+          {
+            "amount": 480,
+            "id": 9,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -23.0,
+            "z": 24.1
+          },
+          {
+            "amount": 520,
+            "id": 10,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -42.7,
+            "z": 30.9
+          },
+          {
+            "amount": 520,
+            "id": 11,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 43.3,
+            "z": 8.8
+          },
+          {
+            "amount": 520,
+            "id": 12,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -44.1,
+            "z": 3.7
+          },
+          {
+            "amount": 520,
+            "id": 13,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -37.2,
+            "z": -8.6
+          },
+          {
+            "amount": 520,
+            "id": 14,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 32.3,
+            "z": 13.2
+          },
+          {
+            "amount": 160,
+            "id": 15,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.5,
+            "z": 15.9
+          },
+          {
+            "amount": 160,
+            "id": 16,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.0,
+            "z": 16.8
+          },
+          {
+            "amount": 160,
+            "id": 17,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.2,
+            "z": 15.1
+          },
+          {
+            "amount": 160,
+            "id": 18,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 13.5,
+            "z": 11.3
+          },
+          {
+            "amount": 160,
+            "id": 19,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.8,
+            "z": 9.7
+          },
+          {
+            "amount": 160,
+            "id": 20,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.0,
+            "z": 6.3
+          },
+          {
+            "amount": 160,
+            "id": 21,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.5,
+            "z": 10.9
+          },
+          {
+            "amount": 160,
+            "id": 22,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.6,
+            "z": 17.3
+          },
+          {
+            "amount": 160,
+            "id": 23,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 4.3,
+            "z": 23.4
+          },
+          {
+            "amount": 160,
+            "id": 24,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.4,
+            "z": 37.2
+          },
+          {
+            "amount": 160,
+            "id": 25,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -5.3,
+            "z": 30.1
+          },
+          {
+            "amount": 160,
+            "id": 26,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -3.4,
+            "z": 38.1
+          },
+          {
+            "amount": 160,
+            "id": 27,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 2.9,
+            "z": 28.5
+          },
+          {
+            "amount": 160,
+            "id": 28,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -2.0,
+            "z": 40.2
+          },
+          {
+            "amount": 160,
+            "id": 29,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 9.6,
+            "z": 35.3
+          },
+          {
+            "amount": 160,
+            "id": 30,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 0.2,
+            "z": 37.7
+          },
+          {
+            "amount": 160,
+            "id": 31,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.3,
+            "z": 43.3
+          },
+          {
+            "amount": 160,
+            "id": 32,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -5.2,
+            "z": 35.2
+          },
+          {
+            "amount": 160,
+            "id": 33,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.4,
+            "z": 31.5
+          },
+          {
+            "amount": 160,
+            "id": 34,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.0,
+            "z": 36.2
+          },
+          {
+            "amount": 160,
+            "id": 35,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 1.9,
+            "z": 26.2
+          },
+          {
+            "amount": 160,
+            "id": 36,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -5.4,
+            "z": 26.5
+          },
+          {
+            "amount": 160,
+            "id": 37,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 2.0,
+            "z": 44.6
+          },
+          {
+            "amount": 160,
+            "id": 38,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -0.4,
+            "z": 28.9
+          },
+          {
+            "amount": 160,
+            "id": 39,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.8,
+            "z": 38.6
+          },
+          {
+            "amount": 160,
+            "id": 40,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.5,
+            "z": 25.1
+          },
+          {
+            "amount": 160,
+            "id": 41,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.2,
+            "z": 22.5
+          },
+          {
+            "amount": 160,
+            "id": 42,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.7,
+            "z": 31.0
+          },
+          {
+            "amount": 160,
+            "id": 43,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 2.0,
+            "z": 40.0
+          },
+          {
+            "amount": 160,
+            "id": 44,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 1.7,
+            "z": 34.3
+          },
+          {
+            "amount": 160,
+            "id": 45,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -31.6,
+            "z": -7.7
+          },
+          {
+            "amount": 160,
+            "id": 46,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.3,
+            "z": -21.3
+          },
+          {
+            "amount": 160,
+            "id": 47,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.1,
+            "z": 1.0
+          },
+          {
+            "amount": 160,
+            "id": 48,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.5,
+            "z": -16.9
+          },
+          {
+            "amount": 160,
+            "id": 49,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -22.6,
+            "z": -11.5
+          },
+          {
+            "amount": 160,
+            "id": 50,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -21.5,
+            "z": -17.0
+          },
+          {
+            "amount": 160,
+            "id": 51,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.2,
+            "z": -5.0
+          },
+          {
+            "amount": 160,
+            "id": 52,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.9,
+            "z": -19.5
+          },
+          {
+            "amount": 160,
+            "id": 53,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -19.5,
+            "z": -2.8
+          },
+          {
+            "amount": 160,
+            "id": 54,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.5,
+            "z": -9.1
+          },
+          {
+            "amount": 160,
+            "id": 55,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.4,
+            "z": -19.8
+          },
+          {
+            "amount": 160,
+            "id": 56,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.5,
+            "z": -8.2
+          },
+          {
+            "amount": 160,
+            "id": 57,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.8,
+            "z": -5.2
+          },
+          {
+            "amount": 160,
+            "id": 58,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.6,
+            "z": 0.7
+          },
+          {
+            "amount": 160,
+            "id": 59,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.3,
+            "z": -18.8
+          },
+          {
+            "amount": 160,
+            "id": 60,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -17.4,
+            "z": -13.7
+          },
+          {
+            "amount": 160,
+            "id": 61,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.4,
+            "z": -15.5
+          },
+          {
+            "amount": 160,
+            "id": 62,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.1,
+            "z": -18.1
+          },
+          {
+            "amount": 160,
+            "id": 63,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.0,
+            "z": -3.0
+          },
+          {
+            "amount": 160,
+            "id": 64,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -15.8,
+            "z": -11.5
+          },
+          {
+            "amount": 160,
+            "id": 65,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.6,
+            "z": -13.0
+          },
+          {
+            "amount": 160,
+            "id": 66,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -35.5,
+            "z": -3.3
+          },
+          {
+            "amount": 160,
+            "id": 68,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.2,
+            "z": -32.9
+          },
+          {
+            "amount": 160,
+            "id": 69,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.3,
+            "z": -29.1
+          },
+          {
+            "amount": 160,
+            "id": 70,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 21.5,
+            "z": -34.0
+          },
+          {
+            "amount": 160,
+            "id": 71,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 35.8,
+            "z": -22.6
+          },
+          {
+            "amount": 160,
+            "id": 72,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 20.0,
+            "z": -36.4
+          },
+          {
+            "amount": 160,
+            "id": 74,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.9,
+            "z": -22.9
+          },
+          {
+            "amount": 160,
+            "id": 75,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 31.9,
+            "z": -33.3
+          },
+          {
+            "amount": 160,
+            "id": 76,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.9,
+            "z": -28.3
+          },
+          {
+            "amount": 160,
+            "id": 77,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.6,
+            "z": -37.7
+          },
+          {
+            "amount": 160,
+            "id": 79,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 31.4,
+            "z": -40.2
+          },
+          {
+            "amount": 160,
+            "id": 80,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 27.8,
+            "z": -31.9
+          },
+          {
+            "amount": 160,
+            "id": 81,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 34.7,
+            "z": -24.9
+          },
+          {
+            "amount": 160,
+            "id": 83,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.0,
+            "z": -30.2
+          },
+          {
+            "amount": 160,
+            "id": 84,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.7,
+            "z": -25.7
+          },
+          {
+            "amount": 160,
+            "id": 86,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.3,
+            "z": -36.3
+          },
+          {
+            "amount": 160,
+            "id": 87,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.7,
+            "z": -37.3
+          },
+          {
+            "amount": 160,
+            "id": 88,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 36.5,
+            "z": -31.1
+          },
+          {
+            "amount": 160,
+            "id": 89,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -8.8,
+            "z": -25.9
+          },
+          {
+            "amount": 160,
+            "id": 90,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -3.0,
+            "z": -28.2
+          },
+          {
+            "amount": 160,
+            "id": 91,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -5.0,
+            "z": -24.4
+          },
+          {
+            "amount": 160,
+            "id": 92,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -6.8,
+            "z": -33.4
+          },
+          {
+            "amount": 160,
+            "id": 93,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -12.5,
+            "z": -33.2
+          },
+          {
+            "amount": 160,
+            "id": 94,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -8.1,
+            "z": -29.4
+          },
+          {
+            "amount": 160,
+            "id": 95,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.9,
+            "z": -17.2
+          },
+          {
+            "amount": 160,
+            "id": 96,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -31.2,
+            "z": -21.2
+          },
+          {
+            "amount": 160,
+            "id": 97,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -41.6,
+            "z": -18.7
+          },
+          {
+            "amount": 160,
+            "id": 98,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -35.3,
+            "z": -23.7
+          },
+          {
+            "amount": 160,
+            "id": 99,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -37.6,
+            "z": -27.7
+          },
+          {
+            "amount": 160,
+            "id": 100,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -40.2,
+            "z": -16.1
+          },
+          {
+            "amount": 160,
+            "id": 101,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 23.6,
+            "z": 4.2
+          },
+          {
+            "amount": 160,
+            "id": 102,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 21.1,
+            "z": 1.8
+          },
+          {
+            "amount": 160,
+            "id": 103,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 22.5,
+            "z": -0.2
+          },
+          {
+            "amount": 160,
+            "id": 104,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 28.6,
+            "z": 1.1
+          },
+          {
+            "amount": 160,
+            "id": 105,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 25.3,
+            "z": 2.0
+          },
+          {
+            "amount": 160,
+            "id": 106,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 22.3,
+            "z": 8.1
+          },
+          {
+            "amount": 160,
+            "id": 107,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 43.5,
+            "z": 33.2
+          },
+          {
+            "amount": 160,
+            "id": 108,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 35.6,
+            "z": 36.5
+          },
+          {
+            "amount": 160,
+            "id": 109,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 37.5,
+            "z": 33.7
+          },
+          {
+            "amount": 160,
+            "id": 110,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 40.4,
+            "z": 30.4
+          },
+          {
+            "amount": 160,
+            "id": 111,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 40.8,
+            "z": 36.3
+          },
+          {
+            "amount": 160,
+            "id": 112,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 31.7,
+            "z": 34.1
+          },
+          {
+            "amount": 160,
+            "id": 113,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 40.3,
+            "z": 14.4
+          },
+          {
+            "amount": 160,
+            "id": 114,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 39.6,
+            "z": 18.0
+          },
+          {
+            "amount": 160,
+            "id": 115,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 36.6,
+            "z": 20.9
+          },
+          {
+            "amount": 160,
+            "id": 116,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 36.5,
+            "z": 17.6
+          },
+          {
+            "amount": 160,
+            "id": 117,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 33.1,
+            "z": 19.9
+          },
+          {
+            "amount": 160,
+            "id": 118,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.1,
+            "z": 17.9
+          }
+        ],
+        "seed": 1234,
+        "stockpile": {
+          "gold": 15,
+          "stone": 0,
+          "wood": 0
+        },
+        "tick": 200,
+        "villagers": [
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 1,
+            "max_hp": 30,
+            "order": null,
+            "x": 20.66184,
+            "z": -18.765912
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 2,
+            "max_hp": 30,
+            "order": null,
+            "x": 19.100074,
+            "z": -20.040298
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 3,
+            "max_hp": 30,
+            "order": null,
+            "x": 19.740292,
+            "z": -19.327227
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 4,
+            "max_hp": 30,
+            "order": null,
+            "x": 22.0,
+            "z": -18.6
+          }
+        ]
+      }
+    },
+    {
+      "name": "dead_target_and_game_over",
+      "results": [
+        "invalid_target",
+        "tick",
+        "game_over"
+      ],
+      "seed": 42,
+      "state": {
+        "buildings": [
+          {
+            "hp": 350,
+            "id": 1,
+            "max_hp": 350,
+            "owner": "player",
+            "progress": 100,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "hp": 0,
+            "id": 2,
+            "max_hp": 250,
+            "owner": "enemy",
+            "progress": 100,
+            "x": -47.9,
+            "z": 6.9
+          }
+        ],
+        "map_radius": 52.0,
+        "next_building_id": 3,
+        "next_villager_id": 4,
+        "outcome": "victory",
+        "protocol_version": 3,
+        "resources": [
+          {
+            "amount": 480,
+            "id": 1,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 14.0,
+            "z": -12.0
+          },
+          {
+            "amount": 520,
+            "id": 2,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -14.0,
+            "z": 12.0
+          },
+          {
+            "amount": 480,
+            "id": 3,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -22.9,
+            "z": -4.9
+          },
+          {
+            "amount": 480,
+            "id": 4,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 14.5,
+            "z": 43.9
+          },
+          {
+            "amount": 480,
+            "id": 5,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 12.1,
+            "z": 20.3
+          },
+          {
+            "amount": 480,
+            "id": 6,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -43.0,
+            "z": -25.6
+          },
+          {
+            "amount": 480,
+            "id": 7,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 24.5,
+            "z": 3.4
+          },
+          {
+            "amount": 480,
+            "id": 8,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -4.4,
+            "z": -46.8
+          },
+          {
+            "amount": 480,
+            "id": 9,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 33.9,
+            "z": -0.8
+          },
+          {
+            "amount": 520,
+            "id": 10,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 30.0,
+            "z": 27.6
+          },
+          {
+            "amount": 520,
+            "id": 11,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -2.0,
+            "z": 37.0
+          },
+          {
+            "amount": 520,
+            "id": 12,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 26.2,
+            "z": -7.0
+          },
+          {
+            "amount": 520,
+            "id": 13,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 34.3,
+            "z": -10.9
+          },
+          {
+            "amount": 520,
+            "id": 14,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 39.3,
+            "z": -43.7
+          },
+          {
+            "amount": 160,
+            "id": 15,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.8,
+            "z": 10.7
+          },
+          {
+            "amount": 160,
+            "id": 16,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.3,
+            "z": 11.7
+          },
+          {
+            "amount": 160,
+            "id": 17,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.8,
+            "z": 14.9
+          },
+          {
+            "amount": 160,
+            "id": 18,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.6,
+            "z": 8.1
+          },
+          {
+            "amount": 160,
+            "id": 19,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.2,
+            "z": 12.8
+          },
+          {
+            "amount": 160,
+            "id": 20,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.7,
+            "z": 12.4
+          },
+          {
+            "amount": 160,
+            "id": 21,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 13.4,
+            "z": 14.7
+          },
+          {
+            "amount": 160,
+            "id": 22,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.0,
+            "z": 10.4
+          },
+          {
+            "amount": 160,
+            "id": 23,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.2,
+            "z": -25.7
+          },
+          {
+            "amount": 160,
+            "id": 24,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -38.7,
+            "z": -16.4
+          },
+          {
+            "amount": 160,
+            "id": 25,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -37.1,
+            "z": -11.2
+          },
+          {
+            "amount": 160,
+            "id": 26,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.6,
+            "z": -31.7
+          },
+          {
+            "amount": 160,
+            "id": 27,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -39.4,
+            "z": -28.3
+          },
+          {
+            "amount": 160,
+            "id": 28,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.1,
+            "z": -19.1
+          },
+          {
+            "amount": 160,
+            "id": 29,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -35.0,
+            "z": -25.5
+          },
+          {
+            "amount": 160,
+            "id": 30,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.7,
+            "z": -24.0
+          },
+          {
+            "amount": 160,
+            "id": 31,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -36.5,
+            "z": -18.0
+          },
+          {
+            "amount": 160,
+            "id": 32,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.8,
+            "z": -19.1
+          },
+          {
+            "amount": 160,
+            "id": 33,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.3,
+            "z": -16.2
+          },
+          {
+            "amount": 160,
+            "id": 34,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.6,
+            "z": -15.5
+          },
+          {
+            "amount": 160,
+            "id": 35,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.1,
+            "z": -10.6
+          },
+          {
+            "amount": 160,
+            "id": 36,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.5,
+            "z": -23.0
+          },
+          {
+            "amount": 160,
+            "id": 37,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.8,
+            "z": -32.6
+          },
+          {
+            "amount": 160,
+            "id": 38,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.7,
+            "z": -12.0
+          },
+          {
+            "amount": 160,
+            "id": 39,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.2,
+            "z": -19.5
+          },
+          {
+            "amount": 160,
+            "id": 40,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -22.2,
+            "z": -23.5
+          },
+          {
+            "amount": 160,
+            "id": 41,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.6,
+            "z": -26.0
+          },
+          {
+            "amount": 160,
+            "id": 42,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.3,
+            "z": -17.5
+          },
+          {
+            "amount": 160,
+            "id": 43,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.6,
+            "z": -28.4
+          },
+          {
+            "amount": 160,
+            "id": 44,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.4,
+            "z": -26.0
+          },
+          {
+            "amount": 160,
+            "id": 45,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 40.0,
+            "z": -11.3
+          },
+          {
+            "amount": 160,
+            "id": 46,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.1,
+            "z": -17.3
+          },
+          {
+            "amount": 160,
+            "id": 47,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 23.8,
+            "z": -15.0
+          },
+          {
+            "amount": 160,
+            "id": 48,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 28.9,
+            "z": -12.7
+          },
+          {
+            "amount": 160,
+            "id": 49,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 38.4,
+            "z": -4.7
+          },
+          {
+            "amount": 160,
+            "id": 50,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 35.1,
+            "z": -18.1
+          },
+          {
+            "amount": 160,
+            "id": 51,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 24.3,
+            "z": -19.9
+          },
+          {
+            "amount": 160,
+            "id": 52,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 20.5,
+            "z": -11.8
+          },
+          {
+            "amount": 160,
+            "id": 53,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 28.3,
+            "z": 0.8
+          },
+          {
+            "amount": 160,
+            "id": 54,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 33.2,
+            "z": -19.9
+          },
+          {
+            "amount": 160,
+            "id": 55,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 21.5,
+            "z": -7.8
+          },
+          {
+            "amount": 160,
+            "id": 56,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 40.5,
+            "z": -8.4
+          },
+          {
+            "amount": 160,
+            "id": 57,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 26.4,
+            "z": -1.6
+          },
+          {
+            "amount": 160,
+            "id": 58,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 23.7,
+            "z": -2.1
+          },
+          {
+            "amount": 160,
+            "id": 59,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.5,
+            "z": -4.8
+          },
+          {
+            "amount": 160,
+            "id": 60,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 26.3,
+            "z": -13.4
+          },
+          {
+            "amount": 160,
+            "id": 61,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.6,
+            "z": -20.3
+          },
+          {
+            "amount": 160,
+            "id": 62,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 18.3,
+            "z": -16.9
+          },
+          {
+            "amount": 160,
+            "id": 63,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 32.7,
+            "z": -17.0
+          },
+          {
+            "amount": 160,
+            "id": 64,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 18.3,
+            "z": -8.2
+          },
+          {
+            "amount": 160,
+            "id": 65,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 16.3,
+            "z": -6.2
+          },
+          {
+            "amount": 160,
+            "id": 66,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 27.4,
+            "z": -21.1
+          },
+          {
+            "amount": 160,
+            "id": 67,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 0.4,
+            "z": -29.7
+          },
+          {
+            "amount": 160,
+            "id": 68,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 1.6,
+            "z": -24.7
+          },
+          {
+            "amount": 160,
+            "id": 69,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.1,
+            "z": -36.7
+          },
+          {
+            "amount": 160,
+            "id": 70,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -2.8,
+            "z": -37.0
+          },
+          {
+            "amount": 160,
+            "id": 71,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.8,
+            "z": -38.5
+          },
+          {
+            "amount": 160,
+            "id": 72,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.9,
+            "z": -29.3
+          },
+          {
+            "amount": 160,
+            "id": 73,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.1,
+            "z": -22.9
+          },
+          {
+            "amount": 160,
+            "id": 74,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 11.8,
+            "z": -27.4
+          },
+          {
+            "amount": 160,
+            "id": 75,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.2,
+            "z": -42.0
+          },
+          {
+            "amount": 160,
+            "id": 76,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 16.9,
+            "z": -27.4
+          },
+          {
+            "amount": 160,
+            "id": 77,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.9,
+            "z": -35.8
+          },
+          {
+            "amount": 160,
+            "id": 78,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 9.9,
+            "z": -42.5
+          },
+          {
+            "amount": 160,
+            "id": 79,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 1.2,
+            "z": -42.2
+          },
+          {
+            "amount": 160,
+            "id": 80,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -3.6,
+            "z": -27.1
+          },
+          {
+            "amount": 160,
+            "id": 81,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.2,
+            "z": -38.1
+          },
+          {
+            "amount": 160,
+            "id": 82,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 4.6,
+            "z": -37.5
+          },
+          {
+            "amount": 160,
+            "id": 83,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.4,
+            "z": -20.7
+          },
+          {
+            "amount": 160,
+            "id": 84,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 2.2,
+            "z": -33.1
+          },
+          {
+            "amount": 160,
+            "id": 85,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.8,
+            "z": -22.7
+          },
+          {
+            "amount": 160,
+            "id": 86,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.0,
+            "z": -23.8
+          },
+          {
+            "amount": 160,
+            "id": 87,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -0.1,
+            "z": -37.3
+          },
+          {
+            "amount": 160,
+            "id": 88,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 6.3,
+            "z": -30.3
+          },
+          {
+            "amount": 160,
+            "id": 89,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 25.8,
+            "z": -28.6
+          },
+          {
+            "amount": 160,
+            "id": 90,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 23.9,
+            "z": -34.5
+          },
+          {
+            "amount": 160,
+            "id": 91,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 24.8,
+            "z": -31.5
+          },
+          {
+            "amount": 160,
+            "id": 92,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 29.7,
+            "z": -30.3
+          },
+          {
+            "amount": 160,
+            "id": 93,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 26.9,
+            "z": -26.0
+          },
+          {
+            "amount": 160,
+            "id": 94,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 23.0,
+            "z": -29.2
+          },
+          {
+            "amount": 160,
+            "id": 95,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -35.4,
+            "z": 36.9
+          },
+          {
+            "amount": 160,
+            "id": 96,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -35.9,
+            "z": 42.6
+          },
+          {
+            "amount": 160,
+            "id": 97,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.3,
+            "z": 37.5
+          },
+          {
+            "amount": 160,
+            "id": 98,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.1,
+            "z": 40.7
+          },
+          {
+            "amount": 160,
+            "id": 99,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -38.5,
+            "z": 43.5
+          },
+          {
+            "amount": 160,
+            "id": 100,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.3,
+            "z": 43.0
+          },
+          {
+            "amount": 160,
+            "id": 101,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.9,
+            "z": 39.4
+          },
+          {
+            "amount": 160,
+            "id": 102,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 18.8,
+            "z": 36.3
+          },
+          {
+            "amount": 160,
+            "id": 103,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.7,
+            "z": 30.0
+          },
+          {
+            "amount": 160,
+            "id": 104,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 15.6,
+            "z": 32.8
+          },
+          {
+            "amount": 160,
+            "id": 105,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.9,
+            "z": 29.0
+          },
+          {
+            "amount": 160,
+            "id": 106,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 13.1,
+            "z": 36.9
+          },
+          {
+            "amount": 160,
+            "id": 107,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 33.3,
+            "z": 36.3
+          },
+          {
+            "amount": 160,
+            "id": 108,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 38.7,
+            "z": 41.3
+          },
+          {
+            "amount": 160,
+            "id": 109,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.8,
+            "z": 33.3
+          },
+          {
+            "amount": 160,
+            "id": 110,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 35.2,
+            "z": 39.6
+          },
+          {
+            "amount": 160,
+            "id": 111,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.2,
+            "z": 35.9
+          },
+          {
+            "amount": 160,
+            "id": 112,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 40.2,
+            "z": 36.0
+          },
+          {
+            "amount": 160,
+            "id": 113,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.5,
+            "z": 29.1
+          },
+          {
+            "amount": 160,
+            "id": 114,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -17.1,
+            "z": 29.7
+          },
+          {
+            "amount": 160,
+            "id": 115,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.3,
+            "z": 31.9
+          },
+          {
+            "amount": 160,
+            "id": 116,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -22.5,
+            "z": 25.6
+          },
+          {
+            "amount": 160,
+            "id": 117,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.0,
+            "z": 25.3
+          },
+          {
+            "amount": 160,
+            "id": 118,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.0,
+            "z": 29.8
+          }
+        ],
+        "seed": 42,
+        "stockpile": {
+          "gold": 20,
+          "stone": 15,
+          "wood": 30
+        },
+        "tick": 1,
+        "villagers": [
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 1,
+            "max_hp": 30,
+            "order": null,
+            "x": 0.0,
+            "z": 3.4
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 2,
+            "max_hp": 30,
+            "order": null,
+            "x": 2.404163,
+            "z": 2.404163
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 3,
+            "max_hp": 30,
+            "order": null,
+            "x": 3.4,
+            "z": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "crowded_orders_and_delivery",
+      "results": [
+        "ok",
+        "ok",
+        "ok",
+        "tick",
+        "ok",
+        "tick"
+      ],
+      "seed": 91,
+      "state": {
+        "buildings": [
+          {
+            "hp": 350,
+            "id": 1,
+            "max_hp": 350,
+            "owner": "player",
+            "progress": 100,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "hp": 250,
+            "id": 2,
+            "max_hp": 250,
+            "owner": "enemy",
+            "progress": 100,
+            "x": -47.8,
+            "z": 22.8
+          }
+        ],
+        "map_radius": 52.0,
+        "next_building_id": 3,
+        "next_villager_id": 6,
+        "outcome": "playing",
+        "protocol_version": 3,
+        "resources": [
+          {
+            "amount": 480,
+            "id": 1,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 14.0,
+            "z": -12.0
+          },
+          {
+            "amount": 520,
+            "id": 2,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -14.0,
+            "z": 12.0
+          },
+          {
+            "amount": 480,
+            "id": 3,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 21.0,
+            "z": -34.2
+          },
+          {
+            "amount": 480,
+            "id": 4,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -39.1,
+            "z": -22.4
+          },
+          {
+            "amount": 480,
+            "id": 5,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 34.1,
+            "z": -26.4
+          },
+          {
+            "amount": 480,
+            "id": 6,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 39.9,
+            "z": 15.0
+          },
+          {
+            "amount": 480,
+            "id": 7,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": -33.0,
+            "z": 46.6
+          },
+          {
+            "amount": 480,
+            "id": 8,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 34.3,
+            "z": 6.2
+          },
+          {
+            "amount": 480,
+            "id": 9,
+            "initial_amount": 480,
+            "kind": "stone",
+            "x": 25.7,
+            "z": 5.0
+          },
+          {
+            "amount": 520,
+            "id": 10,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 33.3,
+            "z": -7.2
+          },
+          {
+            "amount": 520,
+            "id": 11,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -43.3,
+            "z": 0.0
+          },
+          {
+            "amount": 520,
+            "id": 12,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 46.0,
+            "z": -39.8
+          },
+          {
+            "amount": 520,
+            "id": 13,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": 2.1,
+            "z": 24.1
+          },
+          {
+            "amount": 520,
+            "id": 14,
+            "initial_amount": 520,
+            "kind": "gold",
+            "x": -28.4,
+            "z": 21.9
+          },
+          {
+            "amount": 110,
+            "id": 15,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 16.2,
+            "z": 13.4
+          },
+          {
+            "amount": 160,
+            "id": 16,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.1,
+            "z": 13.3
+          },
+          {
+            "amount": 160,
+            "id": 17,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 12.4,
+            "z": 10.5
+          },
+          {
+            "amount": 160,
+            "id": 18,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 13.9,
+            "z": 18.8
+          },
+          {
+            "amount": 160,
+            "id": 19,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.6,
+            "z": 10.4
+          },
+          {
+            "amount": 160,
+            "id": 20,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.3,
+            "z": 16.0
+          },
+          {
+            "amount": 160,
+            "id": 21,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 9.7,
+            "z": 14.3
+          },
+          {
+            "amount": 160,
+            "id": 22,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 14.0,
+            "z": 12.6
+          },
+          {
+            "amount": 160,
+            "id": 23,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 3.9,
+            "z": 39.1
+          },
+          {
+            "amount": 160,
+            "id": 24,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -9.1,
+            "z": 27.0
+          },
+          {
+            "amount": 160,
+            "id": 25,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 7.9,
+            "z": 30.5
+          },
+          {
+            "amount": 160,
+            "id": 26,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.6,
+            "z": 18.8
+          },
+          {
+            "amount": 160,
+            "id": 27,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 5.3,
+            "z": 28.9
+          },
+          {
+            "amount": 160,
+            "id": 28,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -4.9,
+            "z": 18.4
+          },
+          {
+            "amount": 160,
+            "id": 29,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -8.4,
+            "z": 21.2
+          },
+          {
+            "amount": 160,
+            "id": 30,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -5.7,
+            "z": 22.8
+          },
+          {
+            "amount": 160,
+            "id": 31,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 0.8,
+            "z": 35.3
+          },
+          {
+            "amount": 160,
+            "id": 32,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -12.4,
+            "z": 35.3
+          },
+          {
+            "amount": 160,
+            "id": 33,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.3,
+            "z": 31.2
+          },
+          {
+            "amount": 160,
+            "id": 34,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -4.5,
+            "z": 36.2
+          },
+          {
+            "amount": 160,
+            "id": 35,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -12.0,
+            "z": 25.8
+          },
+          {
+            "amount": 160,
+            "id": 36,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -9.2,
+            "z": 39.0
+          },
+          {
+            "amount": 160,
+            "id": 37,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -2.0,
+            "z": 30.1
+          },
+          {
+            "amount": 160,
+            "id": 38,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -8.9,
+            "z": 29.3
+          },
+          {
+            "amount": 160,
+            "id": 39,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -6.8,
+            "z": 26.8
+          },
+          {
+            "amount": 160,
+            "id": 40,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -4.4,
+            "z": 28.7
+          },
+          {
+            "amount": 160,
+            "id": 41,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -13.7,
+            "z": 27.8
+          },
+          {
+            "amount": 160,
+            "id": 42,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 2.7,
+            "z": 18.1
+          },
+          {
+            "amount": 160,
+            "id": 43,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.8,
+            "z": 27.5
+          },
+          {
+            "amount": 160,
+            "id": 44,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 5.7,
+            "z": 36.2
+          },
+          {
+            "amount": 160,
+            "id": 45,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.4,
+            "z": -14.3
+          },
+          {
+            "amount": 160,
+            "id": 46,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 4.4,
+            "z": -25.5
+          },
+          {
+            "amount": 160,
+            "id": 47,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 8.1,
+            "z": -22.5
+          },
+          {
+            "amount": 160,
+            "id": 48,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 1.4,
+            "z": -18.1
+          },
+          {
+            "amount": 160,
+            "id": 49,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -6.9,
+            "z": -25.5
+          },
+          {
+            "amount": 160,
+            "id": 50,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -4.1,
+            "z": -22.0
+          },
+          {
+            "amount": 160,
+            "id": 51,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -10.5,
+            "z": -26.2
+          },
+          {
+            "amount": 160,
+            "id": 52,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -7.2,
+            "z": -17.2
+          },
+          {
+            "amount": 160,
+            "id": 53,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 10.8,
+            "z": -24.9
+          },
+          {
+            "amount": 160,
+            "id": 54,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -2.3,
+            "z": -30.4
+          },
+          {
+            "amount": 160,
+            "id": 55,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -1.3,
+            "z": -22.1
+          },
+          {
+            "amount": 160,
+            "id": 56,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -10.9,
+            "z": -29.8
+          },
+          {
+            "amount": 160,
+            "id": 57,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 3.1,
+            "z": -30.7
+          },
+          {
+            "amount": 160,
+            "id": 58,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -12.1,
+            "z": -24.1
+          },
+          {
+            "amount": 160,
+            "id": 59,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 9.1,
+            "z": -32.9
+          },
+          {
+            "amount": 160,
+            "id": 60,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 1.4,
+            "z": -38.3
+          },
+          {
+            "amount": 160,
+            "id": 61,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 4.9,
+            "z": -27.9
+          },
+          {
+            "amount": 160,
+            "id": 62,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 3.6,
+            "z": -14.5
+          },
+          {
+            "amount": 160,
+            "id": 63,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -0.6,
+            "z": -34.0
+          },
+          {
+            "amount": 160,
+            "id": 64,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -4.2,
+            "z": -31.9
+          },
+          {
+            "amount": 160,
+            "id": 65,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 0.0,
+            "z": -27.4
+          },
+          {
+            "amount": 160,
+            "id": 66,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -5.9,
+            "z": -20.2
+          },
+          {
+            "amount": 160,
+            "id": 67,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.5,
+            "z": 34.4
+          },
+          {
+            "amount": 160,
+            "id": 68,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.8,
+            "z": 41.2
+          },
+          {
+            "amount": 160,
+            "id": 69,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -35.2,
+            "z": 35.2
+          },
+          {
+            "amount": 160,
+            "id": 70,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.3,
+            "z": 32.1
+          },
+          {
+            "amount": 160,
+            "id": 71,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -19.2,
+            "z": 34.1
+          },
+          {
+            "amount": 160,
+            "id": 72,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -40.9,
+            "z": 27.1
+          },
+          {
+            "amount": 160,
+            "id": 73,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.8,
+            "z": 26.9
+          },
+          {
+            "amount": 160,
+            "id": 74,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -28.1,
+            "z": 37.3
+          },
+          {
+            "amount": 160,
+            "id": 75,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -38.0,
+            "z": 32.1
+          },
+          {
+            "amount": 160,
+            "id": 76,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.4,
+            "z": 43.9
+          },
+          {
+            "amount": 160,
+            "id": 77,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.7,
+            "z": 27.2
+          },
+          {
+            "amount": 160,
+            "id": 78,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.8,
+            "z": 33.6
+          },
+          {
+            "amount": 160,
+            "id": 79,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -36.2,
+            "z": 29.9
+          },
+          {
+            "amount": 160,
+            "id": 80,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.5,
+            "z": 30.7
+          },
+          {
+            "amount": 160,
+            "id": 81,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -38.2,
+            "z": 40.6
+          },
+          {
+            "amount": 160,
+            "id": 82,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.6,
+            "z": 28.7
+          },
+          {
+            "amount": 160,
+            "id": 83,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.4,
+            "z": 27.7
+          },
+          {
+            "amount": 160,
+            "id": 84,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -41.7,
+            "z": 35.9
+          },
+          {
+            "amount": 160,
+            "id": 85,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -36.2,
+            "z": 43.4
+          },
+          {
+            "amount": 160,
+            "id": 86,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -23.6,
+            "z": 24.2
+          },
+          {
+            "amount": 160,
+            "id": 87,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -25.4,
+            "z": 37.5
+          },
+          {
+            "amount": 160,
+            "id": 88,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.5,
+            "z": 42.2
+          },
+          {
+            "amount": 160,
+            "id": 89,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -15.7,
+            "z": -18.5
+          },
+          {
+            "amount": 160,
+            "id": 90,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -20.5,
+            "z": -24.6
+          },
+          {
+            "amount": 160,
+            "id": 91,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -18.5,
+            "z": -19.4
+          },
+          {
+            "amount": 160,
+            "id": 92,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -14.3,
+            "z": -15.8
+          },
+          {
+            "amount": 160,
+            "id": 93,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -22.2,
+            "z": -19.8
+          },
+          {
+            "amount": 160,
+            "id": 94,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -12.6,
+            "z": -19.7
+          },
+          {
+            "amount": 160,
+            "id": 95,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 25.8,
+            "z": 39.5
+          },
+          {
+            "amount": 160,
+            "id": 96,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 28.9,
+            "z": 31.1
+          },
+          {
+            "amount": 160,
+            "id": 97,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.8,
+            "z": 39.0
+          },
+          {
+            "amount": 160,
+            "id": 98,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 27.9,
+            "z": 36.9
+          },
+          {
+            "amount": 160,
+            "id": 99,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 30.1,
+            "z": 43.6
+          },
+          {
+            "amount": 160,
+            "id": 100,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 34.1,
+            "z": 40.3
+          },
+          {
+            "amount": 160,
+            "id": 101,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.1,
+            "z": 15.4
+          },
+          {
+            "amount": 160,
+            "id": 102,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -24.9,
+            "z": 9.4
+          },
+          {
+            "amount": 160,
+            "id": 103,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -35.9,
+            "z": 13.8
+          },
+          {
+            "amount": 160,
+            "id": 104,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.5,
+            "z": 11.4
+          },
+          {
+            "amount": 160,
+            "id": 105,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -26.9,
+            "z": 7.3
+          },
+          {
+            "amount": 160,
+            "id": 106,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -31.0,
+            "z": 8.6
+          },
+          {
+            "amount": 160,
+            "id": 107,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 20.7,
+            "z": -2.5
+          },
+          {
+            "amount": 160,
+            "id": 108,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 17.2,
+            "z": -2.0
+          },
+          {
+            "amount": 160,
+            "id": 109,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 25.6,
+            "z": -7.5
+          },
+          {
+            "amount": 160,
+            "id": 110,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 19.6,
+            "z": -5.1
+          },
+          {
+            "amount": 160,
+            "id": 111,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 22.5,
+            "z": -12.3
+          },
+          {
+            "amount": 160,
+            "id": 112,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": 18.6,
+            "z": -8.9
+          },
+          {
+            "amount": 160,
+            "id": 113,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -29.4,
+            "z": -4.9
+          },
+          {
+            "amount": 160,
+            "id": 114,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -34.2,
+            "z": -5.8
+          },
+          {
+            "amount": 160,
+            "id": 115,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -33.2,
+            "z": 0.2
+          },
+          {
+            "amount": 160,
+            "id": 116,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -27.2,
+            "z": -6.1
+          },
+          {
+            "amount": 160,
+            "id": 117,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -32.6,
+            "z": -2.8
+          },
+          {
+            "amount": 160,
+            "id": 118,
+            "initial_amount": 160,
+            "kind": "wood",
+            "x": -30.2,
+            "z": 3.2
+          }
+        ],
+        "seed": 91,
+        "stockpile": {
+          "gold": 10,
+          "stone": 15,
+          "wood": 45
+        },
+        "tick": 180,
+        "villagers": [
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 5,
+            "cargo_kind": "wood",
+            "hp": 30,
+            "id": 1,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 13.266841,
+            "z": 11.407675
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 5,
+            "cargo_kind": "wood",
+            "hp": 30,
+            "id": 2,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 5.884265,
+            "z": 4.413019
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 5,
+            "cargo_kind": "wood",
+            "hp": 30,
+            "id": 3,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 9.70953,
+            "z": 9.742067
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 5,
+            "cargo_kind": "wood",
+            "hp": 30,
+            "id": 4,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 6.810361,
+            "z": 4.506871
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 5,
+            "cargo_kind": "wood",
+            "hp": 30,
+            "id": 5,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 6.504475,
+            "z": 6.250916
+          }
+        ]
+      }
+    }
+  ],
+  "source": "Elixir prototype World + Snapshot; compare every field in browser preview",
+  "version": 3
+}

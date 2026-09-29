@@ -1,0 +1,62 @@
+{
+  "version": 3,
+  "scenarios": [
+    {
+      "name": "economy_and_movement",
+      "seed": 12345,
+      "steps": [
+        { "command": { "type": "spawn_villager", "building_id": 1 } },
+        { "command": { "type": "order", "villager_ids": [1, 2], "order": { "kind": "move", "x": 8, "z": 5 } } },
+        { "ticks": 20 },
+        { "command": { "type": "stop", "villager_ids": [2] } },
+        { "command": { "type": "order", "villager_ids": [1], "order": { "kind": "gather", "id": 15 } } },
+        { "ticks": 100 }
+      ]
+    },
+    {
+      "name": "depletion_and_invalid_orders",
+      "seed": 7,
+      "setup": { "resource_amounts": { "15": 1 } },
+      "steps": [
+        { "command": { "type": "order", "villager_ids": [1, 2, 3], "order": { "kind": "gather", "id": 15 } } },
+        { "ticks": 100 },
+        { "command": { "type": "build", "villager_ids": [1], "x": 0, "z": 0 } },
+        { "command": { "type": "stop", "villager_ids": [1, 999] } },
+        { "command": { "type": "order", "villager_ids": [1], "order": { "kind": "move", "x": 100, "z": 0 } } },
+        { "ticks": 1 }
+      ]
+    },
+    {
+      "name": "construction_and_recruitment",
+      "seed": 1234,
+      "setup": { "clear_resources_near": { "x": 22, "z": -22, "radius": 8 } },
+      "steps": [
+        { "command": { "type": "build", "villager_ids": [1, 2, 3], "x": 22, "z": -22 } },
+        { "ticks": 200 },
+        { "command": { "type": "spawn_villager", "building_id": 3 } }
+      ]
+    },
+    {
+      "name": "dead_target_and_game_over",
+      "seed": 42,
+      "setup": { "enemy_hp": 0 },
+      "steps": [
+        { "command": { "type": "order", "villager_ids": [1], "order": { "kind": "attack", "id": 2 } } },
+        { "ticks": 1 },
+        { "command": { "type": "spawn_villager", "building_id": 1 } }
+      ]
+    },
+    {
+      "name": "crowded_orders_and_delivery",
+      "seed": 91,
+      "steps": [
+        { "command": { "type": "spawn_villager", "building_id": 1 } },
+        { "command": { "type": "spawn_villager", "building_id": 1 } },
+        { "command": { "type": "order", "villager_ids": [1, 2, 3, 4, 5], "order": { "kind": "move", "x": 8, "z": 8 } } },
+        { "ticks": 60 },
+        { "command": { "type": "order", "villager_ids": [1, 2, 3, 4, 5], "order": { "kind": "gather", "id": 15 } } },
+        { "ticks": 120 }
+      ]
+    }
+  ]
+}
