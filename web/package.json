@@ -13,6 +13,7 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "smoke": "node scripts/smoke.mjs",
     "smoke:pages": "npm run build:pages && node scripts/smoke.mjs --pages"
   },
@@ -25,6 +26,7 @@
     "@types/node": "26.6.3",
     "@types/phoenix": "1.6.7",
     "@types/three": "0.186.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "10.11.0",
     "globals": "17.12.0",
     "typescript": "6.0.3",

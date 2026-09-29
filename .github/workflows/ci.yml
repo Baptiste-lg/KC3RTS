@@ -58,16 +58,37 @@ jobs:
         working-directory: web
       - run: npm run typecheck
         working-directory: web
-      - run: npm test
+      - run: npm run test:coverage
         working-directory: web
       - run: npm run build
         working-directory: web
       - run: npm run build:pages
         working-directory: web
 
+  kc3:
+    name: Pinned KC3 rule boundary
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28.0"
+          elixir-version: "1.20.0"
+      - name: Install KC3 build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang libtool-bin libffi-dev libbsd-dev libevent-dev pkg-config ruby
+      - name: Build pinned KC3
+        run: sh scripts/setup-kc3.sh
+      - run: mix deps.get
+        working-directory: server
+      - name: KC3 integration tests
+        working-directory: server
+        env:
+          KC3RTS_KC3S: ${{ github.workspace }}/.toolchain/kc3/kc3s/kc3s
+        run: mix test --cover
+
   browser:
     name: Browser play loop
-    needs: [server, web]
+    needs: [server, web, kc3]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

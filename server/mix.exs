@@ -8,7 +8,7 @@ defmodule KC3RTS.MixProject do
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
-      test_coverage: [summary: [threshold: 70]],
+      test_coverage: [summary: [threshold: 90]],
       deps: deps()
     ]
   end
