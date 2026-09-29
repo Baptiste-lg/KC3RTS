@@ -8,7 +8,15 @@
   before implementing a feature.
 - Keep Phoenix matches authoritative on the server. The static Pages build
   contains an isolated solo simulation; keep its gameplay rules in sync with
-  the server and test representative seeded results.
+  the server and test complete seeded replay results in `fixtures/parity_v3.json`.
+- Migrate gameplay rules into the pinned KC3 worker in reviewable steps. Keep
+  the legacy Phoenix and Pages paths labelled honestly until the network game
+  actually runs through KC3. Run `sh scripts/setup-kc3.sh` and set
+  `KC3RTS_KC3S=../.toolchain/kc3/kc3s/kc3s` from `server/` to include KC3
+  integration tests.
+- Replay fixtures can be regenerated with
+  `cd server && MIX_ENV=test mix run scripts/generate_parity.exs`; review each
+  complete-state diff before accepting a changed rule.
 - Add Rust only after profiling demonstrates a specific hot path and include a
   benchmark that justifies the boundary.
 - Keep generated visuals procedural; do not add external art files without

@@ -1,6 +1,7 @@
 # KC3RTS
 
-A browser RTS prototype built with Elixir, Phoenix, TypeScript and Three.js.
+A KC3 RTS project with a browser prototype, a persistent KC3 rules worker,
+an Elixir/Phoenix development server and a TypeScript/Three.js client.
 The large isometric map starts with a town center and three villagers. Its
 terrain, buildings, trees, rocks and villagers are pixel art drawn as flat
 textures and camera-facing sprites. Wood grows in a starter grove, five small groves and three larger forests.
@@ -8,6 +9,8 @@ Stone and gold are sparse, high-capacity deposits; one of each starts near the t
 Their artwork and click targets are 1.5 times larger than before, while their
 resource reserves stay the same. You select villagers and give them
 orders to move, gather, build another town center or attack a passive enemy base.
+Villagers have circular hitboxes and steer around one another; recruitment
+finds free ground around a town center.
 Units and buildings have hit points. Destroying the enemy base wins the match.
 
 All artwork is generated in code. Villagers use tiny four-pixel-high figures
@@ -17,12 +20,17 @@ the edge of resources or the enemy base when an
 action lands. Attack lunges follow each unit's attack interval. An order marker
 appears immediately when you right-click a target.
 
-## Play online
+## Play now: offline solo prototype
 
-[Play KC3RTS on GitHub Pages](https://baptiste-lg.github.io/KC3RTS/). This is a
+[Play the offline prototype on GitHub Pages](https://baptiste-lg.github.io/KC3RTS/). This is a
 solo match simulated in your browser, so it needs no running Phoenix server.
 Each visit starts a fresh match; there are no accounts or saved games yet.
 Pushes to `main` publish only when all CI checks pass.
+Pages executes its solo rules in the browser. The local Phoenix game executes
+its playable rules in Elixir. The KC3 rules worker has its own executable
+integration tests and is not the engine for either playable mode.
+
+![Seed 12345 opening with separated villagers](docs/screenshots/opening-hitbox-seed-12345-1366x768.png)
 
 ## Play locally
 
@@ -79,7 +87,7 @@ cd ../web
 npm ci
 npm run lint
 npm run typecheck
-npm test
+npm run test:coverage
 npm run build
 npm run smoke
 npm run smoke:pages
@@ -91,22 +99,50 @@ Chrome or Chromium is required for both smoke commands; set `KC3RTS_CHROME` to i
 executable if it is outside the common system paths. `smoke:pages` builds the
 static site at `/KC3RTS/` and checks the solo play loop without Phoenix.
 
+To build the pinned KC3 runtime and run the complete server suite with KC3
+integration tests and coverage:
+
+```sh
+sh scripts/setup-kc3.sh
+cd server
+KC3RTS_KC3S=../.toolchain/kc3/kc3s/kc3s mix test --cover
+```
+
+The setup script checks out KC3 commit `4bdffa88b35a496ca0a856a9eb58486cf6e2029c`
+and its pinned submodules into ignored `.toolchain/`. On Debian or Ubuntu its
+build prerequisites are `clang`, `libtool-bin`, `libffi-dev`, `libbsd-dev`,
+`libevent-dev`, `pkg-config`, `ruby`, `make` and `git`. CI is configured to build the same
+commit from a clean checkout. The KC3 worker owns one match's stockpile,
+construction reservation and progress, recruitment checks, tick and revision.
+
 ## Architecture
 
-- `server/`: authoritative Elixir simulation and Phoenix WebSocket endpoint.
+- `kc3/worker.kc3`: a persistent one-match rules worker. It validates initial
+  stockpile, building costs and location, construction progress, recruitment,
+  player slot and revision. `KC3Worker` starts and monitors it through a bounded
+  Elixir port. Its state is separate from the currently playable modes.
+- `server/`: playable Elixir simulation and Phoenix WebSocket endpoint.
 - `web/`: TypeScript client, Vite development server and Three.js renderer.
 - GitHub Pages serves the static browser build with a local deterministic
   simulation. The local development build uses the authoritative Phoenix
   server. The solo build is intended for one visitor per match.
-- KC3 is an external service, not a vendored dependency. The current game runs
-  without KC3. A future adapter can store versioned checkpoints through its
-  HTTP API while the live simulation stays in the supervised Elixir process.
 - Rust is reserved for operations shown by profiling to exceed the simulation
   tick budget.
 
-The initial `game:lobby` is a shared local prototype without accounts or saved
-games. A later networked deployment can serve the normal `web/dist` and proxy
-`/socket` to Phoenix on the same origin. See [PLAN.md](PLAN.md) for next milestones.
+`fixtures/parity_v3.json` compares complete current Elixir and browser states
+for five seeded command streams, including crowded movement, depletion and
+invalid input. The measured test suites cover 92.45% of server cover points with
+KC3 enabled and 95.23% of browser statements; CI enforces coverage floors.
+
+Known limitations: no opposing army or AI, no food or population, no pathfinding
+around buildings or resources, no save/reconnect, and no authorized online
+multiplayer. Unit steering prevents overlap but can still stall in dense crowds.
+`game:lobby` is a shared development prototype; do not expose it publicly.
+See [PLAN.md](PLAN.md) for the ordered roadmap and
+[KC3 architecture notes](docs/KC3_ARCHITECTURE.md) for the proven boundary.
+The [visual baseline](docs/VISUAL_BASELINE.md) and
+[performance baseline](docs/PERFORMANCE.md) record current limitations and
+repeatable measurements.
 
 ## GitHub Pages setup
 
@@ -119,3 +155,4 @@ push to `main`. Pull requests run checks but cannot publish.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+See [asset and dependency attribution](docs/ASSETS.md).
