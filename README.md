@@ -135,8 +135,8 @@ recruitment checks, tick and revision.
 
 `fixtures/parity_v3.json` compares complete current Elixir and browser states
 for five seeded command streams, including crowded movement, depletion and
-invalid input. The measured test suites cover 92.45% of server cover points with
-KC3 enabled and 95.23% of browser statements; CI enforces coverage floors.
+invalid input. The measured test suites cover 92.53% of server cover points with
+KC3 enabled and 95.77% of browser statements; CI enforces coverage floors.
 
 Known limitations: no opposing army or AI, no food or population, no pathfinding
 around buildings or resources, no save/reconnect, and no authorized online
@@ -147,6 +147,8 @@ See [PLAN.md](PLAN.md) for the ordered roadmap and
 The [visual baseline](docs/VISUAL_BASELINE.md) and
 [performance baseline](docs/PERFORMANCE.md) record current limitations and
 repeatable measurements.
+The [latest code and CI audit](docs/AUDIT_2026-09-29.md) records verified fixes
+and the remaining release risks.
 
 ## GitHub Pages setup
 

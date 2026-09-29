@@ -37,9 +37,17 @@ are local runs, not a CI performance guarantee, and exclude KC3 and browser
 rendering. The crowded command is intentionally severe: all 100 units target
 the same point, and some can remain waiting in dense traffic.
 
-Current Vite build warning: server bundle 580.75 KB JS / 149.10 KB gzip;
-Pages bundle 561.82 KB JS / 143.93 KB gzip. Bundle size alone does not show
+Current Vite build warning: server bundle 580.96 KB JS / 149.15 KB gzip;
+Pages bundle 563.45 KB JS / 144.63 KB gzip. Bundle size alone does not show
 runtime speed.
+
+The 2026-09-29 local browser simulation audit measured 100 villagers moving
+to one shared point for 220 ticks, excluding the first 20 warmup ticks. A
+one-off bundled Node benchmark on the same machine measured 0.460 ms median
+and 0.768 ms p95 per tick before collision cells, versus 0.267 ms median and
+0.544 ms p95 after collision cells and copy-on-write resources/buildings.
+The simulation still checks unit spacing in tests. These single-run timings
+are directional and exclude rendering, network transport and GC variance.
 
 For the browser baseline, run `npm run build:pages` in `web/`, then run:
 
