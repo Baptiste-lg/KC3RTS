@@ -57,18 +57,28 @@ defmodule KC3RTS.Game.KC3WorkerTest do
   end
 
   test "a slow or failed worker ends the match instead of falling back to Elixir" do
-    {:ok, slow} = KC3Worker.start_link(binary: System.fetch_env!("KC3RTS_KC3S"))
+    slow_binary =
+      Path.join(System.tmp_dir!(), "kc3rts-slow-worker-#{System.unique_integer([:positive])}.sh")
+
+    File.write!(slow_binary, "#!/bin/sh\nread request\nsleep 1\n")
+    File.chmod!(slow_binary, 0o700)
+    on_exit(fn -> File.rm(slow_binary) end)
+
+    {:ok, slow} = KC3Worker.start_link(binary: slow_binary)
 
     assert {:error, :timeout} =
-             KC3Worker.request(slow, request(1, "new_match", 0) |> Map.put("seed", 1), 1)
+             KC3Worker.request(slow, request(1, "new_match", 0) |> Map.put("seed", 1), 10)
 
     monitor = Process.monitor(slow)
-    assert_receive {:DOWN, ^monitor, :process, ^slow, _reason}, 1_000
+    assert_receive {:DOWN, ^monitor, :process, ^slow, :normal}, 1_000
 
     {:ok, failed} = KC3Worker.start_link(binary: System.find_executable("false"))
+    failed_monitor = Process.monitor(failed)
 
     assert {:error, :worker_exited} =
              KC3Worker.request(failed, request(1, "new_match", 0) |> Map.put("seed", 1))
+
+    assert_receive {:DOWN, ^failed_monitor, :process, ^failed, :normal}, 1_000
 
     {:ok, restarted} = KC3Worker.start_link(binary: System.fetch_env!("KC3RTS_KC3S"))
     on_exit(fn -> stop_if_running(restarted) end)
@@ -193,7 +203,7 @@ defmodule KC3RTS.Game.KC3WorkerTest do
     assert {:error, :invalid_worker_reply} =
              KC3Worker.request(worker, request(1, "new_match", 0) |> Map.put("seed", 91))
 
-    assert_receive {:DOWN, ^monitor, :process, ^worker, _reason}, 1_000
+    assert_receive {:DOWN, ^monitor, :process, ^worker, :normal}, 1_000
   end
 
   defp request(id, operation, revision) do
