@@ -42,10 +42,13 @@ defmodule KC3RTS.Game.WorldServer do
         {:ok, pid}
 
       [] ->
-        DynamicSupervisor.start_child(
-          KC3RTS.GameSupervisor,
-          {__MODULE__, Keyword.merge(opts, game_id: game_id)}
-        )
+        case DynamicSupervisor.start_child(
+               KC3RTS.GameSupervisor,
+               {__MODULE__, Keyword.merge(opts, game_id: game_id)}
+             ) do
+          {:error, {:already_started, pid}} -> {:ok, pid}
+          result -> result
+        end
     end
   end
 

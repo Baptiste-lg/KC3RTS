@@ -26,6 +26,23 @@ defmodule KC3RTS.Game.WorldServerTest do
     assert eventually(fn -> WorldServer.snapshot(server).tick >= 2 end)
   end
 
+  test "concurrent joins share one match process" do
+    game_id = "race-#{System.unique_integer([:positive])}"
+
+    results =
+      1..20
+      |> Task.async_stream(
+        fn _ -> WorldServer.ensure_started(game_id, tick_interval: :disabled, seed: 4) end,
+        max_concurrency: 20
+      )
+      |> Enum.to_list()
+
+    assert [{:ok, {:ok, pid}}] = Enum.uniq(results)
+    assert Process.alive?(pid)
+    assert [{^pid, _}] = Registry.lookup(KC3RTS.GameRegistry, game_id)
+    on_exit(fn -> DynamicSupervisor.terminate_child(KC3RTS.GameSupervisor, pid) end)
+  end
+
   defp eventually(assertion, attempts \\ 20)
   defp eventually(assertion, 0), do: assertion.()
 
