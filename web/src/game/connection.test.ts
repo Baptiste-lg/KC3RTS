@@ -9,16 +9,21 @@ class FakePush {
 }
 class FakeChannel {
   joinPush = new FakePush(); commandPush = new FakePush(); events = new Map<string, (payload: unknown) => void>();
-  lastEvent = ""; lastPayload: unknown;
+  lastEvent = ""; lastPayload: unknown; onErrorHandler: (() => void) | null = null; onCloseHandler: (() => void) | null = null; leaves = 0;
   on(event: string, handler: (payload: unknown) => void): void { this.events.set(event, handler); }
-  onError(): void {} onClose(): void {} join(): FakePush { return this.joinPush; } leave(): void {}
+  onError(handler: () => void): void { this.onErrorHandler = handler; }
+  onClose(handler: () => void): void { this.onCloseHandler = handler; }
+  join(): FakePush { return this.joinPush; } leave(): void { this.leaves += 1; }
   push(event: string, payload: unknown): FakePush { this.lastEvent = event; this.lastPayload = payload; return this.commandPush; }
   emit(event: string, payload: unknown): void { this.events.get(event)?.(payload); }
 }
 class FakeSocket {
-  gameChannel = new FakeChannel(); connected = false;
-  onClose(): void {} onError(): void {} disconnect(): void { this.connected = false; } connect(): void { this.connected = true; }
-  channel(): FakeChannel { return this.gameChannel; }
+  gameChannel = new FakeChannel(); connected = false; channels = 0;
+  onCloseHandler: (() => void) | null = null; onErrorHandler: (() => void) | null = null;
+  onClose(handler: () => void): void { this.onCloseHandler = handler; }
+  onError(handler: () => void): void { this.onErrorHandler = handler; }
+  disconnect(): void { this.connected = false; } connect(): void { this.connected = true; }
+  channel(): FakeChannel { this.channels += 1; return this.gameChannel; }
 }
 describe("GameConnection", () => {
   it("joins, validates snapshots and sends RTS commands", () => {
@@ -30,5 +35,50 @@ describe("GameConnection", () => {
     const command = { type: "spawn_villager" as const, building_id: 1 }; connection.command(command);
     expect(socket.gameChannel.lastEvent).toBe("command"); expect(socket.gameChannel.lastPayload).toEqual(command);
     socket.gameChannel.commandPush.resolve("ok", { world: { ...world, tick: 2 } }); expect(outcomes).toEqual([true]);
+  });
+  it("reports offline, rejected and incompatible states without accepting a bad snapshot", () => {
+    const socket = new FakeSocket(); const statuses: string[] = []; const snapshots: number[] = []; const outcomes: unknown[] = [];
+    const connection = new GameConnection({ onSnapshot: (world) => snapshots.push(world.tick), onStatus: (status) => statuses.push(status), onCommand: (outcome) => outcomes.push(outcome) }, socket as unknown as Socket);
+    connection.command({ type: "spawn_villager", building_id: 1 });
+    expect(outcomes.at(-1)).toEqual({ ok: false, reason: "offline" });
+    connection.connect(); connection.connect();
+    expect(socket.channels).toBe(1);
+    socket.gameChannel.joinPush.resolve("ok", { world: { protocol_version: 999 } });
+    expect(statuses).toEqual(["connecting", "incompatible"]);
+    expect(snapshots).toEqual([]);
+
+    const world = createLocalWorld();
+    socket.gameChannel.emit("world_snapshot", { world });
+    expect(statuses.at(-1)).toBe("connected");
+    connection.command({ type: "spawn_villager", building_id: 1 });
+    socket.gameChannel.commandPush.resolve("error", { reason: "insufficient_resources" });
+    expect(outcomes.at(-1)).toEqual({ ok: false, reason: "insufficient_resources" });
+    socket.gameChannel.commandPush.resolve("error", {});
+    expect(outcomes.at(-1)).toEqual({ ok: false, reason: "command_rejected" });
+    socket.gameChannel.commandPush.resolve("timeout", {});
+    expect(outcomes.at(-1)).toEqual({ ok: false, reason: "timeout" });
+    socket.gameChannel.commandPush.resolve("ok", { world: null });
+    expect(outcomes.at(-1)).toEqual({ ok: false, reason: "invalid_response" });
+    expect(statuses.at(-1)).toBe("incompatible");
+
+    socket.gameChannel.emit("world_snapshot", { world });
+    socket.gameChannel.onErrorHandler?.();
+    expect(statuses.at(-1)).toBe("offline");
+    connection.command({ type: "spawn_villager", building_id: 1 });
+    expect(outcomes.at(-1)).toEqual({ ok: false, reason: "offline" });
+    connection.disconnect();
+    expect(socket.gameChannel.leaves).toBe(1);
+    expect(socket.connected).toBe(false);
+  });
+  it("marks failed joins and socket closes offline", () => {
+    const socket = new FakeSocket(); const statuses: string[] = [];
+    const connection = new GameConnection({ onSnapshot: () => undefined, onStatus: (status) => statuses.push(status), onCommand: () => undefined }, socket as unknown as Socket);
+    connection.connect();
+    socket.gameChannel.joinPush.resolve("timeout", {});
+    expect(statuses.at(-1)).toBe("offline");
+    socket.gameChannel.emit("world_snapshot", { world: createLocalWorld() });
+    socket.onCloseHandler?.();
+    expect(statuses.at(-1)).toBe("offline");
+    expect(statuses.filter((status) => status === "offline")).toHaveLength(2);
   });
 });
