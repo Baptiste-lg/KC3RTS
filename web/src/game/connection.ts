@@ -21,12 +21,15 @@ export class GameConnection implements GameClient {
   private ready = false;
   private started = false;
   private status: GameConnectionStatus | null = null;
-  constructor(private readonly handlers: GameConnectionHandlers, private readonly socket: Socket = new Socket("/socket")) {}
+  constructor(private readonly handlers: GameConnectionHandlers, private readonly socket: Socket = new Socket("/socket")) {
+    this.socket.onClose(() => this.markOffline(this.channel));
+    this.socket.onError(() => this.markOffline(this.channel));
+  }
   connect(): void {
     if (this.started) return;
     this.started = true; this.setStatus("connecting");
     const channel = this.socket.channel("game:lobby", {}); this.channel = channel;
-    this.socket.onClose(() => this.markOffline(channel)); this.socket.onError(() => this.markOffline(channel)); this.socket.connect();
+    this.socket.connect();
     channel.on("world_snapshot", (payload) => this.acceptSnapshot(channel, payload));
     channel.onError(() => this.markOffline(channel)); channel.onClose(() => this.markOffline(channel));
     channel.join().receive("ok", (payload) => this.acceptSnapshot(channel, payload))
@@ -54,8 +57,8 @@ export class GameConnection implements GameClient {
     if (!world) { this.ready = false; this.setStatus("incompatible"); return; }
     this.ready = true; this.handlers.onSnapshot(world); this.setStatus("connected");
   }
-  private markOffline(channel: Channel): void {
-    if (this.channel !== channel) return;
+  private markOffline(channel: Channel | null): void {
+    if (!channel || this.channel !== channel) return;
     this.ready = false; this.setStatus("offline");
   }
   private setStatus(status: GameConnectionStatus): void { if (this.status !== status) { this.status = status; this.handlers.onStatus(status); } }

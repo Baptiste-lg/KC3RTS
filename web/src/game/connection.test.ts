@@ -99,7 +99,8 @@ describe("GameConnection", () => {
     oldChannel.commandPush.resolve("ok", { world: { ...world, tick: 100 } });
     oldChannel.commandPush.resolve("error", { reason: "stale" });
     oldChannel.onCloseHandler?.();
-    socket.onCloseHandlers[0]();
+    expect(socket.onCloseHandlers).toHaveLength(1);
+    expect(socket.onErrorHandlers).toHaveLength(1);
     expect(snapshots).toEqual([0, 2]);
     expect(outcomes).toEqual([]);
     expect(statuses.at(-1)).toBe("connected");
