@@ -67,7 +67,8 @@ jobs:
 
   kc3:
     name: Pinned KC3 rule boundary
-    runs-on: ubuntu-24.04
+    # KC3's Git module requires the libgit2 1.9 development headers.
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -75,7 +76,7 @@ jobs:
           otp-version: "28.0"
           elixir-version: "1.20.0"
       - name: Install KC3 build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang libtool-bin libffi-dev libbsd-dev libevent-dev libgit2-dev pkg-config ruby
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang libtool-bin libffi-dev libbsd-dev libevent-dev libgit2-dev libtls-dev pkg-config ruby
       - name: Build pinned KC3
         run: sh scripts/setup-kc3.sh
       - run: mix deps.get
