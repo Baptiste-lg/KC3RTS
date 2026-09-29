@@ -43,6 +43,26 @@ describe("RTS simulation", () => {
     expect(later.stockpile.stone).toBe(start.stockpile.stone);
     expect(later.resources.find((r) => r.id === node.id)!.amount).toBeLessThan(node.amount);
   });
+  it("keeps earlier snapshots intact when gathering, building and attacking", () => {
+    const start = createLocalWorld(1234);
+    const resource = start.resources.find((r) => r.kind === "wood")!;
+    const gathering = { ...start, villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: resource.x + 3, z: resource.z, order: { kind: "gather" as const, id: resource.id } } : v) };
+    const gathered = stepLocalWorld(gathering, 2);
+    expect(gathered.resources.find((r) => r.id === resource.id)!.amount).toBe(resource.amount - 1);
+    expect(gathering.resources.find((r) => r.id === resource.id)!.amount).toBe(resource.amount);
+
+    const site = { id: 3, owner: "player" as const, x: 22, z: -22, hp: 1, max_hp: 350, progress: 0 };
+    const building = { ...start, buildings: [...start.buildings, site], villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: 25, z: -22, order: { kind: "build" as const, id: site.id } } : v) };
+    const built = stepLocalWorld(building);
+    expect(built.buildings[2].progress).toBe(1);
+    expect(building.buildings[2].progress).toBe(0);
+
+    const enemy = start.buildings[1];
+    const attacking = { ...start, villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: enemy.x + 3, z: enemy.z, order: { kind: "attack" as const, id: enemy.id } } : v) };
+    const attacked = stepLocalWorld(attacking, 5);
+    expect(attacked.buildings[1].hp).toBeLessThan(enemy.hp);
+    expect(attacking.buildings[1].hp).toBe(enemy.hp);
+  });
   it("stops at the edge of a resource before gathering", () => {
     const start = createLocalWorld(1234);
     const node = start.resources.find((r) => r.kind === "wood")!;

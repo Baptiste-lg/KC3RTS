@@ -112,8 +112,20 @@ function nearby(v: GroundPoint, except: number, positions: Map<number, Villager>
 function once(world: LocalWorld): LocalWorld {
   if (world.outcome !== "playing") return world;
   const tick = world.tick + 1;
-  const resources = world.resources.map((r) => ({ ...r }));
-  const buildings = world.buildings.map((b) => ({ ...b }));
+  const resources = [...world.resources];
+  const buildings = [...world.buildings];
+  const changedResources = new Set<number>();
+  const changedBuildings = new Set<number>();
+  const mutableResource = (id: number): ResourceNode => {
+    const index = resources.findIndex((resource) => resource.id === id);
+    if (!changedResources.has(id)) { resources[index] = { ...resources[index] }; changedResources.add(id); }
+    return resources[index];
+  };
+  const mutableBuilding = (id: number): Building => {
+    const index = buildings.findIndex((building) => building.id === id);
+    if (!changedBuildings.has(id)) { buildings[index] = { ...buildings[index] }; changedBuildings.add(id); }
+    return buildings[index];
+  };
   const stockpile = { ...world.stockpile };
   const positions = new Map(world.villagers.filter((v) => v.hp > 0).map((v) => [v.id, v]));
   const cells = new Map<string, Set<number>>();
@@ -151,7 +163,7 @@ function once(world: LocalWorld): LocalWorld {
         return finish(v);
       }
       if (distance(v, r) > gatherRange(r.kind) + .01) return finish(move(v, r, gatherRange(r.kind), blockers, world.map_radius));
-      if ((tick + v.id) % GATHER_INTERVAL_TICKS === 0) { r.amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
+      if ((tick + v.id) % GATHER_INTERVAL_TICKS === 0) { mutableResource(r.id).amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
       return finish(v);
     }
     const b = buildings.find((item) => item.id === order.id);
@@ -159,11 +171,15 @@ function once(world: LocalWorld): LocalWorld {
     if (order.kind === "build") {
       if (b.progress >= 100) return finish({ ...v, order: null });
       if (distance(v, b) > 3.5) return finish(move(v, b, 3.5, blockers, world.map_radius));
-      b.progress = Math.min(100, b.progress + 1); b.hp = Math.max(1, Math.round(b.max_hp * b.progress / 100));
+      const site = mutableBuilding(b.id);
+      site.progress = Math.min(100, site.progress + 1); site.hp = Math.max(1, Math.round(site.max_hp * site.progress / 100));
       return finish(v);
     }
     if (distance(v, b) > ATTACK_RANGE + .01) return finish(move(v, b, ATTACK_RANGE, blockers, world.map_radius));
-    if ((tick + v.id) % v.attack_interval_ticks === 0) b.hp = Math.max(0, b.hp - 5);
+    if ((tick + v.id) % v.attack_interval_ticks === 0) {
+      const target = mutableBuilding(b.id);
+      target.hp = Math.max(0, target.hp - 5);
+    }
     return finish(v);
   });
   return { ...world, tick, resources, buildings, stockpile, villagers, outcome: buildings.some((b) => b.owner === "enemy" && b.hp > 0) ? "playing" : "victory" };
