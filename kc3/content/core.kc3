@@ -1,50 +1,64 @@
-# P01 boundary scenario. Values are provisional; production queues land in P03.
+# Trusted definitions. Rates use hundredths of a resource per simulation tick.
 defmodule RTS.Core do
   def entity = fn (id, kind, label, hp, capabilities) {
-    %{"id" => id, "kind" => kind, "label" => label,
-      "art" => id, "hp" => hp,
+    %{"id" => id, "kind" => kind, "label" => label, "art" => id, "hp" => hp,
       "footprint" => if kind == "building" do 1024 else 128 end,
-      "speed" => if kind == "unit" do 64 else 0 end, "capabilities" => capabilities}
+      "speed" => if kind == "unit" do 64 else 0 end, "capabilities" => capabilities,
+      "population" => if kind == "unit" do 1 else 0 end, "supply" => 0,
+      "cargo_capacity" => if List.has?(capabilities, "gather") do 10 else 0 end,
+      "gather_rate" => if List.has?(capabilities, "gather") do 10 else 0 end,
+      "storage" => [], "yield" => void,
+      "queue_capacity" => if List.has?(capabilities, "train") do 5 else 0 end,
+      "repair_cost" => if List.has?(capabilities, "repair") do %{"core.wood" => 1} else %{} end,
+      "repair_hp" => if List.has?(capabilities, "repair") do 5 else 0 end}
   }
   def resource = fn (id, label, sources) {
-    %{"id" => id, "kind" => "resource", "label" => label,
-      "art" => "placeholder.resource", "category" => "basic",
-      "cap" => 1000000, "sources" => sources}
+    %{"id" => id, "kind" => "resource", "label" => label, "art" => id,
+      "category" => "basic", "cap" => 1000000, "sources" => sources}
   }
+  def recipe = fn (id, label, producer, output, ticks, cost) {
+    %{"id" => id, "kind" => "recipe", "label" => label, "producer" => producer,
+      "output" => output, "ticks" => ticks, "cost" => cost, "prerequisites" => []}
+  }
+  def resources = fn () { ["core.food", "core.wood", "core.stone", "core.gold"] }
   def catalog = fn () {
-    %{"schema_version" => 2, "ruleset_version" => 2, "definitions" => [
+    %{"schema_version" => 3, "ruleset_version" => 3,
+      "rules" => %{"population_cap" => 60, "building_cancel_percent" => 75, "started_cancel_percent" => 50, "repair_interval" => 10},
+      "definitions" => [
       RTS.Core.resource("core.food", "Food", ["node", "farm", "market", "tribe"]),
       RTS.Core.resource("core.wood", "Wood", ["node", "market", "tribe"]),
       RTS.Core.resource("core.stone", "Stone", ["node", "market", "tribe"]),
       RTS.Core.resource("core.gold", "Gold", ["node", "market", "tribe"]),
-      RTS.Core.entity("core.worker", "unit", "Worker", 40, ["move", "build"]),
+      RTS.Core.entity("core.worker", "unit", "Worker", 40, ["move", "gather", "build", "repair"]),
       RTS.Core.entity("core.scout", "unit", "Scout", 60, ["move"]),
-      RTS.Core.entity("core.hall", "building", "Hall", 1500, ["train"]),
-      RTS.Core.entity("core.house", "building", "House", 300, []),
-      %{"id" => "core.train_worker", "kind" => "recipe", "label" => "Recruit worker",
-        "producer" => "core.hall", "output" => "core.worker", "ticks" => 120,
-        "cost" => %{"core.food" => 50}, "prerequisites" => []},
-      %{"id" => "core.build_hall", "kind" => "recipe", "label" => "Build hall",
-        "producer" => "core.worker", "output" => "core.hall", "ticks" => 100,
-        "cost" => %{"core.wood" => 200, "core.stone" => 100}, "prerequisites" => []},
-      %{"id" => "core.build_house", "kind" => "recipe", "label" => "Build house",
-        "producer" => "core.worker", "output" => "core.house", "ticks" => 100,
-        "cost" => %{"core.wood" => 40}, "prerequisites" => []},
-      RTS.Core.faction("kiln.concord", "Kiln Concord"),
-      RTS.Core.faction("lantern.synod", "Lantern Synod")
+      RTS.Core.entity("core.spear", "unit", "Spear guard", 90, ["move"]),
+      Map.put(RTS.Core.entity("core.ranged", "unit", "Ranged guard", 55, ["move"]), "speed", 59),
+      Map.merge(RTS.Core.entity("core.hall", "building", "Hall", 1500, ["train"]),
+        %{"supply" => 10, "storage" => RTS.Core.resources()}),
+      Map.put(RTS.Core.entity("core.house", "building", "House", 300, []), "supply", 5),
+      Map.put(RTS.Core.entity("core.depot", "building", "Depot", 500, []), "storage", RTS.Core.resources()),
+      Map.put(RTS.Core.entity("core.farm", "building", "Farm", 200, []), "yield", %{"resource_id" => "core.food", "rate" => 7}),
+      RTS.Core.entity("core.barracks", "building", "Barracks", 800, ["train"]),
+      RTS.Core.entity("core.range", "building", "Range", 650, ["train"]),
+      RTS.Core.recipe("core.train_worker", "Recruit worker", "core.hall", "core.worker", 150, %{"core.food" => 50}),
+      RTS.Core.recipe("core.train_spear", "Train spear guard", "core.barracks", "core.spear", 180, %{"core.food" => 60, "core.wood" => 20}),
+      RTS.Core.recipe("core.train_ranged", "Train ranged guard", "core.range", "core.ranged", 200, %{"core.wood" => 40, "core.gold" => 35}),
+      RTS.Core.recipe("core.build_hall", "Build hall", "core.worker", "core.hall", 600, %{"core.wood" => 200, "core.stone" => 100}),
+      RTS.Core.recipe("core.build_house", "Build house", "core.worker", "core.house", 150, %{"core.wood" => 40}),
+      RTS.Core.recipe("core.build_depot", "Build depot", "core.worker", "core.depot", 150, %{"core.wood" => 50}),
+      RTS.Core.recipe("core.build_farm", "Build farm", "core.worker", "core.farm", 200, %{"core.wood" => 50}),
+      RTS.Core.recipe("core.build_barracks", "Build barracks", "core.worker", "core.barracks", 250, %{"core.wood" => 100}),
+      RTS.Core.recipe("core.build_range", "Build range", "core.worker", "core.range", 250, %{"core.wood" => 100}),
+      RTS.Core.faction("kiln.concord", "Kiln Concord"), RTS.Core.faction("lantern.synod", "Lantern Synod")
     ]}
   }
   def faction = fn (id, label) {
     %{"id" => id, "kind" => "faction", "label" => label,
-      "recipes" => ["core.train_worker", "core.build_hall", "core.build_house"],
-      "roster" => [%{"type_id" => "core.hall", "count" => 1},
-                    %{"type_id" => "core.worker", "count" => 5},
-                    %{"type_id" => "core.scout", "count" => 1}],
-      "stocks" => %{"core.food" => 200, "core.wood" => 200,
-                    "core.stone" => 50, "core.gold" => 50}, "overrides" => [
-        %{"target" => "core.worker", "art" => id + ".worker"},
-        %{"target" => "core.scout", "art" => id + ".scout"},
-        %{"target" => "core.hall", "art" => id + ".hall"},
-        %{"target" => "core.house", "art" => id + ".house"}]}
+      "recipes" => ["core.train_worker", "core.train_spear", "core.train_ranged", "core.build_hall", "core.build_house", "core.build_depot", "core.build_farm", "core.build_barracks", "core.build_range"],
+      "roster" => [%{"type_id" => "core.hall", "count" => 1}, %{"type_id" => "core.worker", "count" => 5}, %{"type_id" => "core.scout", "count" => 1}],
+      "stocks" => %{"core.food" => 200, "core.wood" => 200, "core.stone" => 50, "core.gold" => 50},
+      "overrides" => List.map(["worker", "scout", "spear", "ranged", "hall", "house", "depot", "farm", "barracks", "range"], fn (name) {
+        %{"target" => "core." + name, "art" => id + "." + name}
+      })}
   }
 end

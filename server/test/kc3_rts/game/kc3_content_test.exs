@@ -6,7 +6,7 @@ defmodule KC3RTS.Game.KC3ContentTest do
   @moduletag skip: is_nil(System.get_env("KC3RTS_KC3S"))
   @root Path.expand("../../../..", __DIR__)
 
-  for suite <- ~w(primitives content world navigation) do
+  for suite <- ~w(primitives content world navigation economy production construction) do
     @tag timeout: 120_000
     test "KC3 #{suite} contracts" do
       binary = System.fetch_env!("KC3RTS_KC3S") |> Path.expand()
@@ -58,6 +58,6 @@ defmodule KC3RTS.Game.KC3ContentTest do
       Regex.run(~r/^\{"catalog":(.*),"content_hash":"([a-f0-9]{64})"\}\n$/, encoded)
 
     assert Base.encode16(:crypto.hash(:sha256, canonical), case: :lower) == hash
-    assert catalog["schema_version"] == 2
+    assert catalog["schema_version"] == 3
   end
 end

@@ -191,7 +191,10 @@ defmodule KC3RTS.Game.WorldServer do
 
   def handle_info({:tick, deadline}, %{next_deadline: deadline} = state) do
     due =
-      min(@max_catchup_ticks, max(1, div(max(0, now() - deadline), state.tick_interval) + 1))
+      min(
+        catchup_limit(state.world),
+        max(1, div(max(0, now() - deadline), state.tick_interval) + 1)
+      )
 
     world = world_step(state.world, due)
     applied_ticks = world.tick - state.world.tick
@@ -222,6 +225,11 @@ defmodule KC3RTS.Game.WorldServer do
   @impl true
   def terminate(_reason, %{world: %KC3Match{} = world}), do: KC3Match.close(world)
   def terminate(_reason, _state), do: :ok
+
+  # Native round trips may exceed the tick budget. Yield between them so
+  # queued commands and reconnects cannot wait behind a ten-step batch.
+  defp catchup_limit(%KC3Match{}), do: 1
+  defp catchup_limit(_world), do: @max_catchup_ticks
 
   defp world_command(%KC3Match{} = world, command), do: KC3Match.command(world, command)
   defp world_command(world, command), do: World.command(world, command)

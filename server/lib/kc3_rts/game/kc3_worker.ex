@@ -9,10 +9,17 @@ defmodule KC3RTS.Game.KC3Worker do
 
   @max_reply_bytes 262_144
   @default_timeout 30_000
+  # Cold source parsing is startup work, separate from gameplay latency.
+  @startup_timeout 90_000
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
-  def request(server, payload, timeout \\ @default_timeout)
+  def startup_timeout, do: @startup_timeout
+
+  def request(server, %{"operation" => "new_match"} = payload),
+    do: request(server, payload, @startup_timeout)
+
+  def request(server, payload), do: request(server, payload, @default_timeout)
 
   def request(server, payload, timeout) when is_integer(timeout) and timeout > 0 do
     GenServer.call(server, {:request, payload, timeout}, timeout + 1_000)

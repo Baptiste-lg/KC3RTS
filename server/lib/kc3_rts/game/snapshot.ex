@@ -3,7 +3,7 @@ defmodule KC3RTS.Game.Snapshot do
   alias KC3RTS.Game.World
   # Full development view; visibility filtering is introduced before multiplayer.
   def from_world(%KC3RTS.Game.KC3Match{state: state}),
-    do: Map.merge(state, %{"protocol_version" => 4, "ruleset_version" => 2, "viewer_slot" => 1})
+    do: Map.merge(state, %{"protocol_version" => 5, "ruleset_version" => 3, "viewer_slot" => 1})
 
   @spec from_world(World.t()) :: map()
   def from_world(%World{} = world) do

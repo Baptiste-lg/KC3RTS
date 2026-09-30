@@ -8,7 +8,7 @@ defmodule RTS.Extension do
         "cap" => 1000, "sources" => ["tribe", "market"]},
       Map.merge(RTS.Core.entity("core.worker", "unit", "Worker", 40, ["move", "build"]),
         %{"id" => "test.worker", "label" => "Glasswright", "hp" => 50}),
-      RTS.Core.entity("test.workshop", "building", "Glassworks", 600, ["train"]),
+      Map.put(RTS.Core.entity("test.workshop", "building", "Glassworks", 600, ["train"]), "supply", 10),
       %{"id" => "test.train_worker", "kind" => "recipe", "label" => "Train glasswright",
         "producer" => "test.workshop", "output" => "test.worker", "ticks" => 100,
         "cost" => %{"test.skyglass" => 5, "core.food" => 50}, "prerequisites" => []},

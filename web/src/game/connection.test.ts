@@ -1,4 +1,4 @@
-import fixture from "../../../fixtures/kc3_opening_v2.json";
+import fixture from "../../../fixtures/kc3_opening_v3.json";
 import type { Socket } from "phoenix";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GameConnection } from "./connection";
@@ -40,7 +40,7 @@ describe("GameConnection", () => {
     connection.connect(); await ready();
     socket.gameChannel.joinPush.resolve("ok", state(createLocalWorld(), 0));
     expect(statuses.at(-1)).toBe("incompatible"); expect(snapshots).toEqual([]);
-    const world = { ...structuredClone(fixture.state), protocol_version: 4, ruleset_version: 2, viewer_slot: 1 };
+    const world = { ...structuredClone(fixture.state), protocol_version: 5, ruleset_version: 3, viewer_slot: 1 };
     socket.gameChannel.emit("world_snapshot", { world, revision: world.revision + 1 });
     expect(snapshots).toEqual([]);
     socket.gameChannel.emit("world_snapshot", { world, revision: world.revision });
@@ -59,7 +59,7 @@ describe("GameConnection", () => {
     const socket = new FakeSocket(), outcomes: unknown[] = [];
     new GameConnection({ onSnapshot: () => undefined, onStatus: () => undefined, onCommand: (o) => outcomes.push(o) }, socket as unknown as Socket).connect();
     await vi.waitFor(() => expect(outcomes).toContainEqual({ ok: false, reason: "match_unavailable" }));
-    expect(getItem).toHaveBeenCalledWith("kc3rts-kc3-match-v2");
+    expect(getItem).toHaveBeenCalledWith("kc3rts-kc3-match-v3");
     expect(fetcher).toHaveBeenCalledWith("/api/matches?mode=kc3", expect.objectContaining({ method: "POST" }));
     expect(socket.channels).toBe(0);
   });

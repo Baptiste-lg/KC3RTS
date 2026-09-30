@@ -14,9 +14,9 @@ RTS.Check.that("duplicate selection rejects", RTS.Data.get(RTS.World.command(con
   Map.put(move, "entity_ids", [2, 2])), "reason") == "invalid_selection")
 RTS.Check.that("outside map rejects", RTS.Data.get(RTS.World.command(content, world, 1,
   Map.put(move, "x", 99999)), "reason") == "invalid_location")
-blocked = RTS.Map.point(RTS.Data.get(world, "map"), List.first(RTS.Data.get(RTS.Data.get(world, "map"), "blocked")))
+blocked = List.first(RTS.Data.get(world, "nodes"))
 RTS.Check.that("blocked target rejects", RTS.Data.get(RTS.World.command(content, world, 1,
-  Map.merge(move, blocked)), "reason") == "invalid_location")
+  Map.merge(move, %{"x" => RTS.Data.get(blocked, "x"), "z" => RTS.Data.get(blocked, "z")} )), "reason") == "invalid_location")
 moved = RTS.Data.get(result, "state")
 initial = RTS.Data.find(RTS.Data.get(moved, "entities"), "id", 2)
 moved = RTS.World.tick(content, moved)
@@ -25,11 +25,12 @@ stopped = RTS.Data.get(RTS.World.command(content, moved, 1,
   %{"type" => "stop", "entity_ids" => [2, 3]}), "state")
 RTS.Check.that("stop freezes positions", RTS.Data.get(RTS.World.tick(content, stopped), "entities") == RTS.Data.get(stopped, "entities"))
 rerouted = RTS.Data.get(result, "state")
+occupied = RTS.Map.occupied(content, world)
 i = 0
 while i < 180 do
   rerouted = RTS.World.tick(content, rerouted)
   RTS.Check.that("route remains off blocked terrain", List.all?(RTS.Data.get(rerouted, "entities"), fn (e) {
-    (! List.has?(RTS.Data.get(RTS.Data.get(world, "map"), "blocked"), RTS.Map.cell(RTS.Data.get(world, "map"), RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))))
+    RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "kind") == "building" || RTS.Data.get(occupied, (Str) RTS.Map.cell(RTS.Data.get(world, "map"), RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))) != true
   }))
   i = i + 1
 end

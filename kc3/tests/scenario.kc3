@@ -1,0 +1,32 @@
+# Native test helpers; never loaded by the production worker.
+defmodule RTS.Scenario do
+  def world = fn (content) { RTS.World.opening(content, "scenario", 1234, ["kiln.concord", "lantern.synod"]) }
+  def ticks = fn (content, state, count) {
+    while count > 0 do
+      state = RTS.World.tick(content, state)
+      count = count - 1
+    end
+    state
+  }
+  def change = fn (state, id, fields) { RTS.World.put(state, Map.merge(RTS.World.find(state, id), fields)) }
+  def stock = fn (state, id) { RTS.Data.get(RTS.Data.get(RTS.World.player(state, 1), "stocks"), id) }
+  def funded = fn (state) { RTS.World.balance(state, 1, %{"core.food" => 1000, "core.wood" => 1000, "core.stone" => 1000, "core.gold" => 1000}, 1) }
+  def command = fn (content, state, command) {
+    result = RTS.World.command(content, state, 1, command)
+    if (! RTS.Data.get(result, "accepted")) do puts(RTS.Wire.encode(result)); exit(1) end
+    RTS.Data.get(result, "state")
+  }
+  def fast = fn (catalog) {
+    Map.put(catalog, "definitions", List.map(RTS.Data.get(catalog, "definitions"), fn (d) {
+      if RTS.Data.get(d, "kind") == "recipe" do Map.put(d, "ticks", 4) else d end
+    }))
+  }
+  def add = fn (content, state, type, x, z) {
+    id = RTS.Data.get(state, "next_entity_id")
+    e = RTS.World.entity(content, "kiln.concord", id, type, 1, x, z, void)
+    Map.merge(state, %{"entities" => List.append_one(RTS.Data.get(state, "entities"), e), "next_entity_id" => id + 1})
+  }
+  def reject = fn (content, state, command, reason) {
+    RTS.Check.that(reason + " rejects without mutation", RTS.World.command(content, state, 1, command) == RTS.World.result(state, reason))
+  }
+end

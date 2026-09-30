@@ -3,7 +3,15 @@ defmodule RTS.Map do
   def opening = fn () {
     %{"width" => 12, "height" => 10, "cell_size" => 1024,
       "origin_x" => -6144, "origin_z" => -5120,
-      "blocked" => [17, 18, 29, 30, 41, 42, 77, 78, 89, 90, 101, 102]}
+      "blocked" => []}
+  }
+  def nodes = fn () {
+    List.map([17, 18, 29, 30, 38, 41, 42, 45, 77, 78, 86, 89, 90, 93, 101, 102], fn (cell) {
+      resource = if List.has?([38, 93], cell) do "core.food" else
+        if List.has?([45, 86], cell) do "core.gold" else
+          if cell mod 3 == 0 do "core.stone" else "core.wood" end end end
+      Map.merge(RTS.Map.point(RTS.Map.opening(), cell), %{"id" => cell + 1, "resource_id" => resource, "amount" => 200})
+    })
   }
   def cell = fn (map, x, z) {
     dx = x - RTS.Data.get(map, "origin_x")
@@ -36,6 +44,14 @@ defmodule RTS.Map do
     while cells != [] do
       occupied = Map.put(occupied, (Str) List.first(cells), true)
       cells = List.next(cells)
+    end
+    nodes = RTS.Data.get(state, "nodes")
+    while nodes != [] do
+      node = List.first(nodes)
+      if RTS.Data.get(node, "amount") > 0 do
+        occupied = Map.put(occupied, (Str) RTS.Map.cell(map, RTS.Data.get(node, "x"), RTS.Data.get(node, "z")), true)
+      end
+      nodes = List.next(nodes)
     end
     entities = RTS.Data.get(state, "entities")
     while entities != [] do

@@ -1,12 +1,13 @@
 defmodule KC3RTS.KC3Boundary do
   @moduledoc false
   @catalog Path.expand("../../../web/src/game/generated/catalog.json", __DIR__)
+  @external_resource @catalog
   @document @catalog |> File.read!() |> Jason.decode!()
 
   def request(id, operation, revision \\ 0) do
     %{
       "protocol_version" => 2,
-      "ruleset_version" => 2,
+      "ruleset_version" => 3,
       "request_id" => id,
       "content_hash" => @document["content_hash"],
       "match_id" => "port-test",

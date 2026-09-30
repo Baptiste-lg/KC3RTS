@@ -2,7 +2,7 @@ defmodule KC3RTS.Game.MatchManager do
   @moduledoc "Owns bounded, expiring guest matches and their join capabilities."
   use GenServer
 
-  alias KC3RTS.Game.WorldServer
+  alias KC3RTS.Game.{KC3Worker, WorldServer}
 
   @default_max_matches 32
   @default_idle_ms :timer.minutes(30)
@@ -17,7 +17,10 @@ defmodule KC3RTS.Game.MatchManager do
   end
 
   def create(server \\ __MODULE__), do: GenServer.call(server, :create)
-  def create_kc3(server \\ __MODULE__), do: GenServer.call(server, {:create, :kc3}, 35_000)
+
+  def create_kc3(server \\ __MODULE__),
+    do: GenServer.call(server, {:create, :kc3}, KC3Worker.startup_timeout() + 5000)
+
   def authorize(token, server \\ __MODULE__), do: GenServer.call(server, {:authorize, token})
 
   def member?(match_id, token, server \\ __MODULE__),

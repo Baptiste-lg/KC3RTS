@@ -3,7 +3,7 @@ export interface GroundPoint { x: number; z: number }
 export type ResourceKind = "wood" | "stone" | "gold";
 export type Stockpile = Record<ResourceKind, number>;
 export interface ResourceNode extends GroundPoint {
-  id: number; kind: ResourceKind; amount: number; initial_amount: number;
+  id: number; resource_id?: string; art?: string; label?: string; kind: ResourceKind; amount: number; initial_amount: number;
 }
 export interface Building extends GroundPoint {
   id: number; art?: string; label?: string; owner: "player" | "enemy"; hp: number; max_hp: number; progress: number;
@@ -67,7 +67,7 @@ export function parseSnapshot(value: unknown): WorldSnapshot | null {
 }
 
 export function parseGameSnapshot(value: unknown): WorldSnapshot | null {
-  if (record(value) && value.protocol_version === 4) {
+  if (record(value) && value.protocol_version === 5) {
     const view = parseKC3View(value); return view ? presentKC3(view) : null;
   }
   return parseSnapshot(value);

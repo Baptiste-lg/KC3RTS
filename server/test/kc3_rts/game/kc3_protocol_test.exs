@@ -3,7 +3,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
   alias KC3RTS.Game.KC3Protocol
   import KC3RTS.KC3Boundary
 
-  @fixture Path.expand("../../../../fixtures/kc3_opening_v2.json", __DIR__)
+  @fixture Path.expand("../../../../fixtures/kc3_opening_v3.json", __DIR__)
            |> File.read!()
            |> Jason.decode!()
 
@@ -30,7 +30,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       %{},
       Map.put(request(1, "tick"), "padding", self()),
       Map.put(request(1, "tick"), "protocol_version", 1),
-      Map.put(request(1, "tick"), "ruleset_version", 3),
+      Map.put(request(1, "tick"), "ruleset_version", 4),
       Map.put(request(1, "tick"), "match_id", "bad/id"),
       Map.put(request(1, "tick"), "match_id", <<255>>),
       Map.put(request(1, "tick"), "request_id", 9_007_199_254_740_992),
@@ -65,7 +65,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       {["protocol_version"], 2.0},
       {["request_id"], 1.0},
       {["state", "schema_version"], 1.0},
-      {["ruleset_version"], 3},
+      {["ruleset_version"], 4},
       {["request_id"], 99},
       {["match_id"], "other"},
       {["content_hash"], String.duplicate("0", 64)},
@@ -73,7 +73,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       {["reason"], "unknown"},
       {["revision"], 2},
       {["state"], nil},
-      {["state", "schema_version"], 3},
+      {["state", "schema_version"], 4},
       {["state", "seed"], 0},
       {["state", "rng_state"], 0},
       {["state", "tick"], 1.1},
@@ -159,6 +159,92 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
 
     assert {:error, :invalid_worker_reply} =
              KC3Protocol.decode_reply(Jason.encode!(@fixture), request(1, "tick", 1), previous)
+  end
+
+  test "economy commands have closed shapes and server-owned identity" do
+    commands = [
+      %{"type" => "gather", "entity_ids" => [2], "target_kind" => "node", "target_id" => 39},
+      %{"type" => "deliver", "entity_ids" => [2]},
+      %{"type" => "work", "entity_ids" => [2], "target_id" => 15},
+      %{"type" => "repair", "entity_ids" => [2], "target_id" => 1},
+      %{"type" => "cancel", "entity_id" => 1, "queue_id" => 1},
+      %{"type" => "cancel_build", "entity_id" => 15},
+      %{"type" => "rally", "entity_id" => 1, "x" => 1536, "z" => 512}
+    ]
+
+    for c <- commands do
+      assert KC3Protocol.command_payload?(c)
+      refute KC3Protocol.command_payload?(Map.put(c, "actor_slot", 2))
+      refute KC3Protocol.command_payload?(Map.put(c, "paid", %{"core.food" => 0}))
+      for field <- Map.keys(c), do: refute(KC3Protocol.command_payload?(Map.delete(c, field)))
+    end
+
+    refute KC3Protocol.command_payload?(%{
+             "type" => "gather",
+             "entity_ids" => [2],
+             "target_kind" => "tribe",
+             "target_id" => 39
+           })
+
+    refute KC3Protocol.command_payload?(%{
+             "type" => "cancel",
+             "entity_id" => 1,
+             "queue_id" => 1.5
+           })
+
+    refute KC3Protocol.command_payload?(%{
+             "type" => "deliver",
+             "entity_ids" => Enum.to_list(1..17)
+           })
+  end
+
+  test "cargo, job identities, resource nodes and progress reject malformed worker state" do
+    state = @fixture["state"]
+    [hall, worker | rest] = state["entities"]
+
+    job = %{
+      "id" => 1,
+      "recipe_id" => "core.train_worker",
+      "remaining_ticks" => 150,
+      "started" => false,
+      "paid" => %{"core.food" => 50}
+    }
+
+    valid = put_in(@fixture, ["state", "next_job_id"], 2)
+
+    valid =
+      put_in(valid, ["state", "entities"], [
+        Map.put(hall, "queue", [job]),
+        Map.put(worker, "cargo", %{"resource_id" => "core.food", "amount" => 10}) | rest
+      ])
+
+    assert {:ok, ^valid} = decode(valid)
+
+    invalid = [
+      put_in(valid, ["state", "next_job_id"], 1),
+      put_in(valid, ["state", "entities"], [Map.put(hall, "queue", [job, job]) | rest]),
+      put_in(valid, ["state", "entities"], [
+        Map.put(hall, "queue", [Map.put(job, "paid", %{"missing.ore" => 50})]) | rest
+      ]),
+      put_in(valid, ["state", "entities"], [
+        Map.put(worker, "cargo", %{"resource_id" => "core.food", "amount" => 11})
+      ]),
+      put_in(valid, ["state", "entities"], [
+        Map.put(worker, "task", %{"kind" => "repair", "target_id" => 1, "progress" => 101})
+      ]),
+      put_in(valid, ["state", "entities"], [Map.put(worker, "rally", %{"x" => 0.5, "z" => 0})]),
+      put_in(valid, ["state", "nodes"], [Map.put(hd(state["nodes"]), "amount", -1)]),
+      put_in(valid, ["state", "nodes"], [
+        Map.put(hd(state["nodes"]), "resource_id", "core.worker")
+      ]),
+      put_in(valid, ["state", "nodes"], [Map.put(hd(state["nodes"]), "x", 99_999)]),
+      put_in(valid, ["state", "players"], [
+        put_in(hd(state["players"]), ["population", "reserved"], -1),
+        List.last(state["players"])
+      ])
+    ]
+
+    for reply <- invalid, do: assert({:error, :invalid_worker_reply} == decode(reply))
   end
 
   defp decode(reply),

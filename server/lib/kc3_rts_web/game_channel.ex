@@ -80,8 +80,23 @@ defmodule KC3RTSWeb.GameChannel do
 
   defp command_id(_), do: :error
 
-  defp parse_command(%{"type" => type, "entity_ids" => _} = payload)
-       when type in ["move", "stop"] do
+  defp parse_command(%{"type" => type} = payload)
+       when type in [
+              "move",
+              "gather",
+              "deliver",
+              "work",
+              "repair",
+              "produce",
+              "cancel",
+              "cancel_build",
+              "rally"
+            ] do
+    command = Map.delete(payload, "command_id")
+    if KC3Protocol.command_payload?(command), do: {:ok, command}, else: :error
+  end
+
+  defp parse_command(%{"type" => "stop", "entity_ids" => _} = payload) do
     command = Map.delete(payload, "command_id")
     if KC3Protocol.command_payload?(command), do: {:ok, command}, else: :error
   end

@@ -68,3 +68,10 @@ RTS.Check.that("shared prerequisite DAG validates", RTS.Content.validate(diamond
 RTS.ContentTest.rejects("producer requires the capability", "core.train_worker", "producer", "core.worker")
 
 RTS.Check.that("fractional schema version rejected", RTS.Content.validate(Map.put(catalog, "schema_version", 1.0)) == "invalid_catalog")
+RTS.ContentTest.rejects("gatherer needs cargo space", "core.worker", "cargo_capacity", 0)
+RTS.ContentTest.rejects("gatherer needs a positive rate", "core.worker", "gather_rate", 0)
+RTS.ContentTest.rejects("moving entity needs speed", "core.worker", "speed", 0)
+RTS.ContentTest.rejects("producer needs queue capacity", "core.hall", "queue_capacity", 0)
+RTS.ContentTest.rejects("repairer needs healing", "core.worker", "repair_hp", 0)
+RTS.ContentTest.rejects("farm output references resources", "core.farm", "yield", %{"resource_id" => "missing.food", "rate" => 7})
+RTS.Check.that("refund policy bounded", RTS.Content.validate(Map.put(catalog, "rules", Map.put(RTS.Data.get(catalog, "rules"), "started_cancel_percent", 101))) != void)

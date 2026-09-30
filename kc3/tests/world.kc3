@@ -1,63 +1,21 @@
 load!(__DIR__ + "check.kc3")
 load!(__DIR__ + "../load.kc3")
 RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "scenario.kc3")
 content = RTS.Content.compile(RTS.Core.catalog())
-world = RTS.World.opening(content, "native-test", 1234, ["kiln.concord", "lantern.synod"])
-RTS.Check.that("deterministic seeded world", world == RTS.World.opening(content,
-  "native-test", 1234, ["kiln.concord", "lantern.synod"]))
-RTS.Check.that("two player rosters", List.length(RTS.Data.get(world, "entities")) == 14)
-RTS.Check.that("generic resource map", RTS.Data.get(RTS.Data.get(List.first(
-  RTS.Data.get(world, "players")), "stocks"), "core.food") == 200)
-RTS.Check.that("explicit canonical outcome", RTS.Data.get(RTS.Data.get(world, "outcome"), "status") == "ongoing")
-command = %{"type" => "produce", "entity_id" => 1, "recipe_id" => "core.train_worker", "x" => 0, "z" => 0}
-result = RTS.World.command(content, world, 1, command)
-RTS.Check.that("recipe creates entity", RTS.Data.get(result, "accepted") &&
-  List.length(RTS.Data.get(RTS.Data.get(result, "state"), "entities")) == 15)
-RTS.Check.that("wrong owner rejected", RTS.Data.get(RTS.World.command(content, world, 2, command), "reason") == "invalid_producer")
-RTS.Check.that("unknown content rejected", RTS.Data.get(RTS.World.command(content, world, 1,
-  Map.put(command, "recipe_id", "missing.recipe")), "reason") == "unknown_content")
-RTS.Check.that("wrong producer rejected", RTS.Data.get(RTS.World.command(content, world, 1,
-  Map.put(command, "entity_id", 2)), "reason") == "invalid_producer")
-command = %{"type" => "produce", "entity_id" => 2, "recipe_id" => "core.build_house", "x" => 0, "z" => 0}
-result = RTS.World.command(content, world, 1, command)
-built = RTS.Data.get(result, "state")
-RTS.Check.that("generic construction reserves cost", RTS.Data.get(result, "accepted") &&
-  RTS.Data.get(RTS.Data.get(List.first(RTS.Data.get(built, "players")), "stocks"), "core.wood") == 160)
-RTS.Check.that("overlapping construction rejected", RTS.Data.get(RTS.World.command(content, built, 1, command), "reason") == "invalid_location")
-i = 0
-while i < 100 do
-  built = RTS.World.tick(content, built)
-  i = i + 1
-end
-RTS.Check.that("construction finishes on integer ticks", RTS.Data.get(List.last(
-  RTS.Data.get(built, "entities")), "construction") == void && RTS.Data.get(built, "tick") == 100)
-RTS.Check.that("state round trips canonical JSON", JSON.from_str(RTS.Wire.encode(built)) == built)
-# Preserve the old spike's second-center production regression with ordinary IDs.
-funded = Map.put(world, "players", List.map(RTS.Data.get(world, "players"), fn (p) {
-  Map.put(p, "stocks", Map.put(RTS.Data.get(p, "stocks"), "core.stone", 100))
-}))
-result = RTS.World.command(content, funded, 1,
-  %{"type" => "produce", "entity_id" => 2, "recipe_id" => "core.build_hall", "x" => 0, "z" => 0})
-RTS.Check.that("second hall reserves both resource costs", RTS.Data.get(result, "accepted"))
-hall = RTS.Data.get(result, "state")
-stocks = RTS.Data.get(List.first(RTS.Data.get(hall, "players")), "stocks")
-RTS.Check.that("costs deducted exactly once", RTS.Data.get(stocks, "core.wood") == 0 && RTS.Data.get(stocks, "core.stone") == 0)
-recruit = %{"type" => "produce", "entity_id" => 15, "recipe_id" => "core.train_worker", "x" => 0, "z" => 0}
-RTS.Check.that("unfinished hall cannot produce", RTS.Data.get(RTS.World.command(content, hall, 1, recruit), "reason") == "invalid_producer")
-i = 0
-while i < 100 do
-  hall = RTS.World.tick(content, hall)
-  i = i + 1
-end
-RTS.Check.that("completed new hall can produce", RTS.Data.get(RTS.World.command(content, hall, 1, recruit), "accepted"))
+world = RTS.Scenario.world(content)
+RTS.Check.that("deterministic complete opening", world == RTS.Scenario.world(content))
+RTS.Check.that("opening follows the economy table", RTS.Scenario.stock(world, "core.food") == 200 && RTS.Scenario.stock(world, "core.wood") == 200 && RTS.Data.get(RTS.World.player(world, 1), "population") == %{"used" => 6, "reserved" => 0, "cap" => 10})
+RTS.Check.that("worker and hall production use prescribed ticks", RTS.Data.get(RTS.World.definition(content, "core.train_worker"), "ticks") == 150 && RTS.Data.get(RTS.World.definition(content, "core.build_hall"), "ticks") == 600)
+RTS.Check.that("state round trips canonical JSON", JSON.from_str(RTS.Wire.encode(world)) == world)
+RTS.Check.that("outcome remains explicit pending combat", RTS.Data.get(RTS.Data.get(world, "outcome"), "status") == "ongoing")
+train = %{"type" => "produce", "entity_id" => 1, "recipe_id" => "core.train_worker", "x" => 0, "z" => 0}
+RTS.Scenario.reject(content, world, Map.put(train, "entity_id", 8), "invalid_producer")
+RTS.Scenario.reject(content, world, Map.put(train, "recipe_id", "missing.recipe"), "unknown_content")
 load!(__DIR__ + "extension.kc3")
-extended = RTS.Content.compile(RTS.Extension.catalog())
+extended = RTS.Content.compile(RTS.Scenario.fast(RTS.Extension.catalog()))
 custom = RTS.World.opening(extended, "extension", 1234, ["test.faction", "kiln.concord"])
-custom_result = RTS.World.command(extended, custom, 1,
-  %{"type" => "produce", "entity_id" => 1, "recipe_id" => "test.train_worker", "x" => 0, "z" => 0})
-RTS.Check.that("extension recipe uses the same handler", RTS.Data.get(custom_result, "accepted"))
-custom = RTS.Data.get(custom_result, "state")
-RTS.Check.that("faction override resolved without mutating base", RTS.Data.get(List.last(RTS.Data.get(custom, "entities")), "hp") == 90 &&
-  RTS.Data.get(RTS.World.definition(extended, "test.worker"), "hp") == 50)
-RTS.Check.that("extension stock map pays specialist cost", RTS.Data.get(RTS.Data.get(List.first(
-  RTS.Data.get(custom, "players")), "stocks"), "test.skyglass") == 15)
+custom = RTS.Scenario.command(extended, custom, Map.put(train, "recipe_id", "test.train_worker"))
+RTS.Check.that("extension queues pay a specialist resource through shared logic", RTS.Scenario.stock(custom, "test.skyglass") == 15 && List.length(RTS.Data.get(custom, "entities")) == 8)
+custom = RTS.Scenario.ticks(extended, custom, 4)
+RTS.Check.that("extension spawn applies faction max HP without mutating definition", RTS.Data.get(List.last(RTS.Data.get(custom, "entities")), "max_hp") == 90 && RTS.Data.get(RTS.World.definition(extended, "test.worker"), "hp") == 50)

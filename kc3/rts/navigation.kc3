@@ -26,13 +26,7 @@ defmodule RTS.Navigation do
     parents
   }
   def selection? = fn (content, state, slot, ids) {
-    RTS.Data.list?(ids, 16) && ids != [] && RTS.Data.unique?(ids) && List.all?(ids, fn (id) {
-      e = RTS.Data.find(RTS.Data.get(state, "entities"), "id", id)
-      RTS.Data.integer?(id, 1, 9007199254740991) && RTS.Data.get(e, "owner") == slot &&
-        RTS.Data.get(e, "construction") == void &&
-        RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "kind") == "unit" &&
-        List.has?(RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "capabilities"), "move")
-    })
+    RTS.World.selection?(content, state, slot, ids, "move")
   }
   def command = fn (content, state, slot, command) {
     ids = RTS.Data.get(command, "entity_ids")
@@ -86,9 +80,9 @@ defmodule RTS.Navigation do
   }
   def apply = fn (state, ids, orders) {
     state = Map.put(state, "entities", List.map(RTS.Data.get(state, "entities"), fn (e) {
-      if List.has?(ids, RTS.Data.get(e, "id")) do Map.put(e, "order", RTS.Data.get(orders, (Str) RTS.Data.get(e, "id"))) else e end
+      if List.has?(ids, RTS.Data.get(e, "id")) do Map.merge(e, %{"order" => RTS.Data.get(orders, (Str) RTS.Data.get(e, "id")), "task" => void, "status" => void}) else e end
     }))
-    Map.put(state, "revision", RTS.Data.get(state, "revision") + 1)
+    state
   }
   def advance = fn (content, map, entity) {
     order = RTS.Data.get(entity, "order")
@@ -114,4 +108,47 @@ defmodule RTS.Navigation do
   def step = fn (delta, speed) {
     if delta > speed do speed else if delta < (0 - speed) do 0 - speed else delta end end
   }
+  def near? = fn (map, entity, target) {
+    cell = RTS.Map.cell(map, RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z"))
+    target_cell = RTS.Map.cell(map, RTS.Data.get(target, "x"), RTS.Data.get(target, "z"))
+    cell == target_cell || List.has?(RTS.Map.neighbors(map, target_cell), cell)
+  }
+  # A forward field can choose the nearest reachable delivery point, not merely
+  # the closest building in a straight line. Ties retain stable candidate order.
+  def target_route = fn (map, field, start, target) {
+    cell = RTS.Map.cell(map, RTS.Data.get(target, "x"), RTS.Data.get(target, "z"))
+    candidates = RTS.Map.neighbors(map, cell)
+    best = void
+    while candidates != [] do
+      cell = List.first(candidates)
+      if RTS.Data.get(field, (Str) cell) != void do
+        path = [cell]
+        while cell != start do
+          cell = RTS.Data.get(field, (Str) cell)
+          path = [cell | path]
+        end
+        if best == void || List.length(path) < List.length(best) do best = ^ path end
+      end
+      candidates = List.next(candidates)
+    end
+    if best == void do void else %{"kind" => "move", "path" => best, "offset" => %{"x" => 0, "z" => 0}} end
+  }
+  def nearest = fn (content, state, entity, candidates) {
+    result = void
+    if candidates != [] do
+      map = RTS.Data.get(state, "map")
+      start = RTS.Map.cell(map, RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z"))
+      field = RTS.Navigation.field(map, RTS.Map.occupied(content, state), start)
+      while candidates != [] do
+        target = List.first(candidates)
+        route = RTS.Navigation.target_route(map, field, start, target)
+        if route != void && (result == void || List.length(RTS.Data.get(route, "path")) < List.length(RTS.Data.get(RTS.Data.get(result, "order"), "path"))) do
+          result = %{"target" => target, "order" => route}
+        end
+        candidates = List.next(candidates)
+      end
+    end
+    result
+  }
+
 end

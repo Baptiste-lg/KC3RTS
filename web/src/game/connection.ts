@@ -13,7 +13,7 @@ export type ClientCommand = GameCommand | KC3Command;
 export interface GameClient { connect(): void; command(command: ClientCommand): void; disconnect(): void }
 interface GuestMatch { match_id: string; token: string }
 const kc3Mode = (): boolean => typeof location !== "undefined" && new URLSearchParams(location.search).get("mode") === "kc3";
-const sessionKey = (): string => kc3Mode() ? "kc3rts-kc3-match-v2" : "kc3rts-guest-match-v1";
+const sessionKey = (): string => kc3Mode() ? "kc3rts-kc3-match-v3" : "kc3rts-guest-match-v1";
 function storedMatch(): string | null {
   try { return typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(sessionKey()); }
   catch { return null; }

@@ -1,0 +1,78 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+content = RTS.Content.compile(RTS.Core.catalog())
+world = RTS.World.opening(content, "production-test", 1234, ["kiln.concord", "lantern.synod"])
+result = RTS.World.command(content, world, 1, %{"type" => "produce", "entity_id" => 1, "recipe_id" => "core.train_worker", "x" => 0, "z" => 0})
+RTS.Check.that("paid recruitment queues without instant spawn", RTS.Data.get(result, "accepted") && List.length(RTS.Data.get(RTS.Data.get(result, "state"), "entities")) == 14)
+load!(__DIR__ + "scenario.kc3")
+content = RTS.Content.compile(RTS.Scenario.fast(RTS.Core.catalog()))
+world = RTS.Scenario.world(content)
+train = %{"type" => "produce", "entity_id" => 1, "recipe_id" => "core.train_worker", "x" => 0, "z" => 0}
+queued = RTS.Scenario.command(content, world, train)
+RTS.Check.that("queue charges once and reserves population", RTS.Scenario.stock(queued, "core.food") == 150 &&
+  RTS.Data.get(RTS.Data.get(RTS.World.player(queued, 1), "population"), "reserved") == 1)
+job = List.first(RTS.Data.get(RTS.World.find(queued, 1), "queue"))
+RTS.Check.that("queue stable identity starts unworked", RTS.Data.get(job, "id") == 1 && RTS.Data.get(job, "started") == false)
+unstarted = RTS.Scenario.command(content, queued, %{"type" => "cancel", "entity_id" => 1, "queue_id" => 1})
+RTS.Check.that("unstarted refund is exact", RTS.Scenario.stock(unstarted, "core.food") == 200 && RTS.Data.get(RTS.Data.get(RTS.World.player(unstarted, 1), "population"), "reserved") == 0)
+RTS.Scenario.reject(content, unstarted, %{"type" => "cancel", "entity_id" => 1, "queue_id" => 1}, "invalid_queue")
+working = RTS.World.tick(content, queued)
+RTS.Check.that("first tick starts only the head", RTS.Data.get(List.first(RTS.Data.get(RTS.World.find(working, 1), "queue")), "remaining_ticks") == 3)
+cancelled = RTS.Scenario.command(content, working, %{"type" => "cancel", "entity_id" => 1, "queue_id" => 1})
+RTS.Check.that("started refund consumes exactly half", RTS.Scenario.stock(cancelled, "core.food") == 175)
+spawned = RTS.Scenario.ticks(content, queued, 4)
+RTS.Check.that("queue spawns on the exact last tick", List.length(RTS.Data.get(spawned, "entities")) == 15 && RTS.Data.get(RTS.World.find(spawned, 1), "queue") == [])
+RTS.Check.that("spawn is outside producer footprint", RTS.Data.get(RTS.World.find(spawned, 15), "x") != RTS.Data.get(RTS.World.find(spawned, 1), "x") || RTS.Data.get(RTS.World.find(spawned, 15), "z") != RTS.Data.get(RTS.World.find(spawned, 1), "z"))
+RTS.Check.that("spawn exchanges reservation for used population", RTS.Data.get(RTS.World.player(spawned, 1), "population") == %{"used" => 7, "reserved" => 0, "cap" => 10})
+full = RTS.Scenario.funded(world)
+i = 0
+while i < 4 do full = RTS.Scenario.command(content, full, train); i = i + 1 end
+RTS.Scenario.reject(content, full, train, "population_full")
+roomy = RTS.Scenario.add(content, RTS.Scenario.funded(world), "core.house", -4608, 2560)
+i = 0
+while i < 5 do roomy = RTS.Scenario.command(content, roomy, train); i = i + 1 end
+RTS.Check.that("fifth queue slot accepted", List.length(RTS.Data.get(RTS.World.find(roomy, 1), "queue")) == 5)
+RTS.Scenario.reject(content, roomy, train, "queue_full")
+head_tick = RTS.World.tick(content, roomy)
+RTS.Check.that("waiting entries remain unstarted", RTS.Data.get(List.last(RTS.Data.get(RTS.World.find(head_tick, 1), "queue")), "started") == false)
+# Destruction consumes investment and releases reservations; it cannot refund.
+lost = RTS.Scenario.change(roomy, 1, %{"hp" => 0})
+lost = RTS.World.tick(content, lost)
+RTS.Check.that("destroyed production releases every queue reservation", RTS.World.find(lost, 1) == void && RTS.Data.get(RTS.Data.get(RTS.World.player(lost, 1), "population"), "reserved") == 0)
+RTS.Check.that("destroyed production never refunds", RTS.Scenario.stock(lost, "core.food") == RTS.Scenario.stock(roomy, "core.food"))
+# A completed unit waits if every exit is blocked, with its original payment.
+map = RTS.Data.get(world, "map")
+cell = RTS.Map.cell(map, RTS.Data.get(RTS.World.find(world, 1), "x"), RTS.Data.get(RTS.World.find(world, 1), "z"))
+blocked = Map.put(queued, "map", Map.put(map, "blocked", RTS.Map.neighbors(map, cell)))
+blocked = RTS.Scenario.ticks(content, blocked, 6)
+RTS.Check.that("blocked exits preserve paid completion", List.length(RTS.Data.get(blocked, "entities")) == 14 && RTS.Data.get(RTS.World.find(blocked, 1), "status") == "exit_blocked" && RTS.Scenario.stock(blocked, "core.food") == 150)
+opened = RTS.World.tick(content, Map.put(blocked, "map", map))
+RTS.Check.that("opening an exit spawns exactly once", List.length(RTS.Data.get(opened, "entities")) == 15 && List.length(RTS.Data.get(RTS.World.tick(content, opened), "entities")) == 15)
+# Houses lost while a paid queue is active never delete existing units.
+loss = RTS.Scenario.change(roomy, 15, %{"hp" => 0})
+loss = RTS.Scenario.ticks(content, loss, 22)
+RTS.Check.that("house loss leaves existing units and waits at cap", RTS.Data.get(RTS.Data.get(RTS.World.player(loss, 1), "population"), "used") == 10 && RTS.Data.get(RTS.World.find(loss, 1), "status") == "population_blocked")
+RTS.Scenario.reject(content, loss, train, "population_full")
+# Military recipes, rally routing and odd-cost refunds share the worker path.
+military = RTS.Scenario.add(content, RTS.Scenario.funded(world), "core.barracks", -512, 512)
+military = RTS.Scenario.add(content, military, "core.range", 1536, 512)
+military = RTS.Scenario.command(content, military, %{"type" => "rally", "entity_id" => 15, "x" => -512, "z" => -512})
+military = RTS.Scenario.command(content, military, %{"type" => "produce", "entity_id" => 15, "recipe_id" => "core.train_spear", "x" => 0, "z" => 0})
+military = RTS.Scenario.command(content, military, %{"type" => "produce", "entity_id" => 16, "recipe_id" => "core.train_ranged", "x" => 0, "z" => 0})
+military = RTS.Scenario.ticks(content, military, 4)
+RTS.Check.that("both military producers finish catalog units", RTS.Data.get(RTS.World.find(military, 17), "type_id") == "core.spear" && RTS.Data.get(RTS.World.find(military, 18), "type_id") == "core.ranged")
+RTS.Check.that("spawned units inherit a native rally route", RTS.Data.get(RTS.World.find(military, 17), "order") != void)
+RTS.Check.that("simultaneous spawns refresh the population ledger", RTS.Data.get(RTS.World.player(military, 1), "population") == RTS.World.population(content, military, 1))
+# A refund cannot overflow storage, and repeated cancellation cannot mint stock.
+full_stock = RTS.World.balance(queued, 1, %{"core.food" => 999850}, 1)
+RTS.Scenario.reject(content, full_stock, %{"type" => "cancel", "entity_id" => 1, "queue_id" => 1}, "storage_full")
+looped = ^ world
+i = 0
+while i < 8 do
+  looped = RTS.Scenario.command(content, looped, train)
+  job = List.first(RTS.Data.get(RTS.World.find(looped, 1), "queue"))
+  looped = RTS.Scenario.command(content, looped, %{"type" => "cancel", "entity_id" => 1, "queue_id" => RTS.Data.get(job, "id")})
+  i = i + 1
+end
+RTS.Check.that("repeated unstarted cancellation conserves every stock", RTS.Data.get(RTS.World.player(looped, 1), "stocks") == RTS.Data.get(RTS.World.player(world, 1), "stocks"))

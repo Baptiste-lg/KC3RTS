@@ -3,10 +3,10 @@ defmodule RTS.Protocol do
     reason = void
     operation = RTS.Data.get(request, "operation")
     if (! RTS.Data.integer?(RTS.Data.get(request, "protocol_version"), 2, 2)) ||
-       (! RTS.Data.integer?(RTS.Data.get(request, "ruleset_version"), 2, 2)) do
+       (! RTS.Data.integer?(RTS.Data.get(request, "ruleset_version"), 3, 3)) do
       reason = "incompatible_version"
     end
-    if reason == void && RTS.Data.get(request, "content_hash") != RTS.Data.get(RTS.Data.get(content, "public"), "content_hash") do
+    if reason == void && RTS.Data.get(request, "content_hash") != RTS.Data.get(content, "content_hash") do
       reason = "incompatible_content"
     end
     if reason == void do
@@ -47,8 +47,8 @@ defmodule RTS.Protocol do
   }
   def reply = fn (content, request, result) {
     state = RTS.Data.get(result, "state")
-    %{"protocol_version" => 2, "ruleset_version" => 2,
-      "content_hash" => RTS.Data.get(RTS.Data.get(content, "public"), "content_hash"),
+    %{"protocol_version" => 2, "ruleset_version" => 3,
+      "content_hash" => RTS.Data.get(content, "content_hash"),
       "request_id" => RTS.Data.get(request, "request_id"), "match_id" => RTS.Data.get(request, "match_id"),
       "accepted" => RTS.Data.get(result, "accepted"), "reason" => RTS.Data.get(result, "reason"),
       "revision" => if state == void do 0 else RTS.Data.get(state, "revision") end, "state" => state}

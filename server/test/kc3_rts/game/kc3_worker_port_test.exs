@@ -3,7 +3,7 @@ defmodule KC3RTS.Game.KC3WorkerPortTest do
   alias KC3RTS.Game.KC3Worker
   import KC3RTS.KC3Boundary
 
-  @fixture Path.expand("../../../../fixtures/kc3_opening_v2.json", __DIR__)
+  @fixture Path.expand("../../../../fixtures/kc3_opening_v3.json", __DIR__)
            |> File.read!()
            |> String.trim_trailing()
   @limit 262_144

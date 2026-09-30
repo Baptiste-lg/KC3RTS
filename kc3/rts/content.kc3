@@ -21,16 +21,16 @@ defmodule RTS.Content do
   }
   def shape? = fn (d) {
     kind = RTS.Data.get(d, "kind")
-    fields = RTS.Data.get(%{
+    fields = if List.has?(["unit", "building"], kind) do
+      ["art", "hp", "footprint", "speed", "capabilities", "population", "supply", "cargo_capacity", "gather_rate", "storage", "yield", "queue_capacity", "repair_cost", "repair_hp"]
+    else RTS.Data.get(%{
       "resource" => ["art", "category", "cap", "sources"],
-      "unit" => ["art", "hp", "footprint", "speed", "capabilities"],
-      "building" => ["art", "hp", "footprint", "speed", "capabilities"],
       "recipe" => ["producer", "output", "ticks", "cost", "prerequisites"],
       "technology" => ["ticks", "cost", "prerequisites", "effects"],
       "effect" => ["handler", "stat", "operation", "amount", "stacking", "group", "duration_ticks"],
       "faction" => ["recipes", "roster", "stocks", "overrides"],
       "tribe" => ["tiers", "offers", "effects"],
-      "offer" => ["source", "payment", "reward", "stock", "refill_ticks"]}, kind)
+      "offer" => ["source", "payment", "reward", "stock", "refill_ticks"]}, kind) end
     if fields == void do false else
       if RTS.Content.fields?(d, List.append(["id", "kind", "label"], fields)) do
         RTS.Data.id?(RTS.Data.get(d, "id")) && RTS.Data.text?(RTS.Data.get(d, "label"), 120) &&
@@ -86,7 +86,27 @@ defmodule RTS.Content do
     RTS.Data.id?(RTS.Data.get(d, "art")) && RTS.Data.integer?(RTS.Data.get(d, "hp"), 1, 1000000) &&
         RTS.Data.integer?(RTS.Data.get(d, "footprint"), 1, 1024) &&
         RTS.Data.integer?(RTS.Data.get(d, "speed"), 0, 256) &&
-        RTS.Content.choices?(RTS.Data.get(d, "capabilities"), ["move", "build", "train"])
+        RTS.Content.choices?(RTS.Data.get(d, "capabilities"), ["move", "gather", "build", "repair", "train"]) &&
+        RTS.Data.integer?(RTS.Data.get(d, "population"), 0, 10) &&
+        RTS.Data.integer?(RTS.Data.get(d, "supply"), 0, 60) &&
+        RTS.Data.integer?(RTS.Data.get(d, "cargo_capacity"), 0, 100) &&
+        RTS.Data.integer?(RTS.Data.get(d, "gather_rate"), 0, 100) &&
+        RTS.Content.ids?(RTS.Data.get(d, "storage")) && RTS.Content.yield?(RTS.Data.get(d, "yield")) &&
+        RTS.Data.integer?(RTS.Data.get(d, "queue_capacity"), 0, 5) &&
+        RTS.Content.amounts?(RTS.Data.get(d, "repair_cost")) &&
+        RTS.Data.integer?(RTS.Data.get(d, "repair_hp"), 0, 100) && RTS.Content.capabilities?(d)
+  }
+  def capabilities? = fn (d) {
+    caps = RTS.Data.get(d, "capabilities")
+    ((! List.has?(caps, "move")) || RTS.Data.get(d, "speed") > 0) &&
+      ((! List.has?(caps, "gather")) || (RTS.Data.get(d, "cargo_capacity") > 0 && RTS.Data.get(d, "gather_rate") > 0)) &&
+      ((! List.has?(caps, "train")) || RTS.Data.get(d, "queue_capacity") > 0) &&
+      ((! List.has?(caps, "repair")) || RTS.Data.get(d, "repair_hp") > 0) &&
+      (RTS.Data.get(d, "yield") == void || RTS.Data.get(d, "kind") == "building")
+  }
+  def yield? = fn (value) {
+    value == void || (RTS.Content.fields?(value, ["resource_id", "rate"]) &&
+      RTS.Data.id?(RTS.Data.get(value, "resource_id")) && RTS.Data.integer?(RTS.Data.get(value, "rate"), 1, 100))
   }
   def override? = fn (o) {
     RTS.Data.id?(RTS.Data.get(o, "target")) &&
@@ -107,7 +127,7 @@ defmodule RTS.Content do
   }
   def references? = fn (index, d) {
     links = %{"prerequisites" => "technology", "effects" => "effect", "recipes" => "recipe", "offers" => "offer"}
-    valid = List.all?(["cost", "stocks", "payment", "reward"], fn (field) {
+    valid = List.all?(["cost", "stocks", "payment", "reward", "repair_cost"], fn (field) {
       value = RTS.Data.get(d, field)
       if value == void do true else RTS.Content.amounts_ref?(index, value) end
     }) && List.all?(Map.keys(links), fn (field) {
@@ -115,6 +135,14 @@ defmodule RTS.Content do
       if value == void do true else RTS.Content.refs?(index, value, [RTS.Data.get(links, field)]) end
     })
     kind = RTS.Data.get(d, "kind")
+    if List.has?(["unit", "building"], kind) do
+      valid = valid && RTS.Content.refs?(index, RTS.Data.get(d, "storage"), ["resource"])
+      yield = RTS.Data.get(d, "yield")
+      if yield != void do
+        resource = RTS.Data.get(index, RTS.Data.get(yield, "resource_id"))
+        valid = valid && RTS.Data.get(resource, "kind") == "resource" && List.has?(RTS.Data.get(resource, "sources"), "farm")
+      end
+    end
     if kind == "recipe" do
       valid = valid && RTS.Content.ref?(index, RTS.Data.get(d, "producer"), ["unit", "building"]) &&
         RTS.Content.ref?(index, RTS.Data.get(d, "output"), ["unit", "building"]) &&
@@ -164,11 +192,20 @@ defmodule RTS.Content do
     end
     Map.count(pending) == 0
   }
+  def rules? = fn (rules) {
+    RTS.Content.fields?(rules, ["population_cap", "building_cancel_percent", "started_cancel_percent", "repair_interval"]) &&
+      RTS.Data.integer?(RTS.Data.get(rules, "population_cap"), 1, 60) &&
+      RTS.Data.integer?(RTS.Data.get(rules, "building_cancel_percent"), 0, 100) &&
+      RTS.Data.integer?(RTS.Data.get(rules, "started_cancel_percent"), 0, 100) &&
+      RTS.Data.integer?(RTS.Data.get(rules, "repair_interval"), 1, 100)
+  }
+  def rule = fn (content, key) { access(content, ["rules", key]) }
   def validate = fn (catalog) {
     error = void
-    if (! RTS.Content.fields?(catalog, ["schema_version", "ruleset_version", "definitions"])) ||
-       (! RTS.Data.integer?(RTS.Data.get(catalog, "schema_version"), 2, 2)) ||
-       (! RTS.Data.integer?(RTS.Data.get(catalog, "ruleset_version"), 2, 2)) ||
+    if (! RTS.Content.fields?(catalog, ["schema_version", "ruleset_version", "rules", "definitions"])) ||
+       (! RTS.Data.integer?(RTS.Data.get(catalog, "schema_version"), 3, 3)) ||
+       (! RTS.Data.integer?(RTS.Data.get(catalog, "ruleset_version"), 3, 3)) ||
+       (! RTS.Content.rules?(RTS.Data.get(catalog, "rules"))) ||
        (! RTS.Data.list?(RTS.Data.get(catalog, "definitions"), 2048)) || RTS.Data.get(catalog, "definitions") == [] do
       error = "invalid_catalog"
     else
@@ -205,7 +242,10 @@ defmodule RTS.Content do
       end
     })
     %{"index" => RTS.Data.index(RTS.Data.get(catalog, "definitions")),
-      "public" => RTS.Content.public(catalog), "facts" => db}
+      "content_hash" => RTS.Data.get(RTS.Content.public(catalog), "content_hash"),
+      "resources" => List.filter(RTS.Data.get(catalog, "definitions"), fn (d) {
+        if RTS.Data.get(d, "kind") == "resource" do RTS.Data.get(d, "id") else false end
+      }), "facts" => db, "rules" => RTS.Data.get(catalog, "rules")}
   }
   def allowed? = fn (compiled, faction, recipe) {
     Facts.first_with_tags(RTS.Data.get(compiled, "facts"), faction, :allows_recipe, recipe,
