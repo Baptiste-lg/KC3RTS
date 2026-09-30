@@ -1,0 +1,19 @@
+load!(__DIR__ + "../load.kc3")
+load!(__DIR__ + "../rts/world.kc3")
+load!(__DIR__ + "../rts/protocol.kc3")
+content = RTS.Content.compile(RTS.Core.catalog())
+state = RTS.World.opening(content, "port-test", 1234, ["kiln.concord", "lantern.synod"])
+entity = List.first(RTS.Data.get(state, "entities"))
+entities = []
+i = 512
+while i > 0 do
+  entities = [Map.put(entity, "id", i) | entities]
+  i = i - 1
+end
+state = Map.put(state, "entities", entities)
+state = Map.put(state, "next_entity_id", 513)
+result = RTS.World.command(content, state, 1,
+  %{"type" => "produce", "recipe_id" => "core.train_worker", "entity_id" => 1, "x" => 0, "z" => 0})
+if RTS.Data.get(result, "reason") != "entity_limit" do exit(1) end
+puts(RTS.Wire.encode(RTS.Protocol.reply(content,
+  %{"request_id" => 1, "match_id" => "port-test"}, RTS.World.result(state, void))))

@@ -1,20 +1,24 @@
 defmodule KC3RTS.Game.KC3Worker do
   @moduledoc """
   Experimental one-match KC3 process boundary. The worker owns the rules in
-  `kc3/worker.kc3`; this adapter only validates framing and request identity.
+  `kc3/worker.kc3`; this adapter validates framing, the complete state shape and request continuity.
   """
 
   use GenServer
+  alias KC3RTS.Game.KC3Protocol
 
-  @max_request_bytes 4096
-  @max_reply_bytes 64_000
+  @max_reply_bytes 262_144
   @default_timeout 30_000
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
-  def request(server, payload, timeout \\ @default_timeout) do
+  def request(server, payload, timeout \\ @default_timeout)
+
+  def request(server, payload, timeout) when is_integer(timeout) and timeout > 0 do
     GenServer.call(server, {:request, payload, timeout}, timeout + 1_000)
   end
+
+  def request(_server, _payload, _timeout), do: {:error, :invalid_timeout}
 
   @impl true
   def init(opts) do
@@ -31,23 +35,23 @@ defmodule KC3RTS.Game.KC3Worker do
       Port.open({:spawn_executable, String.to_charlist(bin)}, [
         :binary,
         :exit_status,
-        {:args, ["--load", script]},
+        {:args, ["--load", script, "--quit"]},
         {:cd, Path.dirname(Path.dirname(bin))},
-        {:line, @max_reply_bytes}
+        {:line, @max_reply_bytes + 1}
       ])
 
-    {:ok, %{port: port, pending: nil}}
+    {:ok, %{port: port, pending: nil, world: nil}}
   end
 
   @impl true
   def handle_call({:request, payload, timeout}, from, state) do
-    with {:ok, encoded} <- encode_request(payload),
+    with {:ok, encoded} <- KC3Protocol.encode_request(payload),
          true <- is_integer(timeout) and timeout > 0,
          nil <- state.pending do
       token = make_ref()
       timer = Process.send_after(self(), {:request_timeout, token}, timeout)
       Port.command(state.port, encoded)
-      {:noreply, %{state | pending: {from, timer, payload["request_id"], token}}}
+      {:noreply, %{state | pending: {from, timer, payload, token}}}
     else
       false -> {:reply, {:error, :invalid_timeout}, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
@@ -58,23 +62,21 @@ defmodule KC3RTS.Game.KC3Worker do
   @impl true
   def handle_info(
         {port, {:data, {:eol, line}}},
-        %{port: port, pending: {from, timer, id, _token}} = state
+        %{port: port, pending: {from, timer, request, _token}} = state
       ) do
     Process.cancel_timer(timer)
 
     reply =
-      case Jason.decode(line) do
-        {:ok, %{"protocol_version" => 1, "ruleset_version" => 1, "request_id" => ^id} = data} ->
-          {:ok, data}
-
-        _ ->
-          {:error, :invalid_worker_reply}
+      if byte_size(line) <= @max_reply_bytes do
+        KC3Protocol.decode_reply(line, request, state.world)
+      else
+        {:error, :oversized_worker_reply}
       end
 
     GenServer.reply(from, reply)
 
     case reply do
-      {:ok, _data} -> {:noreply, %{state | pending: nil}}
+      {:ok, data} -> {:noreply, %{state | pending: nil, world: data["state"]}}
       {:error, _reason} -> {:stop, :normal, %{state | pending: nil}}
     end
   end
@@ -82,6 +84,10 @@ defmodule KC3RTS.Game.KC3Worker do
   def handle_info({port, {:data, {:noeol, _chunk}}}, %{port: port} = state) do
     reply_pending(state.pending, {:error, :oversized_worker_reply})
     {:stop, :normal, %{state | pending: nil}}
+  end
+
+  def handle_info({port, {:data, _data}}, %{port: port} = state) do
+    {:stop, :normal, state}
   end
 
   def handle_info({port, {:exit_status, _status}}, %{port: port} = state) do
@@ -114,63 +120,4 @@ defmodule KC3RTS.Game.KC3Worker do
   end
 
   defp reply_pending(nil, _reply), do: :ok
-
-  defp encode_request(payload) when is_map(payload) do
-    if valid_envelope?(payload) and valid_operation?(payload) do
-      case Jason.encode(payload) do
-        {:ok, encoded} when byte_size(encoded) <= @max_request_bytes ->
-          {:ok, encoded <> "\n"}
-
-        {:ok, _encoded} ->
-          {:error, :oversized_request}
-
-        {:error, _reason} ->
-          {:error, :invalid_request}
-      end
-    else
-      {:error, :invalid_request}
-    end
-  end
-
-  defp encode_request(_), do: {:error, :invalid_request}
-
-  defp valid_envelope?(%{
-         "protocol_version" => 1,
-         "ruleset_version" => 1,
-         "request_id" => id,
-         "match_id" => match_id,
-         "expected_revision" => revision,
-         "operation" => operation
-       })
-       when is_integer(id) and id > 0 and is_binary(match_id) and byte_size(match_id) in 1..48 and
-              is_integer(revision) and revision >= 0 and
-              operation in ["new_match", "command", "tick", "snapshot"] do
-    String.valid?(match_id) and String.match?(match_id, ~r/\A[a-zA-Z0-9_-]+\z/)
-  end
-
-  defp valid_envelope?(_), do: false
-
-  defp valid_operation?(%{"operation" => "new_match", "seed" => seed}),
-    do: is_integer(seed) and seed in 1..2_147_483_646
-
-  defp valid_operation?(%{"operation" => "command", "actor_slot" => slot, "command" => command})
-       when slot in [1, 2] and is_map(command) do
-    valid_command?(command)
-  end
-
-  defp valid_operation?(%{"operation" => operation}) when operation in ["tick", "snapshot"],
-    do: true
-
-  defp valid_operation?(_), do: false
-
-  defp valid_command?(%{"type" => "spawn_villager", "building_id" => id}),
-    do: is_integer(id) and id > 0
-
-  defp valid_command?(%{"type" => "build_center", "villager_id" => id, "x" => x, "z" => z}),
-    do: is_integer(id) and id > 0 and is_number(x) and is_number(z)
-
-  defp valid_command?(%{"type" => type, "building_id" => id}) when is_binary(type),
-    do: byte_size(type) in 1..32 and is_integer(id) and id > 0
-
-  defp valid_command?(_), do: false
 end

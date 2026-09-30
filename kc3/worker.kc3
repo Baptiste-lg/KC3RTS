@@ -1,151 +1,24 @@
-# One persistent KC3 worker owns one experimental match. Requests and replies
-# are JSON lines; KC3 owns the stockpile, construction, recruiting, and revision.
+# One process owns one match. Only protocol replies go to stdout.
 require Buf
 require File
-require JSON
-require Map
-require Str
+load!(__DIR__ + "load.kc3")
+load!(__DIR__ + "rts/world.kc3")
+load!(__DIR__ + "rts/protocol.kc3")
 
-defmodule RTS do
-  def get = fn (map, key) { access(map, [key]) }
+defmodule RTS.Port do
   def open_fd = cfn Buf* "buf_fd_open_r" (Buf, S32)
-  def result = fn (state, accepted, reason) {
-    %{"state" => state, "accepted" => accepted, "reason" => reason}
-  }
-  def opening = fn (match_id, seed) {
-    %{"created" => true, "match_id" => match_id, "seed" => seed,
-      "tick" => 0, "revision" => 1, "wood" => 30, "stone" => 15,
-      "gold" => 20, "villagers" => 3, "center_2_started" => false,
-      "center_2_finished" => false, "center_2_progress" => 0,
-      "center_2_x" => 0, "center_2_z" => 0}
-  }
-  def recruit = fn (state, command) {
-    building_id = RTS.get(command, "building_id")
-    if building_id == 1 ||
-       (building_id == 3 && RTS.get(state, "center_2_finished")) do
-      if RTS.get(state, "wood") >= 5 && RTS.get(state, "gold") >= 5 do
-        state = Map.put(state, "wood", RTS.get(state, "wood") - 5)
-        state = Map.put(state, "gold", RTS.get(state, "gold") - 5)
-        state = Map.put(state, "villagers", RTS.get(state, "villagers") + 1)
-        state = Map.put(state, "revision", RTS.get(state, "revision") + 1)
-        RTS.result(state, true, void)
-      else
-        RTS.result(state, false, "insufficient_resources")
-      end
-    else
-      RTS.result(state, false, "invalid_building")
-    end
-  }
-  def build = fn (state, command) {
-    x = RTS.get(command, "x")
-    z = RTS.get(command, "z")
-    villager_id = RTS.get(command, "villager_id")
-    if villager_id > RTS.get(state, "villagers") ||
-       RTS.get(state, "center_2_started") do
-      RTS.result(state, false, "invalid_builder")
-    else
-      if x < -49 || x > 49 || z < -49 || z > 49 ||
-         x * x + z * z < 64 do
-        RTS.result(state, false, "invalid_location")
-      else
-        if RTS.get(state, "wood") < 25 || RTS.get(state, "stone") < 15 do
-          RTS.result(state, false, "insufficient_resources")
-        else
-          state = Map.put(state, "wood", RTS.get(state, "wood") - 25)
-          state = Map.put(state, "stone", RTS.get(state, "stone") - 15)
-          state = Map.put(state, "center_2_started", true)
-          state = Map.put(state, "center_2_x", x)
-          state = Map.put(state, "center_2_z", z)
-          state = Map.put(state, "revision", RTS.get(state, "revision") + 1)
-          RTS.result(state, true, void)
-        end
-      end
-    end
-  }
-  def command = fn (state, request) {
-    if RTS.get(request, "actor_slot") == 1 do
-      command = RTS.get(request, "command")
-      command_type = RTS.get(command, "type")
-      if command_type == "spawn_villager" do
-        RTS.recruit(state, command)
-      else
-        if command_type == "build_center" do
-          RTS.build(state, command)
-        else
-          RTS.result(state, false, "invalid_command")
-        end
-      end
-    else
-      RTS.result(state, false, "invalid_command")
-    end
-  }
-  def tick = fn (state) {
-    state = Map.put(state, "tick", RTS.get(state, "tick") + 1)
-    state = Map.put(state, "revision", RTS.get(state, "revision") + 1)
-    if RTS.get(state, "center_2_started") &&
-       ! RTS.get(state, "center_2_finished") do
-      progress = RTS.get(state, "center_2_progress") + 1
-      state = Map.put(state, "center_2_progress", progress)
-      if progress == 100 do
-        state = Map.put(state, "center_2_finished", true)
-      end
-    end
-    RTS.result(state, true, void)
-  }
-  def handle = fn (state, request) {
-    operation = RTS.get(request, "operation")
-    revision = RTS.get(request, "expected_revision")
-    if RTS.get(request, "protocol_version") != 1 ||
-       RTS.get(request, "ruleset_version") != 1 do
-      RTS.result(state, false, "incompatible_version")
-    else
-      if operation == "new_match" do
-        if ! RTS.get(state, "created") && revision == 0 &&
-           RTS.get(request, "seed") > 0 do
-          RTS.result(RTS.opening(RTS.get(request, "match_id"),
-                                 RTS.get(request, "seed")), true, void)
-        else
-          RTS.result(state, false, "match_exists")
-        end
-      else
-        RTS.handle_existing(state, request)
-      end
-    end
-  }
-  def handle_existing = fn (state, request) {
-    if ! RTS.get(state, "created") ||
-       RTS.get(request, "match_id") != RTS.get(state, "match_id") do
-      RTS.result(state, false, "unknown_match")
-    else
-      if RTS.get(request, "operation") == "snapshot" do
-        RTS.result(state, true, void)
-      else
-        if RTS.get(request, "expected_revision") != RTS.get(state, "revision") do
-          RTS.result(state, false, "stale_revision")
-        else
-          if RTS.get(request, "operation") == "tick" do
-            RTS.tick(state)
-          else
-            RTS.command(state, request)
-          end
-        end
-      end
-    end
-  }
 end
-
-input = RTS.open_fd(Buf.new_alloc((Uw) 8192), (S32) File.open_r("/dev/stdin"))
-state = %{"created" => false, "match_id" => "", "revision" => 0}
+catalog = RTS.Core.catalog()
+if RTS.Content.validate(catalog) != void do exit(1) end
+content = RTS.Content.compile(catalog)
+input = RTS.Port.open_fd(Buf.new_alloc((Uw) 8192), (S32) File.open_r("/dev/stdin"))
+state = void
 line = Buf.read_line(input)
 while line do
+  if Str.size(line) > 4096 do exit(1) end
   request = JSON.from_str(line)
-  result = RTS.handle(state, request)
-  state = RTS.get(result, "state")
-  response = %{"protocol_version" => 1, "ruleset_version" => 1,
-               "request_id" => RTS.get(request, "request_id"),
-               "accepted" => RTS.get(result, "accepted"),
-               "revision" => RTS.get(state, "revision"),
-               "reason" => RTS.get(result, "reason"), "state" => state}
-  puts(Str.subst(JSON.to_str(response), "\n", ""))
+  result = RTS.Protocol.handle(content, state, request)
+  state = RTS.Data.get(result, "state")
+  puts(RTS.Wire.encode(RTS.Protocol.reply(content, request, result)))
   line = Buf.read_line(input)
 end

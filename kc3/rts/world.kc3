@@ -1,0 +1,142 @@
+# Integer world units: 256 per tile, ten simulation ticks per second.
+# Recruitment remains immediate in this boundary scenario; P03 adds queues.
+defmodule RTS.World do
+  def definition = fn (content, id) { RTS.Data.get(RTS.Data.get(content, "index"), id) }
+  def result = fn (state, reason) { %{"state" => state, "accepted" => reason == void, "reason" => reason} }
+  def entity = fn (content, faction, id, type_id, owner, x, z, construction) {
+    definition = RTS.World.definition(content, type_id)
+    override = RTS.Data.find(RTS.Data.get(RTS.World.definition(content, faction), "overrides"), "target", type_id)
+    hp = RTS.Data.get(definition, "hp")
+    if override != void do hp = RTS.Data.get(override, "hp") end
+    %{"id" => id, "type_id" => type_id, "owner" => owner, "x" => x, "z" => z,
+      "hp" => hp, "construction" => construction}
+  }
+  def opening = fn (content, match_id, seed, factions) {
+    players = []
+    entities = []
+    next_id = 1
+    slot = 1
+    while factions != [] do
+      faction = List.first(factions)
+      definition = RTS.World.definition(content, faction)
+      stocks = %{}
+      resources = List.filter(RTS.Data.get(RTS.Data.get(RTS.Data.get(content, "public"), "catalog"), "definitions"), fn (d) {
+        if RTS.Data.get(d, "kind") == "resource" do d else false end
+      })
+      while resources != [] do
+        stocks = Map.put(stocks, RTS.Data.get(List.first(resources), "id"), 0)
+        resources = List.next(resources)
+      end
+      players = List.append_one(players, %{"slot" => slot, "faction_id" => faction,
+        "stocks" => Map.merge(stocks, RTS.Data.get(definition, "stocks"))})
+      roster = RTS.Data.get(definition, "roster")
+      offset = 0
+      while roster != [] do
+        entry = List.first(roster)
+        count = RTS.Data.get(entry, "count")
+        while count > 0 do
+          origin = if slot == 1 do -6144 else 6144 end
+          entities = List.append_one(entities, RTS.World.entity(content, faction, next_id,
+            RTS.Data.get(entry, "type_id"), slot, origin, offset, void))
+          next_id = next_id + 1
+          offset = offset + 512
+          count = count - 1
+        end
+        roster = List.next(roster)
+      end
+      slot = slot + 1
+      factions = List.next(factions)
+    end
+    %{"schema_version" => 1, "content_hash" => RTS.Data.get(RTS.Data.get(content, "public"), "content_hash"),
+      "match_id" => match_id, "seed" => seed, "rng_state" => RTS.Data.random_next(seed),
+      "tick" => 0, "revision" => 1, "next_entity_id" => next_id,
+      "players" => players, "entities" => entities,
+      "outcome" => %{"status" => "ongoing", "winner_slot" => void, "reason" => void}}
+  }
+  def producer? = fn (content, player, entity, recipe, slot) {
+    if entity == void do false else
+      RTS.Data.get(entity, "owner") == slot && RTS.Data.get(entity, "construction") == void &&
+        RTS.Data.get(entity, "type_id") == RTS.Data.get(recipe, "producer") &&
+        RTS.Content.allowed?(content, RTS.Data.get(player, "faction_id"), RTS.Data.get(recipe, "id"))
+    end
+  }
+  def location? = fn (content, state, output, x, z) {
+    RTS.Data.integer?(x, -12544, 12544) && RTS.Data.integer?(z, -12544, 12544) &&
+      List.all?(RTS.Data.get(state, "entities"), fn (e) {
+        distance = (RTS.Data.get(output, "footprint") +
+          RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "footprint")) / 2
+        dx = x - RTS.Data.get(e, "x")
+        dz = z - RTS.Data.get(e, "z")
+        dx >= distance || dx <= (0 - distance) || dz >= distance || dz <= (0 - distance)
+      })
+  }
+  def command = fn (content, state, slot, command) {
+    reason = void
+    recipe = RTS.World.definition(content, RTS.Data.get(command, "recipe_id"))
+    entity = RTS.Data.find(RTS.Data.get(state, "entities"), "id", RTS.Data.get(command, "entity_id"))
+    player = RTS.Data.find(RTS.Data.get(state, "players"), "slot", slot)
+    if RTS.Data.get(command, "type") != "produce" do reason = "invalid_command" else
+      if RTS.Data.get(recipe, "kind") != "recipe" do reason = "unknown_content" else
+        if (! RTS.World.producer?(content, player, entity, recipe, slot)) do reason = "invalid_producer" else
+          if RTS.Data.get(recipe, "prerequisites") != [] do reason = "prerequisite_required" else
+            output = RTS.World.definition(content, RTS.Data.get(recipe, "output"))
+            if RTS.Data.get(output, "kind") == "building" &&
+               (! RTS.World.location?(content, state, output, RTS.Data.get(command, "x"), RTS.Data.get(command, "z"))) do
+              reason = "invalid_location"
+            else
+              if List.length(RTS.Data.get(state, "entities")) >= 512 do reason = "entity_limit" else
+                cost = RTS.Data.get(recipe, "cost")
+                stocks = RTS.Data.get(player, "stocks")
+                if (! List.all?(Map.keys(cost), fn (id) { RTS.Data.get(stocks, id) >= RTS.Data.get(cost, id) })) do
+                  reason = "insufficient_resources"
+                else state = RTS.World.produce(content, state, player, entity, recipe, command) end
+              end
+            end
+          end
+        end
+      end
+    end
+    RTS.World.result(state, reason)
+  }
+  def produce = fn (content, state, player, producer, recipe, command) {
+    stocks = RTS.Data.get(player, "stocks")
+    cost = RTS.Data.get(recipe, "cost")
+    keys = Map.keys(cost)
+    while keys != [] do
+      id = List.first(keys)
+      stocks = Map.put(stocks, id, RTS.Data.get(stocks, id) - RTS.Data.get(cost, id))
+      keys = List.next(keys)
+    end
+    slot = RTS.Data.get(player, "slot")
+    state = Map.put(state, "players", List.map(RTS.Data.get(state, "players"), fn (p) {
+      if RTS.Data.get(p, "slot") == slot do Map.put(p, "stocks", stocks) else p end
+    }))
+    construction = void
+    x = RTS.Data.get(producer, "x")
+    z = RTS.Data.get(producer, "z")
+    if RTS.Data.get(RTS.World.definition(content, RTS.Data.get(recipe, "output")), "kind") == "building" do
+      construction = %{"recipe_id" => RTS.Data.get(recipe, "id"), "remaining_ticks" => RTS.Data.get(recipe, "ticks")}
+      x = RTS.Data.get(command, "x")
+      z = RTS.Data.get(command, "z")
+    end
+    id = RTS.Data.get(state, "next_entity_id")
+    entity = RTS.World.entity(content, RTS.Data.get(player, "faction_id"), id,
+      RTS.Data.get(recipe, "output"), slot, x, z, construction)
+    state = Map.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), entity))
+    state = Map.put(state, "next_entity_id", id + 1)
+    Map.put(state, "revision", RTS.Data.get(state, "revision") + 1)
+  }
+  def tick = fn (state) {
+    state = Map.put(state, "entities", List.map(RTS.Data.get(state, "entities"), fn (e) {
+      construction = RTS.Data.get(e, "construction")
+      if construction != void do
+        remaining = RTS.Data.get(construction, "remaining_ticks") - 1
+        construction = if remaining == 0 do void else Map.put(construction, "remaining_ticks", remaining) end
+        e = Map.put(e, "construction", construction)
+      end
+      e
+    }))
+    state = Map.put(state, "tick", RTS.Data.get(state, "tick") + 1)
+    Map.put(state, "revision", RTS.Data.get(state, "revision") + 1)
+  }
+end

@@ -1,10 +1,12 @@
 defmodule KC3RTS.Game.KC3ContentTest do
   use ExUnit.Case, async: false
+  alias KC3RTS.Game.KC3Protocol
+  alias KC3RTS.KC3Boundary
 
   @moduletag skip: is_nil(System.get_env("KC3RTS_KC3S"))
   @root Path.expand("../../../..", __DIR__)
 
-  for suite <- ~w(primitives content) do
+  for suite <- ~w(primitives content world) do
     @tag timeout: 120_000
     test "KC3 #{suite} contracts" do
       binary = System.fetch_env!("KC3RTS_KC3S") |> Path.expand()
@@ -21,6 +23,27 @@ defmodule KC3RTS.Game.KC3ContentTest do
       refute output =~ "FAIL:"
       refute output =~ "env_"
     end
+  end
+
+  test "maximum entity state serializes in KC3 and passes complete reply validation" do
+    binary = System.fetch_env!("KC3RTS_KC3S") |> Path.expand()
+
+    {encoded, status} =
+      System.cmd(binary, ["--load", Path.join(@root, "kc3/tests/scale.kc3"), "--quit"],
+        cd: Path.dirname(Path.dirname(binary))
+      )
+
+    assert status == 0
+    assert byte_size(encoded) < 262_144
+
+    assert {:ok, reply} =
+             KC3Protocol.decode_reply(
+               encoded,
+               KC3Boundary.request(1, "new_match"),
+               nil
+             )
+
+    assert length(reply["state"]["entities"]) == 512
   end
 
   test "committed browser catalog matches KC3 and its SHA256" do

@@ -1,0 +1,28 @@
+# Run with the pinned interpreter: --load kc3/benchmark.kc3 --quit.
+require Time
+load!(__DIR__ + "load.kc3")
+load!(__DIR__ + "rts/world.kc3")
+defmodule RTS.Benchmark do
+  def microseconds = fn (start, finish) {
+    (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
+  }
+end
+content = RTS.Content.compile(RTS.Core.catalog())
+start = Time.uptime()
+i = 0
+while i < 1000 do
+  if (! RTS.Content.allowed?(content, "kiln.concord", "core.train_worker")) do exit(1) end
+  i = i + 1
+end
+facts_us = RTS.Benchmark.microseconds(start, Time.uptime())
+world = RTS.World.opening(content, "benchmark", 1234, ["kiln.concord", "lantern.synod"])
+start = Time.uptime()
+i = 0
+while i < 100 do
+  world = RTS.World.tick(world)
+  encoded = RTS.Wire.encode(world)
+  i = i + 1
+end
+puts(RTS.Wire.encode(%{"facts_queries" => 1000, "facts_total_us" => facts_us,
+  "ticks_and_encodes" => 100, "tick_encode_total_us" => RTS.Benchmark.microseconds(start, Time.uptime()),
+  "state_bytes" => Str.size(RTS.Wire.encode(world)), "entities" => 14}))
