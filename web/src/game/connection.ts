@@ -11,8 +11,20 @@ export interface GameConnectionHandlers {
 export interface GameClient { connect(): void; command(command: GameCommand): void; disconnect(): void }
 interface GuestMatch { match_id: string; token: string }
 const SESSION_KEY = "kc3rts-guest-match-v1";
+function storedMatch(): string | null {
+  try { return typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(SESSION_KEY); }
+  catch { return null; }
+}
+function saveMatch(match: GuestMatch): void {
+  try { if (typeof sessionStorage !== "undefined") sessionStorage.setItem(SESSION_KEY, JSON.stringify(match)); }
+  catch { /* The match remains usable for this page load. */ }
+}
+function forgetMatch(): void {
+  try { if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(SESSION_KEY); }
+  catch { /* A blocked store cannot prevent a fresh match. */ }
+}
 async function guestMatch(): Promise<GuestMatch> {
-  const saved = typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(SESSION_KEY);
+  const saved = storedMatch();
   if (saved) {
     try {
       const parsed: unknown = JSON.parse(saved);
@@ -23,7 +35,7 @@ async function guestMatch(): Promise<GuestMatch> {
   if (!response.ok) throw new Error(response.status === 429 ? "match_limit" : "match_unavailable");
   const created: unknown = await response.json();
   if (!validMatch(created)) throw new Error("invalid_response");
-  if (typeof sessionStorage !== "undefined") sessionStorage.setItem(SESSION_KEY, JSON.stringify(created));
+  saveMatch(created);
   return created;
 }
 function validMatch(value: unknown): value is GuestMatch {
@@ -85,7 +97,7 @@ export class GameConnection implements GameClient {
     channel.on("world_patch", (payload) => this.acceptPatch(channel, payload));
     channel.on("match_unavailable", () => {
       if (this.channel !== channel) return;
-      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(SESSION_KEY);
+      forgetMatch();
       this.ready = false; this.setStatus("expired"); this.handlers.onCommand({ ok: false, reason: "match_unavailable" });
     });
     channel.onError(() => this.markOffline(channel)); channel.onClose(() => this.markOffline(channel));
@@ -94,7 +106,7 @@ export class GameConnection implements GameClient {
         if (this.channel !== channel) return;
         if (["unauthorized", "game_unavailable"].includes(reason(payload)) && this.refreshAttempts < 1) {
           this.refreshAttempts += 1;
-          if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(SESSION_KEY);
+          forgetMatch();
           this.match = null; this.disconnect(); this.connect();
         } else this.markOffline(channel);
       }).receive("timeout", () => this.markOffline(channel));

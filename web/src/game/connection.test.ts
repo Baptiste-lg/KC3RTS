@@ -216,4 +216,18 @@ describe("GameConnection", () => {
     expect(statuses.at(-1)).toBe("offline");
     expect(socket.channels).toBe(0);
   });
+  it("joins a guest match when browser session storage is blocked", async () => {
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+      removeItem: () => { throw new Error("blocked"); },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => match }));
+    const socket = new FakeSocket(); const statuses: string[] = [];
+    const connection = new GameConnection({ onSnapshot: () => undefined, onStatus: (status) => statuses.push(status), onCommand: () => undefined }, socket as unknown as Socket);
+    connection.connect();
+    await vi.waitFor(() => expect(socket.channels).toBe(1));
+    socket.gameChannel.joinPush.resolve("ok", state(createLocalWorld(), 0));
+    expect(statuses.at(-1)).toBe("connected");
+  });
 });

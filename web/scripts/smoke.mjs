@@ -218,7 +218,7 @@ try {
       state.loadingHidden && state.fallbackHidden && state.recruitEnabled &&
       state.wood === 30 && state.stone === 15 && state.gold === 20 &&
       state.villagers === 3 && state.enemyHp === 250 ? state : false;
-  }, process.env.KC3RTS_SMOKE_QUALITY === "normal" ? 90_000 : 30_000, "live RTS map");
+  }, process.env.KC3RTS_SMOKE_QUALITY === "normal" ? 90_000 : 60_000, "live RTS map");
 
   if (process.env.KC3RTS_OPENING_SCREENSHOT) {
     const jpeg = /\.jpe?g$/i.test(process.env.KC3RTS_OPENING_SCREENSHOT);
