@@ -90,6 +90,17 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/.toolchain/kc3/libkc3:${{ github.workspace }}/.toolchain/kc3/lib/kc3/0.1
         run: mix test --cover
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Authoritative KC3 browser orders
+        working-directory: web
+        run: npm run smoke:kc3
+
   browser:
     name: Browser play loop
     needs: [server, web, kc3]

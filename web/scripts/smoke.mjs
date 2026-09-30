@@ -9,10 +9,14 @@ import ts from "typescript";
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
 const pagesMode = process.argv.includes("--pages");
+const kc3Mode = process.argv.includes("--kc3");
 const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}?${new URLSearchParams({
   ...(process.env.KC3RTS_SMOKE_QUALITY === "normal" ? {} : { quality: "low" }),
   ...(pagesMode ? { seed: "12345" } : {}),
-  ...(process.env.KC3RTS_METRICS_PATH ? { profile: "1" } : {}),
+  ...(kc3Mode ? { mode: "kc3" } : {}),
+  ...(process.env.KC3RTS_ANGLE ? { angle: process.env.KC3RTS_ANGLE } : {}),
+  ...(process.env.KC3RTS_ZOOM ? { zoom: process.env.KC3RTS_ZOOM } : {}),
+  ...((process.env.KC3RTS_METRICS_PATH || kc3Mode) ? { profile: "1" } : {}),
 })}`;
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 const processes = [];
@@ -148,11 +152,12 @@ function woodNodes(seed) {
   return generateMap(seed).resources.filter((r) => r.kind === "wood")
     .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
 }
-function project(point, rect, y = 0) {
-  const height = Math.max(42, 64 / (rect.width / rect.height));
-  const scale = rect.height / height;
+function project(point, rect, y = 0, radius = 52) {
+  const height = Math.max(Math.min(radius * 1.2, 42), Math.min(radius * 1.8, 64) / (rect.width / rect.height));
+  const scale = rect.height / height * (process.env.KC3RTS_ZOOM === "tactical" ? .7 : 1);
+  const angle = (process.env.KC3RTS_ANGLE === "steep" ? 40 : 30) * Math.PI / 180;
   return { x: rect.left + rect.width / 2 + (point.x - point.z) / Math.sqrt(2) * scale,
-    y: rect.top + rect.height / 2 + ((point.x + point.z) / Math.sqrt(6) - y * Math.sqrt(2 / 3)) * scale };
+    y: rect.top + rect.height / 2 + ((point.x + point.z) * Math.sin(angle) / Math.sqrt(2) - y * Math.cos(angle)) * scale };
 }
 
 let profile;
@@ -215,9 +220,9 @@ try {
   const initial = await until(async () => {
     const state = await devtools.evaluate(STATE);
     return state.mode === (pagesMode ? "local" : "connected") && state.canvas &&
-      state.loadingHidden && state.fallbackHidden && state.recruitEnabled &&
+      state.loadingHidden && state.fallbackHidden && (kc3Mode ? state.villagers === 6 && state.enemyHp === 1500 : state.recruitEnabled &&
       state.wood === 30 && state.stone === 15 && state.gold === 20 &&
-      state.villagers === 3 && state.enemyHp === 250 ? state : false;
+      state.villagers === 3 && state.enemyHp === 250) ? state : false;
   }, process.env.KC3RTS_SMOKE_QUALITY === "normal" ? 90_000 : 60_000, "live RTS map");
 
   if (process.env.KC3RTS_OPENING_SCREENSHOT) {
@@ -255,52 +260,88 @@ try {
     }, null, 2)}\n`);
   }
 
-  await devtools.evaluate('document.getElementById("recruit").click()');
-  const recruited = await until(async () => {
-    const state = await devtools.evaluate(STATE);
-    return state.villagers === initial.villagers + 1 &&
-      state.wood === initial.wood - 5 && state.gold === initial.gold - 5 ? state : false;
-  }, 35_000, "villager recruitment");
+  if (process.argv.includes("--capture")) {
+    console.log("Opening captured.");
+  } else if (kc3Mode) {
+    const state = () => devtools.evaluate("window.__kc3rtsState()");
+    const before = await state();
+    const unit = before.entities.find((e) => e.id === 2);
+    const rect = await devtools.evaluate('(() => { const r = document.querySelector("#scene canvas").getBoundingClientRect(); return { left:r.left, top:r.top, width:r.width, height:r.height }; })()');
+    const from = project({ x: unit.x / 256, z: unit.z / 256 }, rect, 1.2, 24);
+    await devtools.click(from.x, from.y);
+    const selected = await devtools.evaluate('document.getElementById("selection").textContent');
+    if (!selected.includes("selected")) throw new Error(`KC3 selection failed: ${selected}`);
+    // Save and recall a control group through real keyboard input.
+    await devtools.send("Input.dispatchKeyEvent", { type: "keyDown", code: "Digit1", key: "1", modifiers: 2 });
+    await devtools.send("Input.dispatchKeyEvent", { type: "keyUp", code: "Digit1", key: "1" });
+    await devtools.send("Input.dispatchKeyEvent", { type: "keyDown", code: "Escape", key: "Escape" });
+    await devtools.send("Input.dispatchKeyEvent", { type: "keyUp", code: "Escape", key: "Escape" });
+    await devtools.send("Input.dispatchKeyEvent", { type: "keyDown", code: "Digit1", key: "1" });
+    await devtools.send("Input.dispatchKeyEvent", { type: "keyUp", code: "Digit1", key: "1" });
+    const target = project({ x: 6, z: 2 }, rect, 0, 24);
+    await devtools.click(target.x, target.y, "right");
+    const moved = await until(async () => {
+      const next = await state();
+      return next.entities.some((e) => e.owner === 1 && e.order && (e.x !== before.entities.find((old) => old.id === e.id).x || e.z !== before.entities.find((old) => old.id === e.id).z)) ? next : false;
+    }, 20_000, "authoritative KC3 movement");
+    await devtools.evaluate('document.getElementById("stop").click()');
+    const stopped = await until(async () => { const next = await state(); return next.entities.every((e) => e.order === null) ? next : false; }, 10_000, "KC3 stop order");
+    const later = await until(async () => { const next = await state(); return next.tick >= stopped.tick + 3 ? next : false; }, 10_000, "ticks after stop");
+    if (later.tick <= stopped.tick || JSON.stringify(later.entities) !== JSON.stringify(stopped.entities)) throw new Error("Stopped KC3 entities drifted or ticks stopped");
+    if (before.content_hash !== later.content_hash || later.revision <= moved.revision) throw new Error("KC3 identity/revision changed incorrectly");
+    if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
+      const screenshot = await devtools.send("Page.captureScreenshot", { format: "png" });
+      await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
+    }
+    console.log("KC3 browser smoke passed: generic entities, faction art, selection/group recall, authoritative move and stop, continued ticks.");
+  } else {
+    await devtools.evaluate('document.getElementById("recruit").click()');
+    const recruited = await until(async () => {
+      const state = await devtools.evaluate(STATE);
+      return state.villagers === initial.villagers + 1 &&
+        state.wood === initial.wood - 5 && state.gold === initial.gold - 5 ? state : false;
+    }, 35_000, "villager recruitment");
 
-  const rect = await devtools.evaluate('(() => { const r = document.querySelector("#scene canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()');
-  const villager = project({ x: 0, z: 3.4 }, rect, 1);
-  let wood;
-  for (const node of woodNodes(initial.mapSeed)) {
-    const candidate = project(node, rect, 3.2);
-    if (candidate.x < rect.left + 15 || candidate.x > rect.left + rect.width - 15 ||
-        candidate.y < rect.top + 15 || candidate.y > rect.top + rect.height - 15) continue;
-    const visible = await devtools.evaluate(`document.elementFromPoint(${candidate.x}, ${candidate.y})?.matches("#scene canvas")`);
-    if (!visible) continue;
-    await devtools.click(candidate.x, candidate.y);
-    const label = await devtools.evaluate('document.getElementById("selection")?.textContent');
-    if (label?.startsWith("Wood")) { wood = candidate; break; }
+    const rect = await devtools.evaluate('(() => { const r = document.querySelector("#scene canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()');
+    const villager = project({ x: 0, z: 3.4 }, rect, 1);
+    let wood;
+    for (const node of woodNodes(initial.mapSeed)) {
+      const candidate = project(node, rect, 3.2);
+      if (candidate.x < rect.left + 15 || candidate.x > rect.left + rect.width - 15 ||
+          candidate.y < rect.top + 15 || candidate.y > rect.top + rect.height - 15) continue;
+      const visible = await devtools.evaluate(`document.elementFromPoint(${candidate.x}, ${candidate.y})?.matches("#scene canvas")`);
+      if (!visible) continue;
+      await devtools.click(candidate.x, candidate.y);
+      const label = await devtools.evaluate('document.getElementById("selection")?.textContent');
+      if (label?.startsWith("Wood")) { wood = candidate; break; }
+    }
+    if (!wood) throw new Error("No visible wood node for browser order test");
+    await devtools.click(villager.x, villager.y);
+    const selected = await devtools.evaluate('document.getElementById("selection").textContent');
+    if (!selected.includes("villager selected")) throw new Error(`Click selection failed: ${selected}`);
+    await devtools.send("Input.dispatchMouseEvent", { type: "mousePressed", x: wood.x, y: wood.y, button: "right", buttons: 2, clickCount: 1 });
+    const orderDetail = await until(async () => { const detail = await devtools.evaluate('document.getElementById("selection-detail")?.textContent'); return detail?.includes("Gathering") ? detail : false; }, 30_000, "resource gather order");
+    await devtools.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: wood.x, y: wood.y, button: "right", buttons: 0, clickCount: 1 });
+    if (!orderDetail) throw new Error("Gather order missing");
+    const delivered = await until(async () => {
+      const state = await devtools.evaluate(STATE);
+      return state.wood > recruited.wood ? state : false;
+    }, 90_000, "ordered wood gathering and delivery");
+    await devtools.evaluate('document.getElementById("stop").click()');
+    await until(async () => {
+      const detail = await devtools.evaluate('document.getElementById("selection-detail")?.textContent');
+      return detail?.includes("Idle") ? detail : false;
+    }, 30_000, "villager stop order");
+    const minimapVisible = await devtools.evaluate('(() => { const c = document.getElementById("minimap"); const r = c.getBoundingClientRect(); return r.width > 100 && r.height > 100 && !!c.getContext("2d"); })()');
+    if (!minimapVisible) throw new Error("Minimap missing");
+
+    if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
+      const screenshot = await devtools.send("Page.captureScreenshot", { format: "jpeg", quality: 65 });
+      await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
+    }
+
+    console.log(`Browser smoke passed: WebGL RTS map and minimap, ${pagesMode ? "static solo mode" : "Phoenix socket"}, recruitment (${initial.villagers} → ${recruited.villagers}), ordered wood delivery (${recruited.wood} → ${delivered.wood}) and stop order.`);
   }
-  if (!wood) throw new Error("No visible wood node for browser order test");
-  await devtools.click(villager.x, villager.y);
-  const selected = await devtools.evaluate('document.getElementById("selection").textContent');
-  if (!selected.includes("villager selected")) throw new Error(`Click selection failed: ${selected}`);
-  await devtools.send("Input.dispatchMouseEvent", { type: "mousePressed", x: wood.x, y: wood.y, button: "right", buttons: 2, clickCount: 1 });
-  const orderDetail = await until(async () => { const detail = await devtools.evaluate('document.getElementById("selection-detail")?.textContent'); return detail?.includes("Gathering") ? detail : false; }, 30_000, "resource gather order");
-  await devtools.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: wood.x, y: wood.y, button: "right", buttons: 0, clickCount: 1 });
-  if (!orderDetail) throw new Error("Gather order missing");
-  const delivered = await until(async () => {
-    const state = await devtools.evaluate(STATE);
-    return state.wood > recruited.wood ? state : false;
-  }, 90_000, "ordered wood gathering and delivery");
-  await devtools.evaluate('document.getElementById("stop").click()');
-  await until(async () => {
-    const detail = await devtools.evaluate('document.getElementById("selection-detail")?.textContent');
-    return detail?.includes("Idle") ? detail : false;
-  }, 30_000, "villager stop order");
-  const minimapVisible = await devtools.evaluate('(() => { const c = document.getElementById("minimap"); const r = c.getBoundingClientRect(); return r.width > 100 && r.height > 100 && !!c.getContext("2d"); })()');
-  if (!minimapVisible) throw new Error("Minimap missing");
-
-  if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
-    const screenshot = await devtools.send("Page.captureScreenshot", { format: "jpeg", quality: 65 });
-    await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
-  }
-
-  console.log(`Browser smoke passed: WebGL RTS map and minimap, ${pagesMode ? "static solo mode" : "Phoenix socket"}, recruitment (${initial.villagers} → ${recruited.villagers}), ordered wood delivery (${recruited.wood} → ${delivered.wood}) and stop order.`);
 } catch (error) {
   console.error(error);
   if (devtools) {
