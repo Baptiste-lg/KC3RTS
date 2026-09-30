@@ -43,11 +43,22 @@ const order = (value: unknown): value is VillagerOrder => value === null || (rec
   ((value.kind === "gather" || value.kind === "build" || value.kind === "attack") && positive(value.id))
 ));
 const villager = (value: unknown): value is Villager => record(value) && point(value) && positive(value.id) && count(value.hp) && positive(value.max_hp) && value.hp <= value.max_hp && positive(value.attack_interval_ticks) && value.attack_interval_ticks <= 100 && count(value.cargo) && (value.cargo_kind === null || kind(value.cargo_kind)) && order(value.order);
+const uniqueIds = (values: { id: number }[]): boolean => new Set(values.map((item) => item.id)).size === values.length;
 
 export function parseSnapshot(value: unknown): WorldSnapshot | null {
   if (!record(value) || value.protocol_version !== 3 || !positive(value.seed) || !count(value.tick) || !finite(value.map_radius) || value.map_radius <= 0) return null;
   if (!stockpile(value.stockpile) || !Array.isArray(value.resources) || !value.resources.every(resource)) return null;
   if (!Array.isArray(value.buildings) || !value.buildings.every(building) || !Array.isArray(value.villagers) || !value.villagers.every(villager)) return null;
   if (value.outcome !== "playing" && value.outcome !== "victory" && value.outcome !== "defeat") return null;
-  return value as unknown as WorldSnapshot;
+  const snapshot = value as unknown as WorldSnapshot;
+  if (!uniqueIds(snapshot.resources) || !uniqueIds(snapshot.buildings) || !uniqueIds(snapshot.villagers)) return null;
+  const resourceIds = new Set(snapshot.resources.map((item) => item.id));
+  const buildings = new Map(snapshot.buildings.map((item) => [item.id, item]));
+  if (snapshot.villagers.some((unit) => {
+    const current = unit.order;
+    if (!current || current.kind === "move") return false;
+    if (current.kind === "gather") return !resourceIds.has(current.id);
+    return buildings.get(current.id)?.owner !== (current.kind === "build" ? "player" : "enemy");
+  })) return null;
+  return snapshot;
 }

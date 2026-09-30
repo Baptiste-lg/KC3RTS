@@ -14,4 +14,12 @@ describe("parseSnapshot", () => {
     expect(parseSnapshot({ ...world, resources: [{ ...world.resources[0], kind: "crystal" }] })).toBeNull();
     expect(parseSnapshot({ ...world, villagers: [{ ...world.villagers[0], attack_interval_ticks: 0 }] })).toBeNull();
   });
+  it("rejects duplicate IDs and orders pointing outside their entity type", () => {
+    const world = createLocalWorld();
+    expect(parseSnapshot({ ...world, villagers: [world.villagers[0], world.villagers[0]] })).toBeNull();
+    expect(parseSnapshot({ ...world, resources: [world.resources[0], world.resources[0]] })).toBeNull();
+    expect(parseSnapshot({ ...world, buildings: [world.buildings[0], world.buildings[0]] })).toBeNull();
+    expect(parseSnapshot({ ...world, villagers: [{ ...world.villagers[0], order: { kind: "gather", id: 9999 } }] })).toBeNull();
+    expect(parseSnapshot({ ...world, villagers: [{ ...world.villagers[0], order: { kind: "attack", id: 1 } }] })).toBeNull();
+  });
 });

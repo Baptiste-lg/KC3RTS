@@ -1,49 +1,83 @@
 defmodule KC3RTSWeb.GameChannel do
   @moduledoc "Phoenix channel for authoritative RTS commands and snapshots."
   use Phoenix.Channel
-  alias KC3RTS.Game.Snapshot
+  alias KC3RTS.Game.MatchManager
   alias KC3RTS.Game.WorldServer
   @max_game_id_length 48
   @impl true
   def join("game:" <> game_id, _payload, socket) do
-    if byte_size(game_id) <= @max_game_id_length and
-         String.match?(game_id, ~r/\A[a-zA-Z0-9_-]+\z/) do
-      case WorldServer.ensure_started(game_id) do
-        {:ok, server} ->
-          {:ok, %{world: server |> WorldServer.snapshot() |> Snapshot.from_world()},
-           assign(socket, :game_server, server)}
+    cond do
+      byte_size(game_id) > @max_game_id_length or
+          not String.match?(game_id, ~r/\A[a-zA-Z0-9_-]+\z/) ->
+        {:error, %{reason: "invalid_game_id"}}
 
-        {:error, _} ->
-          {:error, %{reason: "game_unavailable"}}
-      end
-    else
-      {:error, %{reason: "invalid_game_id"}}
+      socket.assigns[:match_id] != game_id or
+          not MatchManager.member?(game_id, socket.assigns[:token]) ->
+        {:error, %{reason: "unauthorized"}}
+
+      true ->
+        case Registry.lookup(KC3RTS.GameRegistry, game_id) do
+          [{server, _}] ->
+            monitor = Process.monitor(server)
+
+            {:ok, WorldServer.view(server),
+             socket |> assign(:game_server, server) |> assign(:game_monitor, monitor)}
+
+          [] ->
+            {:error, %{reason: "game_unavailable"}}
+        end
     end
   end
 
   @impl true
   def handle_in("request_snapshot", _payload, socket) do
-    {:reply,
-     {:ok,
-      %{world: socket.assigns.game_server |> WorldServer.snapshot() |> Snapshot.from_world()}},
-     socket}
+    if authorized?(socket) do
+      {:reply, {:ok, WorldServer.view(socket.assigns.game_server)}, socket}
+    else
+      {:reply, {:error, %{reason: "unauthorized"}}, socket}
+    end
   end
 
   def handle_in("command", payload, socket) do
-    case parse_command(payload) do
-      {:ok, command} ->
-        case WorldServer.command(socket.assigns.game_server, command) do
-          {:ok, world} -> {:reply, {:ok, %{world: world}}, socket}
-          {:error, reason} -> {:reply, {:error, %{reason: Atom.to_string(reason)}}, socket}
-        end
-
-      :error ->
-        {:reply, {:error, %{reason: "invalid_command"}}, socket}
+    if authorized?(socket) do
+      submit_command(payload, socket)
+    else
+      {:reply, {:error, %{reason: "unauthorized"}}, socket}
     end
   end
 
   def handle_in(_event, _payload, socket),
     do: {:reply, {:error, %{reason: "unknown_command"}}, socket}
+
+  @impl true
+  def handle_info({:DOWN, monitor, :process, server, _reason}, socket)
+      when monitor == socket.assigns.game_monitor and server == socket.assigns.game_server do
+    push(socket, "match_unavailable", %{reason: "match_unavailable"})
+    {:noreply, socket}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp authorized?(socket),
+    do: MatchManager.member?(socket.assigns.match_id, socket.assigns.token)
+
+  defp submit_command(payload, socket) do
+    case {command_id(payload), parse_command(payload)} do
+      {{:ok, id}, {:ok, command}} ->
+        {status, result} = WorldServer.submit(socket.assigns.game_server, id, command)
+        {:reply, {status, result}, socket}
+
+      _ ->
+        {:reply, {:error, %{reason: "invalid_command"}}, socket}
+    end
+  end
+
+  defp command_id(%{"command_id" => id})
+       when is_binary(id) and byte_size(id) in 1..64 do
+    if String.match?(id, ~r/\A[a-zA-Z0-9_-]+\z/), do: {:ok, id}, else: :error
+  end
+
+  defp command_id(_), do: :error
 
   defp parse_command(%{"type" => "spawn_villager", "building_id" => id}) when is_integer(id),
     do: {:ok, %{type: :spawn_villager, building_id: id}}

@@ -26,8 +26,8 @@ const selectedVillagers = new Set<number>();
 const controlGroups = new Map<number, number[]>();
 let lastGroup = 0, lastGroupTime = 0;
 const minimap = new Minimap(minimapCanvas, (point) => { view?.focus(point); if (world && view) minimap.draw(world, view.getFocus(), view.getViewport()); });
-const statusLabels: Record<GameConnectionStatus, string> = { connecting: "Connecting…", connected: "Connected game", local: "Solo game", offline: "Server offline", incompatible: "Incompatible version" };
-const errors: Record<string, string> = { insufficient_resources: "Not enough resources.", invalid_location: "Site too close to an obstacle or outside the map.", invalid_target: "Target unavailable.", invalid_selection: "Select a villager.", invalid_building: "Select a completed town center.", offline: "Connection lost.", game_over: "The game has ended." };
+const statusLabels: Record<GameConnectionStatus, string> = { connecting: "Connecting…", connected: "Connected game", local: "Solo game", offline: "Server offline", expired: "Match unavailable", incompatible: "Incompatible version" };
+const errors: Record<string, string> = { insufficient_resources: "Not enough resources.", invalid_location: "Site too close to an obstacle or outside the map.", invalid_target: "Target unavailable.", invalid_selection: "Select a villager.", invalid_building: "Select a completed town center.", offline: "Connection lost.", rate_limited: "Too many orders. Try again in a moment.", match_limit: "The server is full. Try again later.", match_unavailable: "This match ended. Reload to start a new match.", game_over: "The game has ended." };
 function showNotice(message: string): void { window.clearTimeout(noticeTimer); notice.textContent = message; noticeTimer = window.setTimeout(() => { notice.textContent = "Left click: select · right click: issue an order."; }, 5_000); }
 function selectedCenter(): Building | undefined { return world?.buildings.find((b) => b.id === selectedBuilding && b.owner === "player" && b.hp > 0 && b.progress === 100); }
 function updateControls(): void {

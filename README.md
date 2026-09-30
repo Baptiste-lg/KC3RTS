@@ -52,8 +52,11 @@ npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173/>. Vite relays `/socket` and `/health` to the
-Phoenix server at `127.0.0.1:4000` during development.
+Open <http://127.0.0.1:5173/>. Vite relays `/api`, `/socket` and `/health` to the
+Phoenix server at `127.0.0.1:4000` during development. Each browser tab creates
+an isolated guest match. Its capability is kept in that tab's session storage
+for reloads and reconnects. Guest matches expire after 30 minutes without
+activity, and the server holds at most 32 at once.
 
 Select villagers with a left click or drag a selection box. Shift-click adds
 or removes a villager from the selection; double-click selects all visible
@@ -139,9 +142,12 @@ invalid input. The measured test suites cover 92.53% of server cover points with
 KC3 enabled and 95.77% of browser statements; CI enforces coverage floors.
 
 Known limitations: no opposing army or AI, no food or population, no pathfinding
-around buildings or resources, no save/reconnect, and no authorized online
+around buildings or resources, no saved match recovery, and no online
 multiplayer. Unit steering prevents overlap but can still stall in dense crowds.
-`game:lobby` is a shared development prototype; do not expose it publicly.
+The network mode now uses isolated guest matches, revisioned command replies,
+compact tick patches and full snapshot resync after a gap. A failed match stops
+instead of restarting with a different state. The playable rules are still in
+Elixir; this is not yet a KC3-backed public demo.
 See [PLAN.md](PLAN.md) for the ordered roadmap and
 [KC3 architecture notes](docs/KC3_ARCHITECTURE.md) for the proven boundary.
 The [visual baseline](docs/VISUAL_BASELINE.md) and
