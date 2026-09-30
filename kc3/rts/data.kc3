@@ -1,0 +1,49 @@
+require List
+require Map
+require Str
+
+defmodule RTS.Data do
+  def get = fn (value, key) {
+    if type(value) == Map do access(value, [key]) else void end
+  }
+  def integer? = fn (value, minimum, maximum) {
+    if is_integer?(value) do value >= minimum && value <= maximum else false end
+  }
+  def text? = fn (value, maximum) {
+    if type(value) == Str do Str.size(value) > 0 && Str.size(value) <= maximum else false end
+  }
+  def id? = fn (value) {
+    valid = RTS.Data.text?(value, 64)
+    if type(value) != Str do value = "" end
+    i = 0
+    while valid && i < Str.size(value) do
+      c = Str.byte(value, i)
+      valid = (c >= 97 && c <= 122) || (i > 0 &&
+        ((c >= 48 && c <= 57) || c == 46 || c == 95 || c == 45))
+      i = i + 1
+    end
+    valid && Str.has_str?(value, ".") && (! Str.has_str?(value, "..")) &&
+      (! Str.ends_with?(value, "."))
+  }
+  def list? = fn (value, maximum) {
+    if type(value) == List do List.length(value) <= maximum else false end
+  }
+  def unique? = fn (values) { List.length(List.unique(values)) == List.length(values) }
+  def index = fn (definitions) {
+    result = %{}
+    while definitions != [] do
+      item = List.first(definitions)
+      result = Map.put(result, RTS.Data.get(item, "id"), item)
+      definitions = List.next(definitions)
+    end
+    result
+  }
+  # Native find_if returns the callback's value (false on a miss).
+  def find = fn (values, key, expected) {
+    found = List.find_if(values, fn (item) {
+      if RTS.Data.get(item, key) == expected do item else false end
+    })
+    if found == false do void else found end
+  }
+  def random_next = fn (seed) { seed * 48271 mod 2147483647 }
+end

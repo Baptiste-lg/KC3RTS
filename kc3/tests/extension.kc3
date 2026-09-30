@@ -1,0 +1,37 @@
+# Trusted test-only pack: no changes to world, Phoenix or browser resource fields.
+defmodule RTS.Extension do
+  def catalog = fn () {
+    base = RTS.Core.catalog()
+    Map.put(base, "definitions", List.append(RTS.Data.get(base, "definitions"), [
+      %{"id" => "test.skyglass", "kind" => "resource", "label" => "Skyglass",
+        "art" => "placeholder.resource", "category" => "specialist",
+        "cap" => 1000, "sources" => ["tribe", "market"]},
+      Map.merge(RTS.Core.entity("core.worker", "unit", "Worker", 40, ["move", "build"]),
+        %{"id" => "test.worker", "label" => "Glasswright", "hp" => 50}),
+      RTS.Core.entity("test.workshop", "building", "Glassworks", 600, ["train"]),
+      %{"id" => "test.train_worker", "kind" => "recipe", "label" => "Train glasswright",
+        "producer" => "test.workshop", "output" => "test.worker", "ticks" => 100,
+        "cost" => %{"test.skyglass" => 5, "core.food" => 50}, "prerequisites" => []},
+      %{"id" => "test.cargo", "kind" => "effect", "label" => "Glass panniers",
+        "handler" => "stat_modifier", "stat" => "cargo_capacity", "operation" => "add",
+        "amount" => 2, "stacking" => "strongest_only", "group" => "test.cargo",
+        "duration_ticks" => 0},
+      %{"id" => "test.lore", "kind" => "technology", "label" => "Glass lore",
+        "cost" => %{"core.gold" => 10}, "ticks" => 100, "prerequisites" => [],
+        "effects" => ["test.cargo"]},
+      %{"id" => "test.mastery", "kind" => "technology", "label" => "Glass mastery",
+        "cost" => %{"core.gold" => 20}, "ticks" => 200,
+        "prerequisites" => ["test.lore"], "effects" => []},
+      %{"id" => "test.offer", "kind" => "offer", "label" => "Buy skyglass",
+        "source" => "tribe", "payment" => %{"core.gold" => 10},
+        "reward" => %{"test.skyglass" => 5}, "stock" => 10, "refill_ticks" => 600},
+      %{"id" => "test.tribe", "kind" => "tribe", "label" => "Glass Pilgrims",
+        "tiers" => [1, 2, 3], "offers" => ["test.offer"], "effects" => ["test.cargo"]},
+      %{"id" => "test.faction", "kind" => "faction", "label" => "Glasswright Guild",
+        "recipes" => ["test.train_worker"],
+        "roster" => [%{"type_id" => "test.workshop", "count" => 1}],
+        "stocks" => %{"test.skyglass" => 20, "core.food" => 100},
+        "overrides" => [%{"target" => "test.worker", "hp" => 90}]}
+    ]))
+  }
+end

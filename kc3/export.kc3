@@ -1,0 +1,4 @@
+load!(__DIR__ + "load.kc3")
+catalog = RTS.Core.catalog()
+if RTS.Content.validate(catalog) != void do exit(1) end
+puts(RTS.Wire.encode(RTS.Content.public(catalog)))

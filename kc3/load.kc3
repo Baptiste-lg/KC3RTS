@@ -1,0 +1,4 @@
+load!(__DIR__ + "rts/data.kc3")
+load!(__DIR__ + "rts/wire.kc3")
+load!(__DIR__ + "rts/content.kc3")
+load!(__DIR__ + "content/core.kc3")

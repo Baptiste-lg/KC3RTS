@@ -1,0 +1,209 @@
+require Facts
+
+# Closed schemas keep typos and unsupported mechanics out of trusted packs.
+# Add a handler and its validation together when a new mechanic is implemented.
+defmodule RTS.Content do
+  def fields? = fn (value, fields) {
+    if type(value) == Map do List.sort(Map.keys(value)) == List.sort(fields) else false end
+  }
+  def ids? = fn (value) {
+    if RTS.Data.list?(value, 256) do RTS.Data.unique?(value) && List.all?(value, RTS.Data.id?) else false end
+  }
+  def choices? = fn (values, allowed) {
+    if RTS.Data.list?(values, 256) do RTS.Data.unique?(values) &&
+      List.all?(values, fn (v) { List.has?(allowed, v) }) else false end
+  }
+  def amounts? = fn (value) {
+    if type(value) == Map do Map.count(value) <= 64 &&
+      List.all?(Map.keys(value), fn (key) {
+        RTS.Data.id?(key) && RTS.Data.integer?(RTS.Data.get(value, key), 0, 1000000000)
+      }) else false end
+  }
+  def shape? = fn (d) {
+    kind = RTS.Data.get(d, "kind")
+    fields = RTS.Data.get(%{
+      "resource" => ["art", "category", "cap", "sources"],
+      "unit" => ["art", "hp", "footprint", "capabilities"],
+      "building" => ["art", "hp", "footprint", "capabilities"],
+      "recipe" => ["producer", "output", "ticks", "cost", "prerequisites"],
+      "technology" => ["ticks", "cost", "prerequisites", "effects"],
+      "effect" => ["handler", "stat", "operation", "amount", "stacking", "group", "duration_ticks"],
+      "faction" => ["recipes", "roster", "stocks", "overrides"],
+      "tribe" => ["tiers", "offers", "effects"],
+      "offer" => ["source", "payment", "reward", "stock", "refill_ticks"]}, kind)
+    if fields == void do false else
+      if RTS.Content.fields?(d, List.append(["id", "kind", "label"], fields)) do
+        RTS.Data.id?(RTS.Data.get(d, "id")) && RTS.Data.text?(RTS.Data.get(d, "label"), 120) &&
+          RTS.Content.values?(kind, d)
+      else false end
+    end
+  }
+  def values? = fn {
+    ("resource", d) {
+      RTS.Data.id?(RTS.Data.get(d, "art")) &&
+        List.has?(["basic", "specialist"], RTS.Data.get(d, "category")) &&
+        RTS.Data.integer?(RTS.Data.get(d, "cap"), 1, 1000000000) &&
+        RTS.Data.get(d, "sources") != [] && RTS.Content.choices?(RTS.Data.get(d, "sources"),
+          if RTS.Data.get(d, "category") == "specialist" do ["market", "tribe"] else ["node", "farm", "market", "tribe"] end)
+    }
+    ("unit", d) { RTS.Content.entity?(d) }
+    ("building", d) { RTS.Content.entity?(d) }
+    ("recipe", d) {
+      RTS.Content.production?(d) && RTS.Data.id?(RTS.Data.get(d, "producer")) && RTS.Data.id?(RTS.Data.get(d, "output"))
+    }
+    ("technology", d) { RTS.Content.production?(d) && RTS.Content.ids?(RTS.Data.get(d, "effects")) }
+    ("effect", d) {
+      RTS.Data.get(d, "handler") == "stat_modifier" &&
+        List.has?(["hp", "cargo_capacity", "move_speed"], RTS.Data.get(d, "stat")) &&
+        List.has?(["add", "basis_points"], RTS.Data.get(d, "operation")) &&
+        RTS.Data.integer?(RTS.Data.get(d, "amount"), -10000, 10000) &&
+        RTS.Data.get(d, "stacking") == "strongest_only" && RTS.Data.id?(RTS.Data.get(d, "group")) &&
+        RTS.Data.integer?(RTS.Data.get(d, "duration_ticks"), 0, 36000)
+    }
+    ("faction", d) {
+      RTS.Content.ids?(RTS.Data.get(d, "recipes")) && RTS.Content.amounts?(RTS.Data.get(d, "stocks")) &&
+        RTS.Data.list?(RTS.Data.get(d, "roster"), 32) && RTS.Data.get(d, "roster") != [] &&
+        List.all?(RTS.Data.get(d, "roster"), fn (r) {
+          RTS.Content.fields?(r, ["type_id", "count"]) && RTS.Data.id?(RTS.Data.get(r, "type_id")) &&
+            RTS.Data.integer?(RTS.Data.get(r, "count"), 1, 16)
+        }) && RTS.Data.list?(RTS.Data.get(d, "overrides"), 256) &&
+        List.all?(RTS.Data.get(d, "overrides"), fn (o) {
+          RTS.Content.fields?(o, ["target", "hp"]) && RTS.Data.id?(RTS.Data.get(o, "target")) &&
+            RTS.Data.integer?(RTS.Data.get(o, "hp"), 1, 1000000)
+        }) && RTS.Data.unique?(List.map(RTS.Data.get(d, "overrides"), fn (o) { RTS.Data.get(o, "target") }))
+    }
+    ("tribe", d) {
+      RTS.Data.get(d, "tiers") != [] && RTS.Content.choices?(RTS.Data.get(d, "tiers"), [1, 2, 3]) &&
+        RTS.Content.ids?(RTS.Data.get(d, "offers")) && RTS.Content.ids?(RTS.Data.get(d, "effects"))
+    }
+    ("offer", d) {
+      List.has?(["market", "tribe"], RTS.Data.get(d, "source")) &&
+        RTS.Content.amounts?(RTS.Data.get(d, "payment")) && RTS.Content.amounts?(RTS.Data.get(d, "reward")) &&
+        RTS.Data.get(d, "reward") != %{} && RTS.Data.integer?(RTS.Data.get(d, "stock"), 1, 10000) &&
+        RTS.Data.integer?(RTS.Data.get(d, "refill_ticks"), 1, 36000)
+    }
+  }
+  def entity? = fn (d) {
+    RTS.Data.id?(RTS.Data.get(d, "art")) && RTS.Data.integer?(RTS.Data.get(d, "hp"), 1, 1000000) &&
+        RTS.Data.integer?(RTS.Data.get(d, "footprint"), 1, 4096) &&
+        RTS.Content.choices?(RTS.Data.get(d, "capabilities"), ["move", "build", "train"])
+  }
+  def production? = fn (d) {
+    RTS.Content.amounts?(RTS.Data.get(d, "cost")) && RTS.Data.integer?(RTS.Data.get(d, "ticks"), 1, 36000) &&
+      RTS.Content.ids?(RTS.Data.get(d, "prerequisites"))
+  }
+  def ref? = fn (index, id, kinds) { List.has?(kinds, RTS.Data.get(RTS.Data.get(index, id), "kind")) }
+  def refs? = fn (index, ids, kinds) { List.all?(ids, fn (id) { RTS.Content.ref?(index, id, kinds) }) }
+  def amounts_ref? = fn (index, amounts) {
+    List.all?(Map.keys(amounts), fn (id) {
+      RTS.Content.ref?(index, id, ["resource"]) &&
+        RTS.Data.get(amounts, id) <= RTS.Data.get(RTS.Data.get(index, id), "cap")
+    })
+  }
+  def references? = fn (index, d) {
+    links = %{"prerequisites" => "technology", "effects" => "effect", "recipes" => "recipe", "offers" => "offer"}
+    valid = List.all?(["cost", "stocks", "payment", "reward"], fn (field) {
+      value = RTS.Data.get(d, field)
+      if value == void do true else RTS.Content.amounts_ref?(index, value) end
+    }) && List.all?(Map.keys(links), fn (field) {
+      value = RTS.Data.get(d, field)
+      if value == void do true else RTS.Content.refs?(index, value, [RTS.Data.get(links, field)]) end
+    })
+    kind = RTS.Data.get(d, "kind")
+    if kind == "recipe" do
+      valid = valid && RTS.Content.ref?(index, RTS.Data.get(d, "producer"), ["unit", "building"]) &&
+        RTS.Content.ref?(index, RTS.Data.get(d, "output"), ["unit", "building"]) &&
+        RTS.Content.producer_capability?(index, d)
+    end
+    if kind == "faction" do
+      valid = valid && List.all?(RTS.Data.get(d, "roster"), fn (r) {
+        RTS.Content.ref?(index, RTS.Data.get(r, "type_id"), ["unit", "building"])
+      }) && List.all?(RTS.Data.get(d, "overrides"), fn (o) {
+        RTS.Content.ref?(index, RTS.Data.get(o, "target"), ["unit", "building"])
+      })
+    end
+    if kind == "offer" do
+      valid = valid && List.all?(Map.keys(RTS.Data.get(d, "reward")), fn (id) {
+        resource = RTS.Data.get(index, id)
+        if RTS.Data.get(resource, "kind") == "resource" do
+          List.has?(RTS.Data.get(resource, "sources"), RTS.Data.get(d, "source"))
+        else false end
+      })
+    end
+    valid
+  }
+  def producer_capability? = fn (index, recipe) {
+    output = RTS.Data.get(index, RTS.Data.get(recipe, "output"))
+    producer = RTS.Data.get(index, RTS.Data.get(recipe, "producer"))
+    capability = if RTS.Data.get(output, "kind") == "building" do "build" else "train" end
+    List.has?(RTS.Data.get(producer, "capabilities"), capability)
+  }
+  # Iterative topological removal avoids exponential walks through shared prerequisites.
+  def acyclic? = fn (index) {
+    pending = ^ index
+    progress = true
+    while Map.count(pending) > 0 && progress do
+      remaining = %{}
+      ids = Map.keys(pending)
+      while ids != [] do
+        id = List.first(ids)
+        d = RTS.Data.get(pending, id)
+        prerequisites = RTS.Data.get(d, "prerequisites")
+        if prerequisites != void && (! List.all?(prerequisites, fn (next) {
+          RTS.Data.get(pending, next) == void
+        })) do remaining = Map.put(remaining, id, d) end
+        ids = List.next(ids)
+      end
+      progress = Map.count(remaining) < Map.count(pending)
+      pending = ^ remaining
+    end
+    Map.count(pending) == 0
+  }
+  def validate = fn (catalog) {
+    error = void
+    if (! RTS.Content.fields?(catalog, ["schema_version", "ruleset_version", "definitions"])) ||
+       (! RTS.Data.integer?(RTS.Data.get(catalog, "schema_version"), 1, 1)) ||
+       (! RTS.Data.integer?(RTS.Data.get(catalog, "ruleset_version"), 1, 1)) ||
+       (! RTS.Data.list?(RTS.Data.get(catalog, "definitions"), 2048)) || RTS.Data.get(catalog, "definitions") == [] do
+      error = "invalid_catalog"
+    else
+      definitions = RTS.Data.get(catalog, "definitions")
+      if (! List.all?(definitions, RTS.Content.shape?)) do error = "invalid_definition" else
+        ids = List.map(definitions, fn (d) { RTS.Data.get(d, "id") })
+        if (! RTS.Data.unique?(ids)) do error = "duplicate_id" else
+          index = RTS.Data.index(definitions)
+          if (! List.all?(definitions, fn (d) { RTS.Content.references?(index, d) })) do
+            error = "invalid_reference"
+          else
+            if (! RTS.Content.acyclic?(index)) do error = "cyclic_prerequisite" end
+          end
+        end
+      end
+    end
+    error
+  }
+  def normalize = fn (catalog) {
+    index = RTS.Data.index(RTS.Data.get(catalog, "definitions"))
+    Map.put(catalog, "definitions", List.map(Map.keys(index), fn (id) { RTS.Data.get(index, id) }))
+  }
+  def public = fn (catalog) {
+    catalog = RTS.Content.normalize(catalog)
+    %{"content_hash" => RTS.Wire.hash(catalog), "catalog" => catalog}
+  }
+  def compile = fn (catalog) {
+    db = Facts.database()
+    List.each(RTS.Data.get(catalog, "definitions"), fn (d) {
+      if RTS.Data.get(d, "kind") == "faction" do
+        List.each(RTS.Data.get(d, "recipes"), fn (recipe) {
+          Facts.add_tags(db, RTS.Data.get(d, "id"), :allows_recipe, recipe)
+        })
+      end
+    })
+    %{"index" => RTS.Data.index(RTS.Data.get(catalog, "definitions")),
+      "public" => RTS.Content.public(catalog), "facts" => db}
+  }
+  def allowed? = fn (compiled, faction, recipe) {
+    Facts.first_with_tags(RTS.Data.get(compiled, "facts"), faction, :allows_recipe, recipe,
+      fn (fact) { true }) == true
+  }
+end

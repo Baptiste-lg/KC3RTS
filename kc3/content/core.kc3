@@ -1,0 +1,45 @@
+# P01 boundary scenario. Values are provisional; production queues land in P03.
+defmodule RTS.Core do
+  def entity = fn (id, kind, label, hp, capabilities) {
+    %{"id" => id, "kind" => kind, "label" => label,
+      "art" => "placeholder." + kind, "hp" => hp,
+      "footprint" => 256, "capabilities" => capabilities}
+  }
+  def resource = fn (id, label, sources) {
+    %{"id" => id, "kind" => "resource", "label" => label,
+      "art" => "placeholder.resource", "category" => "basic",
+      "cap" => 1000000, "sources" => sources}
+  }
+  def catalog = fn () {
+    %{"schema_version" => 1, "ruleset_version" => 1, "definitions" => [
+      RTS.Core.resource("core.food", "Food", ["node", "farm", "market", "tribe"]),
+      RTS.Core.resource("core.wood", "Wood", ["node", "market", "tribe"]),
+      RTS.Core.resource("core.stone", "Stone", ["node", "market", "tribe"]),
+      RTS.Core.resource("core.gold", "Gold", ["node", "market", "tribe"]),
+      RTS.Core.entity("core.worker", "unit", "Worker", 40, ["move", "build"]),
+      RTS.Core.entity("core.scout", "unit", "Scout", 60, ["move"]),
+      RTS.Core.entity("core.hall", "building", "Hall", 1500, ["train"]),
+      RTS.Core.entity("core.house", "building", "House", 300, []),
+      %{"id" => "core.train_worker", "kind" => "recipe", "label" => "Recruit worker",
+        "producer" => "core.hall", "output" => "core.worker", "ticks" => 120,
+        "cost" => %{"core.food" => 50}, "prerequisites" => []},
+      %{"id" => "core.build_hall", "kind" => "recipe", "label" => "Build hall",
+        "producer" => "core.worker", "output" => "core.hall", "ticks" => 100,
+        "cost" => %{"core.wood" => 200, "core.stone" => 100}, "prerequisites" => []},
+      %{"id" => "core.build_house", "kind" => "recipe", "label" => "Build house",
+        "producer" => "core.worker", "output" => "core.house", "ticks" => 100,
+        "cost" => %{"core.wood" => 40}, "prerequisites" => []},
+      RTS.Core.faction("kiln.concord", "Kiln Concord"),
+      RTS.Core.faction("lantern.synod", "Lantern Synod")
+    ]}
+  }
+  def faction = fn (id, label) {
+    %{"id" => id, "kind" => "faction", "label" => label,
+      "recipes" => ["core.train_worker", "core.build_hall", "core.build_house"],
+      "roster" => [%{"type_id" => "core.hall", "count" => 1},
+                    %{"type_id" => "core.worker", "count" => 5},
+                    %{"type_id" => "core.scout", "count" => 1}],
+      "stocks" => %{"core.food" => 200, "core.wood" => 200,
+                    "core.stone" => 50, "core.gold" => 50}, "overrides" => []}
+  }
+end

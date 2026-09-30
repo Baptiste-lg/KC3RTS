@@ -24,3 +24,6 @@ server/config/dev.local.exs
 .idea/
 .vscode/
 *.swp
+
+# KC3 parsed-module cache
+*.kc3c

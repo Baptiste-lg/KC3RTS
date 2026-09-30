@@ -1,0 +1,69 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+load!(__DIR__ + "extension.kc3")
+
+catalog = RTS.Core.catalog()
+RTS.Check.that("core catalog validates", RTS.Content.validate(catalog) == void)
+extended = RTS.Extension.catalog()
+RTS.Check.that("extension pack validates", RTS.Content.validate(extended) == void)
+RTS.Check.that("extension changes hash", RTS.Wire.hash(catalog) != RTS.Wire.hash(extended))
+definitions = RTS.Data.get(catalog, "definitions")
+first = List.first(definitions)
+RTS.Check.that("duplicate ids rejected", RTS.Content.validate(Map.put(catalog,
+  "definitions", [first | definitions])) != void)
+RTS.Check.that("unknown fields rejected", RTS.Content.validate(Map.put(catalog,
+  "definitions", [Map.put(first, "typo", 1) | List.next(definitions)])) != void)
+RTS.Check.that("malformed catalog rejected", RTS.Content.validate(%{}) != void)
+RTS.Check.that("malformed definition rejected", RTS.Content.validate(Map.put(catalog,
+  "definitions", [1])) != void)
+
+defmodule RTS.ContentTest do
+  def change = fn (catalog, id, key, value) {
+    Map.put(catalog, "definitions", List.map(RTS.Data.get(catalog, "definitions"), fn (d) {
+      if RTS.Data.get(d, "id") == id do Map.put(d, key, value) else d end
+    }))
+  }
+  def rejects = fn (name, id, key, value) {
+    RTS.Check.that(name, RTS.Content.validate(RTS.ContentTest.change(
+      RTS.Extension.catalog(), id, key, value)) != void)
+  }
+end
+RTS.ContentTest.rejects("negative cost", "core.train_worker", "cost", %{"core.food" => -1})
+RTS.ContentTest.rejects("fractional cost", "core.train_worker", "cost", %{"core.food" => 1.5})
+RTS.ContentTest.rejects("unknown resource", "core.train_worker", "cost", %{"missing.ore" => 1})
+RTS.ContentTest.rejects("unknown recipe output", "core.train_worker", "output", "missing.unit")
+RTS.ContentTest.rejects("wrong reference kind", "core.train_worker", "output", "core.food")
+RTS.ContentTest.rejects("restricted resource source", "test.skyglass", "sources", ["node"])
+RTS.ContentTest.rejects("effect cap", "test.cargo", "amount", 1000000)
+RTS.ContentTest.rejects("unknown handler", "test.cargo", "handler", "script")
+RTS.ContentTest.rejects("unknown override target", "test.faction", "overrides",
+  [%{"target" => "missing.unit", "hp" => 90}])
+RTS.ContentTest.rejects("unknown override field", "test.faction", "overrides",
+  [%{"target" => "test.worker", "magic" => 90}])
+RTS.ContentTest.rejects("cyclic prerequisites", "test.lore", "prerequisites", ["test.mastery"])
+RTS.ContentTest.rejects("unknown tribe offer", "test.tribe", "offers", ["missing.offer"])
+RTS.Check.that("catalog order canonical", RTS.Content.normalize(catalog) ==
+  RTS.Content.normalize(Map.put(catalog, "definitions", List.reverse(definitions))))
+compiled = RTS.Content.compile(catalog)
+RTS.Check.that("Facts allows faction recipe", RTS.Content.allowed?(compiled, "kiln.concord", "core.train_worker"))
+RTS.Check.that("Facts denies absent permission", (! RTS.Content.allowed?(compiled, "kiln.concord", "test.train_worker")))
+other = RTS.Content.compile(extended)
+RTS.Check.that("Facts databases isolated", RTS.Content.allowed?(other, "test.faction", "test.train_worker") &&
+  (! RTS.Content.allowed?(compiled, "test.faction", "test.train_worker")))
+RTS.Check.that("extension exported as JSON", JSON.from_str(RTS.Wire.encode(
+  RTS.Content.public(extended))) != void)
+restricted = RTS.ContentTest.change(extended, "test.skyglass", "sources", ["market"])
+RTS.Check.that("offer must honor acquisition methods", RTS.Content.validate(restricted) == "invalid_reference")
+RTS.ContentTest.rejects("malformed roster", "test.faction", "roster", void)
+RTS.ContentTest.rejects("duplicate override", "test.faction", "overrides",
+  [%{"target" => "test.worker", "hp" => 90}, %{"target" => "test.worker", "hp" => 90}])
+RTS.ContentTest.rejects("stocks above resource cap", "test.faction", "stocks", %{"test.skyglass" => 1001})
+RTS.ContentTest.rejects("missing prerequisite", "test.mastery", "prerequisites", ["missing.tech"])
+# A diamond must remain legal; shared ancestors are not cycles.
+diamond = RTS.ContentTest.change(extended, "core.train_worker", "prerequisites", ["test.lore", "test.mastery"])
+RTS.Check.that("shared prerequisite DAG validates", RTS.Content.validate(diamond) == void)
+
+
+RTS.ContentTest.rejects("producer requires the capability", "core.train_worker", "producer", "core.worker")
+
+RTS.Check.that("fractional schema version rejected", RTS.Content.validate(Map.put(catalog, "schema_version", 1.0)) == "invalid_catalog")

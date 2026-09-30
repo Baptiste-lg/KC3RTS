@@ -1,0 +1,31 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../rts/data.kc3")
+load!(__DIR__ + "../rts/wire.kc3")
+
+RTS.Check.that("integer bounds exclude floats and bools",
+  RTS.Data.integer?(2147483646, 1, 2147483646) &&
+  (! RTS.Data.integer?(1.0, 0, 10)) && (! RTS.Data.integer?(true, 0, 10)))
+RTS.Check.that("Park Miller arithmetic does not overflow",
+  RTS.Data.random_next(1) == 48271 &&
+  RTS.Data.random_next(48271) == 182605794 &&
+  RTS.Data.random_next(2147483646) == 2147435376)
+RTS.Check.that("namespaced ids reject invalid bytes",
+  RTS.Data.id?("kiln.worker") && (! RTS.Data.id?("../worker")) &&
+  (! RTS.Data.id?("")) && (! RTS.Data.id?("worker name")))
+RTS.Check.that("canonical nested maps and arrays",
+  RTS.Wire.encode(%{"z" => [1, true, void], "a" => %{"b" => 2}}) ==
+    "{\"a\":{\"b\":2},\"z\":[1,true,null]}")
+RTS.Check.that("JSON strings escape control bytes and preserve Unicode",
+  RTS.Wire.encode("é\n\t\"\\" + (Str) (Character) 1) ==
+    "\"é\\u000a\\u0009\\\"\\\\\\u0001\"")
+RTS.Check.that("SHA256 canonical known vector",
+  RTS.Wire.hash(%{}) == "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+RTS.Check.that("map insertion order does not change hash",
+  RTS.Wire.hash(Map.put(%{"z" => 1}, "a", 2)) ==
+  RTS.Wire.hash(Map.put(%{"a" => 2}, "z", 1)))
+
+RTS.Check.that("negation is explicitly grouped before conjunction", (! false) && true)
+RTS.Check.that("native list selection returns callback values",
+  RTS.Data.find([%{"id" => 1}], "id", 1) == %{"id" => 1} &&
+  RTS.Data.find([], "id", 1) == void)
+RTS.Check.that("plain Unicode string fast path", RTS.Wire.encode("Éclat") == "\"Éclat\"")

@@ -1,0 +1,10 @@
+defmodule RTS.Check do
+  def that = fn (name, passed) {
+    if ! passed do
+      puts("FAIL: #{name}")
+      exit(1)
+    end
+    puts("PASS: #{name}")
+    true
+  }
+end
