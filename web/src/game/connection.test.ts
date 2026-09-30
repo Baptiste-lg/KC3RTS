@@ -1,3 +1,4 @@
+import fixture from "../../../fixtures/kc3_opening_v2.json";
 import type { Socket } from "phoenix";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GameConnection } from "./connection";
@@ -32,6 +33,36 @@ class FakeSocket {
 }
 describe("GameConnection", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it("keeps the KC3 transport authoritative and expires it permanently on worker failure", async () => {
+    vi.stubGlobal("location", { search: "?mode=kc3" });
+    const socket = new FakeSocket(), statuses: string[] = [], snapshots: number[] = [];
+    const connection = new GameConnection({ onSnapshot: (s) => snapshots.push(s.tick), onStatus: (s) => statuses.push(s), onCommand: () => undefined }, socket as unknown as Socket, provideMatch);
+    connection.connect(); await ready();
+    socket.gameChannel.joinPush.resolve("ok", state(createLocalWorld(), 0));
+    expect(statuses.at(-1)).toBe("incompatible"); expect(snapshots).toEqual([]);
+    const world = { ...structuredClone(fixture.state), protocol_version: 4, ruleset_version: 2, viewer_slot: 1 };
+    socket.gameChannel.emit("world_snapshot", { world, revision: world.revision + 1 });
+    expect(snapshots).toEqual([]);
+    socket.gameChannel.emit("world_snapshot", { world, revision: world.revision });
+    expect(snapshots).toEqual([0]);
+    connection.command({ type: "move", entity_ids: [2], x: 1536, z: 512 });
+    expect(socket.gameChannel.lastPayload).toMatchObject({ type: "move", entity_ids: [2], x: 1536, z: 512 });
+    expect(socket.gameChannel.lastPayload).not.toHaveProperty("actor_slot");
+    socket.gameChannel.emit("match_unavailable", {});
+    socket.gameChannel.emit("world_snapshot", { world: { ...world, tick: 1, revision: world.revision + 1 }, revision: world.revision + 1 });
+    expect(statuses.at(-1)).toBe("expired"); expect(snapshots).toEqual([0]);
+  });
+  it("creates KC3 matches with a separate session and reports an unavailable runtime", async () => {
+    vi.stubGlobal("location", { search: "?mode=kc3" });
+    const getItem = vi.fn().mockReturnValue(null), fetcher = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+    vi.stubGlobal("sessionStorage", { getItem }); vi.stubGlobal("fetch", fetcher);
+    const socket = new FakeSocket(), outcomes: unknown[] = [];
+    new GameConnection({ onSnapshot: () => undefined, onStatus: () => undefined, onCommand: (o) => outcomes.push(o) }, socket as unknown as Socket).connect();
+    await vi.waitFor(() => expect(outcomes).toContainEqual({ ok: false, reason: "match_unavailable" }));
+    expect(getItem).toHaveBeenCalledWith("kc3rts-kc3-match-v2");
+    expect(fetcher).toHaveBeenCalledWith("/api/matches?mode=kc3", expect.objectContaining({ method: "POST" }));
+    expect(socket.channels).toBe(0);
+  });
   it("joins, validates snapshots and sends RTS commands", async () => {
     const socket = new FakeSocket(); const snapshots: number[] = []; const outcomes: boolean[] = [];
     const connection = new GameConnection({ onSnapshot: (s) => snapshots.push(s.tick), onStatus: () => undefined, onCommand: (o) => outcomes.push(o.ok) }, socket as unknown as Socket, provideMatch);

@@ -1,5 +1,6 @@
+import type { KC3Command } from "./kc3_view";
 import { Socket, type Channel } from "phoenix";
-import { parseSnapshot, type GameCommand, type WorldSnapshot } from "./protocol";
+import { parseGameSnapshot as parseSnapshot, type GameCommand, type WorldSnapshot } from "./protocol";
 
 export type GameConnectionStatus = "connecting" | "connected" | "local" | "offline" | "expired" | "incompatible";
 export type CommandOutcome = { ok: true } | { ok: false; reason: string };
@@ -8,19 +9,21 @@ export interface GameConnectionHandlers {
   onStatus(status: GameConnectionStatus): void;
   onCommand(outcome: CommandOutcome): void;
 }
-export interface GameClient { connect(): void; command(command: GameCommand): void; disconnect(): void }
+export type ClientCommand = GameCommand | KC3Command;
+export interface GameClient { connect(): void; command(command: ClientCommand): void; disconnect(): void }
 interface GuestMatch { match_id: string; token: string }
-const SESSION_KEY = "kc3rts-guest-match-v1";
+const kc3Mode = (): boolean => typeof location !== "undefined" && new URLSearchParams(location.search).get("mode") === "kc3";
+const sessionKey = (): string => kc3Mode() ? "kc3rts-kc3-match-v2" : "kc3rts-guest-match-v1";
 function storedMatch(): string | null {
-  try { return typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(SESSION_KEY); }
+  try { return typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(sessionKey()); }
   catch { return null; }
 }
 function saveMatch(match: GuestMatch): void {
-  try { if (typeof sessionStorage !== "undefined") sessionStorage.setItem(SESSION_KEY, JSON.stringify(match)); }
+  try { if (typeof sessionStorage !== "undefined") sessionStorage.setItem(sessionKey(), JSON.stringify(match)); }
   catch { /* The match remains usable for this page load. */ }
 }
 function forgetMatch(): void {
-  try { if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(SESSION_KEY); }
+  try { if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(sessionKey()); }
   catch { /* A blocked store cannot prevent a fresh match. */ }
 }
 async function guestMatch(): Promise<GuestMatch> {
@@ -31,7 +34,7 @@ async function guestMatch(): Promise<GuestMatch> {
       if (validMatch(parsed)) return parsed;
     } catch { /* A damaged session starts a fresh match. */ }
   }
-  const response = await fetch("/api/matches", { method: "POST", headers: { Accept: "application/json" } });
+  const response = await fetch(kc3Mode() ? "/api/matches?mode=kc3" : "/api/matches", { method: "POST", headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(response.status === 429 ? "match_limit" : "match_unavailable");
   const created: unknown = await response.json();
   if (!validMatch(created)) throw new Error("invalid_response");
@@ -47,7 +50,7 @@ function readWorld(payload: unknown): { world: WorldSnapshot; revision: number }
   if (typeof payload !== "object" || payload === null || !("world" in payload) || !("revision" in payload)) return null;
   if (!Number.isSafeInteger(payload.revision) || (payload.revision as number) < 0) return null;
   const world = parseSnapshot(payload.world);
-  return world ? { world, revision: payload.revision as number } : null;
+  return world && (!world.kc3 || world.kc3.revision === payload.revision) ? { world, revision: payload.revision as number } : null;
 }
 function reason(payload: unknown): string {
   return typeof payload === "object" && payload !== null && "reason" in payload && typeof payload.reason === "string" ? payload.reason : "command_rejected";
@@ -85,8 +88,7 @@ export class GameConnection implements GameClient {
     catch (error) {
       if (this.generation === generation) {
         this.setStatus("offline");
-        if (error instanceof Error && error.message === "match_limit")
-          this.handlers.onCommand({ ok: false, reason: "match_limit" });
+        this.handlers.onCommand({ ok: false, reason: error instanceof Error && error.message === "match_limit" ? "match_limit" : "match_unavailable" });
       }
       return;
     }
@@ -98,6 +100,7 @@ export class GameConnection implements GameClient {
     channel.on("match_unavailable", () => {
       if (this.channel !== channel) return;
       forgetMatch();
+      this.channel = null; channel.leave();
       this.ready = false; this.setStatus("expired"); this.handlers.onCommand({ ok: false, reason: "match_unavailable" });
     });
     channel.onError(() => this.markOffline(channel)); channel.onClose(() => this.markOffline(channel));
@@ -111,7 +114,7 @@ export class GameConnection implements GameClient {
         } else this.markOffline(channel);
       }).receive("timeout", () => this.markOffline(channel));
   }
-  command(command: GameCommand): void {
+  command(command: ClientCommand): void {
     if (!this.ready || !this.channel) { this.handlers.onCommand({ ok: false, reason: "offline" }); return; }
     const channel = this.channel;
     const commandId = crypto.randomUUID();
@@ -134,7 +137,7 @@ export class GameConnection implements GameClient {
   private acceptSnapshot(channel: Channel, payload: unknown): boolean {
     if (this.channel !== channel) return false;
     const state = readWorld(payload);
-    if (!state) { this.ready = false; this.setStatus("incompatible"); return false; }
+    if (!state || ((kc3Mode() || this.currentWorld?.kc3) && !state.world.kc3)) { this.ready = false; this.setStatus("incompatible"); return false; }
     if (state.revision < this.revision) return true;
     if (state.revision > this.revision) {
       this.revision = state.revision; this.currentWorld = state.world; this.handlers.onSnapshot(state.world);

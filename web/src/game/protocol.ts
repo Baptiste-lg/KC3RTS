@@ -1,3 +1,4 @@
+import { parseKC3View, presentKC3, type KC3View } from "./kc3_view";
 export interface GroundPoint { x: number; z: number }
 export type ResourceKind = "wood" | "stone" | "gold";
 export type Stockpile = Record<ResourceKind, number>;
@@ -5,7 +6,7 @@ export interface ResourceNode extends GroundPoint {
   id: number; kind: ResourceKind; amount: number; initial_amount: number;
 }
 export interface Building extends GroundPoint {
-  id: number; owner: "player" | "enemy"; hp: number; max_hp: number; progress: number;
+  id: number; art?: string; label?: string; owner: "player" | "enemy"; hp: number; max_hp: number; progress: number;
 }
 export type VillagerOrder =
   | { kind: "move"; x: number; z: number }
@@ -14,10 +15,12 @@ export type VillagerOrder =
   | { kind: "attack"; id: number }
   | null;
 export interface Villager extends GroundPoint {
+  owner?: "player" | "enemy"; art?: string; label?: string;
   id: number; hp: number; max_hp: number; attack_interval_ticks: number; cargo: number; cargo_kind: ResourceKind | null;
   order: VillagerOrder;
 }
 export interface WorldSnapshot {
+  kc3?: KC3View;
   protocol_version: 3; ruleset_version: 2; seed: number; tick: number; map_radius: number; stockpile: Stockpile;
   resources: ResourceNode[]; buildings: Building[]; villagers: Villager[];
   outcome: "playing" | "victory" | "defeat";
@@ -61,4 +64,11 @@ export function parseSnapshot(value: unknown): WorldSnapshot | null {
     return buildings.get(current.id)?.owner !== (current.kind === "build" ? "player" : "enemy");
   })) return null;
   return snapshot;
+}
+
+export function parseGameSnapshot(value: unknown): WorldSnapshot | null {
+  if (record(value) && value.protocol_version === 4) {
+    const view = parseKC3View(value); return view ? presentKC3(view) : null;
+  }
+  return parseSnapshot(value);
 }
