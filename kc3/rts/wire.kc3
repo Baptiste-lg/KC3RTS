@@ -29,13 +29,12 @@ defmodule RTS.Wire do
   }
   def encode = fn (value) {
     if type(value) == Map do
-      parts = List.map(Map.keys(value), fn (key) {
+      "{" + List.map_join(Map.keys(value), key, ",", do
         RTS.Wire.string(key) + ":" + RTS.Wire.encode(RTS.Data.get(value, key))
-      })
-      "{" + List.join(parts, ",") + "}"
+      end) + "}"
     else
       if type(value) == List do
-        "[" + List.join(List.map(value, RTS.Wire.encode), ",") + "]"
+        "[" + List.map_join(value, item, ",", do RTS.Wire.encode(item) end) + "]"
       else
         if type(value) == Str do
           RTS.Wire.string(value)

@@ -1,7 +1,7 @@
 # Integer world units: 256 per tile, ten simulation ticks per second.
 # All mutations, resource accounting and production live in KC3.
 defmodule RTS.World do
-  def definition = fn (content, id) { access(content, ["index", id]) }
+  def definition = fn (content, id) { RTS.Data.get(RTS.Data.get(content, "index"), id) }
   def result = fn (state, reason) { %{"state" => state, "accepted" => reason == void, "reason" => reason} }
   def entity = fn (content, faction, id, type_id, owner, x, z, construction) {
     definition = RTS.World.definition(content, type_id)

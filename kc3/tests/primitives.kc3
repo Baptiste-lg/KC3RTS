@@ -29,3 +29,7 @@ RTS.Check.that("native list selection returns callback values",
   RTS.Data.find([%{"id" => 1}], "id", 1) == %{"id" => 1} &&
   RTS.Data.find([], "id", 1) == void)
 RTS.Check.that("plain Unicode string fast path", RTS.Wire.encode("Éclat") == "\"Éclat\"")
+# Compiled definitions are shared immutable values, never copies per lookup.
+shared = RTS.Data.share(%{"id" => "test.unit", "hp" => 40})
+RTS.Check.that("shared definitions keep map lookup semantics", RTS.Data.get(shared, "hp") == 40 && RTS.Data.get(shared, "missing") == void)
+RTS.Check.that("shared values retain exact maps", RTS.Data.unshare(shared) == %{"id" => "test.unit", "hp" => 40})

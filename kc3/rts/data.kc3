@@ -2,9 +2,18 @@ require List
 require Map
 require Str
 
+# KC3 structs share immutable payloads; map arguments otherwise copy their trees.
+defmodule RTS.Shared do
+  defstruct [value: %{}]
+end
+
 defmodule RTS.Data do
+  def share = fn (value) { %RTS.Shared{value: value} }
+  def unshare = fn (value) { if type(value) == RTS.Shared do value.value else value end }
   def get = fn (value, key) {
-    if type(value) == Map do access(value, [key]) else void end
+    if type(value) == Map do access(value, [key]) else
+      if type(value) == RTS.Shared do access(value, [:value, key]) else void end
+    end
   }
   def integer? = fn (value, minimum, maximum) {
     if is_integer?(value) do value >= minimum && value <= maximum else false end

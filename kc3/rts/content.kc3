@@ -199,7 +199,7 @@ defmodule RTS.Content do
       RTS.Data.integer?(RTS.Data.get(rules, "started_cancel_percent"), 0, 100) &&
       RTS.Data.integer?(RTS.Data.get(rules, "repair_interval"), 1, 100)
   }
-  def rule = fn (content, key) { access(content, ["rules", key]) }
+  def rule = fn (content, key) { RTS.Data.get(RTS.Data.get(content, "rules"), key) }
   def validate = fn (catalog) {
     error = void
     if (! RTS.Content.fields?(catalog, ["schema_version", "ruleset_version", "rules", "definitions"])) ||
@@ -241,11 +241,15 @@ defmodule RTS.Content do
         })
       end
     })
-    %{"index" => RTS.Data.index(RTS.Data.get(catalog, "definitions")),
+    index = %{}
+    List.do(RTS.Data.get(catalog, "definitions"), d, do
+      index = Map.put(index, RTS.Data.get(d, "id"), RTS.Data.share(d))
+    end)
+    RTS.Data.share(%{"index" => index,
       "content_hash" => RTS.Data.get(RTS.Content.public(catalog), "content_hash"),
       "resources" => List.filter(RTS.Data.get(catalog, "definitions"), fn (d) {
         if RTS.Data.get(d, "kind") == "resource" do RTS.Data.get(d, "id") else false end
-      }), "facts" => db, "rules" => RTS.Data.get(catalog, "rules")}
+      }), "facts" => db, "rules" => RTS.Data.get(catalog, "rules")})
   }
   def allowed? = fn (compiled, faction, recipe) {
     Facts.first_with_tags(RTS.Data.get(compiled, "facts"), faction, :allows_recipe, recipe,
