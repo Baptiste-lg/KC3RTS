@@ -72,11 +72,11 @@ export class SceneModel {
         const group = b.art ? createTownCenter(b.art, b.owner === "enemy") : b.owner === "enemy" ? createEnemyBase() : createTownCenter();
         group.userData = { kind: "building", id: b.id };
         group.position.set(b.x, 0, b.z);
-        const health = healthBar(3, 7.6); group.add(health);
+        const health = healthBar(3, (group.children[0] as Sprite).scale.y * .95); group.add(health);
         const selection = marker(3.2); group.add(selection);
         visual = { group, health, marker: selection }; this.buildings.set(b.id, visual); this.root.add(group);
       }
-      visual.group.scale.y = b.progress < 100 ? Math.max(.15, b.progress / 100) : 1;
+      (visual.group.children[0] as Sprite).material.opacity = b.progress < 100 ? .45 + .55 * b.progress / 100 : 1;
       setHealth(visual.health, b.hp, b.max_hp);
     }
     for (const [id, visual] of this.buildings) if (!buildingIds.has(id)) { this.root.remove(visual.group); disposeGroup(visual.group); this.buildings.delete(id); }

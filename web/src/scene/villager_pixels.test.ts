@@ -40,4 +40,12 @@ describe("generated villager art", () => {
     expect(alpha(mage)).toEqual(alpha(enemyMage));
     expect(mage.data).not.toEqual(enemyMage.data);
   });
+  it("distinguishes worker, spear and ranged roles for both factions", () => {
+    for (const faction of ["kiln.concord", "lantern.synod"]) {
+      const roles = ["worker", "spear", "ranged"].map((role) => generateVillagerPixels(1, false, 1, "right", `${faction}.${role}`));
+      expect(roles[0].data).not.toEqual(roles[1].data);
+      expect(roles[1].data).not.toEqual(roles[2].data);
+      expect(roles.every((art) => art.width === 24 && art.height === 24)).toBe(true);
+    }
+  });
 });

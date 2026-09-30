@@ -33,6 +33,14 @@ export function generateVillagerPixels(id: number, carrying: boolean, seed = 1, 
     art.rect(3, 10, 1, 11, PALETTE.wood); art.rect(1, 9, 6, 2, PALETTE.stoneShade); art.rect(2, 9, 4, 1, PALETTE.stoneLight);
   }
   if (artKey.endsWith(".scout")) { art.rect(16, 4, 1, 8, PALETTE.wood); art.rect(17, 4, 3, 3, enemy ? PALETTE.red : PALETTE.blue); }
+  if (artKey.endsWith(".spear")) {
+    art.rect(21, 5, 1, 17, PALETTE.woodLight); art.polygon([[19, 6], [21, 1], [23, 6]], PALETTE.stoneLight);
+    art.rect(4, 12, 6, 7, PALETTE.ink); art.rect(5, 13, 4, 5, mage ? PALETTE.ivory : PALETTE.copper);
+  }
+  if (artKey.endsWith(".ranged")) {
+    art.rect(3, 11, 1, 10, PALETTE.woodLight); art.rect(1, 13, 6, 1, mage ? PALETTE.goldLight : PALETTE.wood);
+    art.rect(1, 18, 6, 1, mage ? PALETTE.goldLight : PALETTE.wood);
+  }
   if (carrying) { art.rect(5, 13, 4, 5, PALETTE.wood); art.rect(6, 13, 3, 4, PALETTE.copper); }
   if (facing === "left") {
     const mirrored = new Uint8ClampedArray(art.data.length);

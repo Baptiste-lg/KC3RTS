@@ -216,3 +216,11 @@ button { font: inherit; }
   .kc3-trial .minimap-panel { top: auto; left: auto; width: 120px; }
   .kc3-trial .command-panel { width: min(350px, calc(100vw - 160px)); }
 }
+
+#kc3-population { color: #d5cbae; font-size: 11px; margin: 0 18px; }
+#kc3-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+#kc3-actions button { white-space: pre-line; text-align: left; padding: 8px; border: 1px solid #65747a; background: #35464a; color: #eee0b8; font: inherit; font-size: 11px; line-height: 1.45; cursor: pointer; }
+#kc3-actions button:disabled { color: #aab3aa; background: #29393c; cursor: not-allowed; }
+#kc3-actions button:hover:not(:disabled) { background: #496365; }
+#kc3-actions button:focus-visible { outline: 2px solid #edc56a; outline-offset: 1px; }
+.kc3-trial .command-panel { max-height: calc(100vh - 150px); overflow-y: auto; }

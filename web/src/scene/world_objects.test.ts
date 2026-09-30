@@ -56,4 +56,22 @@ describe("pixel art world objects", () => {
     expect(sprite.userData.facing).toBe("right");
     expect(painted).toHaveBeenCalledOnce();
   });
+  it("gives economy buildings distinct silhouettes at the same pixel density", () => {
+    const painted = canvasStub();
+    const signatures = new Set<string>();
+    for (const kind of ["house", "depot", "farm", "barracks", "range"]) {
+      for (const faction of ["kiln.concord", "lantern.synod"]) {
+        const object = createTownCenter(`${faction}.${kind}`);
+        const sprite = object.children[0] as Sprite;
+        const texture = sprite.material.map!;
+        expect(sprite.scale.x / (texture.image as HTMLCanvasElement).width).toBe(1 / 8);
+        expect(sprite.scale.y / (texture.image as HTMLCanvasElement).height).toBe(1 / 8);
+        expect(texture.magFilter).toBe(NearestFilter);
+        signatures.add(Buffer.from(painted.mock.calls.at(-1)![0].data).toString("base64"));
+      }
+    }
+    expect(signatures.size).toBe(10);
+    createResourceNode({ id: 39, kind: "stone", art: "core.food", x: 0, z: 0, amount: 20, initial_amount: 20 });
+    expect(painted.mock.calls.at(-1)![0].width).toBe(32);
+  });
 });

@@ -90,9 +90,63 @@ function buildingArt(enemy: boolean, artKey: string): PixelArt {
   art.rect(50, 40, 3, 8, enemy ? PALETTE.red : PALETTE.blue);
   return art;
 }
+function outbuildingArt(artKey: string, enemy: boolean): PixelArt {
+  const kind = artKey.split(".").at(-1);
+  const mage = artKey.startsWith("lantern.");
+  const art = new PixelArt(40, 40);
+  const roof = mage ? PALETTE.indigo : PALETTE.teal;
+  const trim = mage ? PALETTE.ivory : PALETTE.copper;
+  art.ellipse(20, 35, 17, 4, PALETTE.shadow);
+  if (kind === "farm") {
+    art.polygon([[2, 25], [19, 17], [38, 25], [21, 36]], PALETTE.wood);
+    art.polygon([[5, 25], [19, 19], [34, 25], [21, 33]], PALETTE.dirt);
+    for (let row = 0; row < 3; row++) for (let plant = 0; plant < 4; plant++) {
+      const x = 10 + plant * 5 - row * 2, y = 22 + row * 3;
+      art.rect(x, y, 1, 4, PALETTE.leafShade); art.rect(x - 1, y, 3, 2, PALETTE.leafLight);
+    }
+    art.rect(3, 23, 1, 10, PALETTE.woodLight); art.rect(35, 23, 1, 10, PALETTE.woodLight);
+    if (mage) {
+      art.rect(34, 13, 1, 10, PALETTE.wood); art.rect(31, 15, 7, 7, outline);
+      art.rect(32, 16, 5, 5, PALETTE.goldLight); art.pixel(34, 17, PALETTE.light);
+    } else {
+      art.rect(30, 21, 7, 7, outline); art.rect(31, 22, 5, 5, PALETTE.copper);
+      art.rect(32, 18, 2, 6, PALETTE.stoneLight); art.rect(29, 18, 5, 1, PALETTE.woodLight);
+    }
+    art.rect(3, 25, 2, 4, enemy ? PALETTE.red : PALETTE.blue);
+    return art;
+  }
+  art.polygon([[7, 20], [20, 14], [34, 20], [34, 30], [21, 37], [7, 30]], outline);
+  art.polygon([[9, 21], [20, 17], [20, 34], [9, 29]], trim);
+  art.polygon([[21, 17], [32, 21], [32, 29], [21, 34]], PALETTE.stoneShade);
+  art.polygon([[3, 21], [18, 7], [37, 20], [21, 27]], outline);
+  art.polygon([[6, 20], [18, 10], [33, 20], [21, 24]], roof);
+  art.rect(13, 25, 6, 10, outline); art.rect(14, 26, 3, 8, PALETTE.wood);
+  art.rect(28, 25, 2, 7, enemy ? PALETTE.red : PALETTE.blue);
+  if (kind === "depot") {
+    for (let i = 0; i < 3; i++) { art.rect(24 + i * 4, 29 - i % 2 * 3, 4, 5, outline); art.rect(25 + i * 4, 30 - i % 2 * 3, 2, 3, PALETTE.woodLight); }
+    art.rect(15, 16, 7, 5, PALETTE.gold);
+  } else if (kind === "barracks") {
+    art.rect(5, 15, 1, 17, PALETTE.woodLight); art.rect(32, 13, 1, 16, PALETTE.woodLight);
+    art.polygon([[3, 16], [5, 10], [7, 16]], PALETTE.stoneLight);
+    art.rect(15, 15, 7, 7, PALETTE.stoneLight); art.rect(17, 16, 3, 5, roof);
+  } else if (kind === "range") {
+    art.rect(32, 25, 1, 11, PALETTE.wood); art.ellipse(32, 27, 6, 6, PALETTE.ivory);
+    art.ellipse(32, 27, 4, 4, PALETTE.red); art.ellipse(32, 27, 2, 2, PALETTE.ivory);
+  } else { art.rect(9, 7, 4, 9, PALETTE.stoneShade); art.rect(8, 6, 6, 2, PALETTE.stoneLight); }
+  return art;
+}
+function berryArt(): PixelArt {
+  const art = new PixelArt(32, 24);
+  art.ellipse(16, 21, 13, 2, PALETTE.shadow);
+  art.ellipse(16, 14, 13, 8, PALETTE.leafShade); art.ellipse(13, 12, 9, 6, PALETTE.leaf);
+  for (const [x, y] of [[7, 13], [12, 9], [18, 13], [24, 14], [13, 17]]) {
+    art.rect(x, y, 3, 3, PALETTE.red); art.pixel(x, y, PALETTE.copperLight);
+  }
+  return art;
+}
 export function createTownCenter(artKey = "kiln.concord.hall", enemy = false): Group {
   const group = new Group(); group.name = enemy ? "enemy-base" : "town-center";
-  group.add(sprite(buildingArt(enemy, artKey))); return group;
+  group.add(sprite(artKey.endsWith(".hall") ? buildingArt(enemy, artKey) : outbuildingArt(artKey, enemy))); return group;
 }
 export function createEnemyBase(): Group { return createTownCenter("lantern.synod.hall", true); }
 
@@ -132,7 +186,7 @@ export function createResourceNode(node: ResourceNode): Group {
   const group = new Group(); group.name = `resource-${node.id}`;
   group.userData = { kind: "resource", id: node.id };
   group.position.set(node.x, 0, node.z);
-  group.add(node.kind === "wood" ? sprite(treeArt(node.id)) : sprite(rockArt(node.kind === "gold")));
+  group.add(sprite(node.art === "core.food" ? berryArt() : node.kind === "wood" ? treeArt(node.id) : rockArt(node.kind === "gold")));
   return group;
 }
 

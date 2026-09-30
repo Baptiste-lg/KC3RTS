@@ -1,4 +1,5 @@
 import { Color, DoubleSide, MathUtils, Mesh, MeshBasicMaterial, Plane, PlaneGeometry, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from "three";
+import { definitions } from "../game/kc3_view";
 import type { GroundPoint, WorldSnapshot } from "../game/protocol";
 import { createIsometricCamera, resizeIsometricCamera } from "./camera";
 import { SceneModel } from "./scene_model";
@@ -15,7 +16,7 @@ export class WorldView {
   private readonly placementGhost = new Mesh(new PlaneGeometry(8, 8), this.placementMaterial);
   private readonly orderMaterial = new MeshBasicMaterial({ color: 0xe6e18b, transparent: true, opacity: .9, depthTest: false });
   private readonly orderMarker = new Mesh(new RingGeometry(1.0, 1.22, 24), this.orderMaterial);
-  private orderTime = 0;
+  private orderTime = 0; private placementFootprint = 8;
   private readonly edgePan = { x: 0, y: 0 };
   private pointer: { x: number; y: number; startX: number; startY: number; id: number; button: number } | null = null;
   private frame = 0; private lastFrame = 0; private lastRender = 0; private snapshot: WorldSnapshot;
@@ -42,7 +43,7 @@ export class WorldView {
   }
   update(snapshot: WorldSnapshot): void { this.snapshot = snapshot; this.model.update(snapshot); }
   select(ids: ReadonlySet<number>, buildingId: number | null): void { this.model.select(ids, buildingId); }
-  setPlacing(active: boolean): void { this.renderer.domElement.classList.toggle("placing", active); if (!active) this.placementGhost.visible = false; }
+  setPlacing(active: boolean, footprint = 8): void { this.placementFootprint = footprint; this.placementGhost.scale.set(footprint / 8, footprint / 8, 1); this.renderer.domElement.classList.toggle("placing", active); if (!active) this.placementGhost.visible = false; }
   focus(point: GroundPoint): void {
     const bound = this.mapRadius - 6;
     this.pan.x = MathUtils.clamp(point.x, -bound, bound);
@@ -89,7 +90,23 @@ export class WorldView {
     }).map((v) => v.id);
     this.actions.selectArea(ids, e.shiftKey);
   };
+  private snapSite(point: GroundPoint): GroundPoint {
+    const map = this.snapshot.kc3?.map;
+    if (!map) return point;
+    const snap = (value: number, origin: number) => (origin + (Math.floor((value * 256 - origin) / map.cell_size) + .5) * map.cell_size) / 256;
+    return { x: snap(point.x, map.origin_x), z: snap(point.z, map.origin_z) };
+  }
   private validBuildSite(point: GroundPoint): boolean {
+    const view = this.snapshot.kc3;
+    if (view) {
+      const map = view.map, x = point.x * 256, z = point.z * 256;
+      const col = Math.floor((x - map.origin_x) / map.cell_size), row = Math.floor((z - map.origin_z) / map.cell_size);
+      return col >= 0 && row >= 0 && col < map.width && row < map.height && !map.blocked.includes(row * map.width + col) &&
+        !view.nodes.some((n) => n.amount > 0 && n.x === x && n.z === z) && view.entities.every((e) => {
+          const distance = (this.placementFootprint * 256 + (definitions.get(e.type_id)?.footprint ?? 0)) / 2;
+          return Math.abs(e.x - x) >= distance || Math.abs(e.z - z) >= distance;
+        });
+    }
     if (Math.abs(point.x) > this.mapRadius - 3 || Math.abs(point.z) > this.mapRadius - 3) return false;
     const distance = (target: GroundPoint): number => Math.hypot(target.x - point.x, target.z - point.z);
     return this.snapshot.buildings.every((b) => b.hp <= 0 || distance(b) >= 8) &&
@@ -171,7 +188,7 @@ export class WorldView {
     if (this.actions.isPlacing()) {
       const point = this.ground(e.clientX, e.clientY);
       this.placementGhost.visible = point !== null;
-      if (point) { this.placementGhost.position.set(point.x, .12, point.z); this.placementMaterial.color.set(this.validBuildSite(point) ? 0x70df83 : 0xee6d60); }
+      if (point) { const site = this.snapSite(point); this.placementGhost.position.set(site.x, .12, site.z); this.placementMaterial.color.set(this.validBuildSite(site) ? 0x70df83 : 0xee6d60); }
     }
     if (!this.pointer || this.pointer.id !== e.pointerId) return;
     if (this.pointer.button === 1) {
@@ -205,9 +222,13 @@ export class WorldView {
       }).map((v) => v.id);
       this.actions.selectArea(ids, e.shiftKey); return;
     }
-    const hit = this.hit(e.clientX, e.clientY, true); if (!hit) return;
-    if (this.actions.isPlacing() && hit.kind === "ground") this.actions.place(hit.point);
-    else this.actions.select(hit, e.shiftKey);
+    if (this.actions.isPlacing()) {
+      const point = this.ground(e.clientX, e.clientY);
+      if (point) this.actions.place(this.snapSite(point));
+      return;
+    }
+    const hit = this.hit(e.clientX, e.clientY, true);
+    if (hit) this.actions.select(hit, e.shiftKey);
   };
   private readonly wheel = (e: WheelEvent): void => { e.preventDefault(); this.camera.zoom = MathUtils.clamp(this.camera.zoom * Math.exp(-e.deltaY * .001), .7, 2.4); this.camera.updateProjectionMatrix(); };
   private movePan(horizontal: number, vertical: number): void {

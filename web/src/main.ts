@@ -4,6 +4,7 @@ import { LocalGameConnection } from "./game/local_connection";
 import { definitions } from "./game/kc3_view";
 import type { Building, GroundPoint, WorldSnapshot, Villager } from "./game/protocol";
 import { WorldView, type MapHit } from "./scene/world_view";
+import { EconomyPanel, contextActions, contextOrder, describeEntity, economyReasons } from "./ui/economy_panel";
 import { Minimap } from "./scene/minimap";
 
 function element<T extends HTMLElement>(id: string): T { const found = document.getElementById(id); if (!found) throw new Error(`Missing interface element: ${id}`); return found as T; }
@@ -22,6 +23,7 @@ if (new URLSearchParams(window.location.search).has("profile")) {
   (window as Window & { __kc3rtsStats?: () => ReturnType<WorldView["getRenderInfo"]> | null }).__kc3rtsStats = () => view?.getRenderInfo() ?? null;
 }
 let status: GameConnectionStatus = "connecting", graphicsFailed = false, placing = false, noticeTimer = 0;
+let buildRecipe: { recipe_id: string; entity_id: number } | null = null;
 let selectedBuilding: number | null = 1;
 let selectedInfo: { kind: "resource" | "enemy"; id: number } | null = null;
 const selectedVillagers = new Set<number>();
@@ -29,7 +31,13 @@ const controlGroups = new Map<number, number[]>();
 let lastGroup = 0, lastGroupTime = 0;
 const minimap = new Minimap(minimapCanvas, (point) => { view?.focus(point); if (world && view) minimap.draw(world, view.getFocus(), view.getViewport()); });
 const statusLabels: Record<GameConnectionStatus, string> = { connecting: "Connecting…", connected: "Connected game", local: "Solo game", offline: "Server offline", expired: "Match unavailable", incompatible: "Incompatible version" };
-const errors: Record<string, string> = { insufficient_resources: "Not enough resources.", invalid_location: "Site too close to an obstacle or outside the map.", invalid_target: "Target unavailable.", invalid_selection: "Select only your mobile units (up to 16 in the field trial).", unreachable: "No route to that part of the map.", invalid_building: "Select a completed town center.", offline: "Connection lost.", rate_limited: "Too many orders. Try again in a moment.", match_limit: "The server is full. Try again later.", match_unavailable: "This match ended. Reload to start a new match.", game_over: "The game has ended." };
+const errors: Record<string, string> = { ...economyReasons, insufficient_resources: "Not enough resources.", invalid_location: "Site too close to an obstacle or outside the map.", invalid_target: "Target unavailable.", invalid_selection: "Select only your mobile units (up to 16 in the field trial).", unreachable: "No route to that part of the map.", invalid_building: "Select a completed town center.", offline: "Connection lost.", rate_limited: "Too many orders. Try again in a moment.", match_limit: "The server is full. Try again later.", match_unavailable: "This match ended. Reload to start a new match.", game_over: "The game has ended." };
+const economyPanel = new EconomyPanel(element("kc3-actions"), (action) => {
+  if (action.build) {
+    buildRecipe = action.build; placing = true; updateControls();
+    showNotice(`${action.label}: click open ground. Escape cancels placement.`);
+  } else if (action.command) send(action.command);
+});
 function showNotice(message: string): void { window.clearTimeout(noticeTimer); notice.textContent = message; noticeTimer = window.setTimeout(() => { notice.textContent = "Left click: select · right click: issue an order."; }, 5_000); }
 const controllable = (v: Villager): boolean => v.owner !== "enemy";
 function selectedCenter(): Building | undefined { return world?.buildings.find((b) => b.id === selectedBuilding && b.owner === "player" && b.hp > 0 && b.progress === 100); }
@@ -59,12 +67,17 @@ function updateControls(): void {
   }
   commandHelp.textContent = selected.length ? "Right click terrain to move, a resource to gather, or the red base to attack." : selectedCenter() ? "Recruit here, or select your villagers on the map." : "Left click to select; right click to issue an order.";
   if (world?.kc3) {
-    selectionLabel.textContent = selected.length ? `${selected.length} ${selected.length === 1 ? selected[0].label ?? "unit" : "units"} selected` : selectedCenter() ? selectedCenter()!.label ?? "Hall" : enemy ? enemy.label ?? "Rival hall" : resource ? "Woodland / rock obstacle" : "No unit selected";
-    commandHelp.textContent = "Right click open ground to move · X to stop · Ctrl + 1–9 to save a group.";
-    if (!selected.length) selectionDetail.textContent = "Explore the field with the Kiln Concord. The Lantern Synod occupies the east camp.";
-  }
+    const canonical = world.kc3.entities.find((e) => e.id === (selected.length === 1 ? selected[0].id : selectedBuilding));
+    selectionLabel.textContent = selected.length ? `${selected.length} ${selected.length === 1 ? selected[0].label ?? "unit" : "units"} selected` : canonical ? definitions.get(canonical.type_id)!.label : enemy ? enemy.label ?? "Rival building" : resource ? `${resource.label} · ${resource.amount} remaining` : "No unit selected";
+    selectionDetail.textContent = canonical ? describeEntity(canonical) : selected.length ? `${selected.filter((v) => v.order === null).length} idle · ${selected.length} units` : "Gather, expand and train. Combat arrives in a later phase.";
+    if (canonical?.construction) selectionDetail.textContent += ` · ${canonical.construction.remaining_ticks / 10}s of worker time remaining`;
+    commandHelp.textContent = selected.length ? "Right click resources, farms or your buildings to work · X to stop." : canonical && ((definitions.get(canonical.type_id)?.capabilities ?? []) as string[]).includes("train") ? "Right click ground to set a rally point. Queue entries are paid immediately." : "Select workers to build, or a building to train units.";
+    economyPanel.update(contextActions(world.kc3, [...selectedVillagers], selectedBuilding), !!ready);
+    stopButton.firstElementChild!.textContent = "Stop units";
+  } else economyPanel.update([], false);
   view?.select(selectedVillagers, selectedBuilding);
-  view?.setPlacing(placing);
+  const output = buildRecipe && definitions.get(buildRecipe.recipe_id)?.output;
+  view?.setPlacing(placing, world?.kc3 && output ? (definitions.get(output)?.footprint ?? 1024) / 256 : 8);
 }
 function onSnapshot(snapshot: WorldSnapshot): void {
   const previousOutcome = world?.outcome;
@@ -88,14 +101,18 @@ function onSnapshot(snapshot: WorldSnapshot): void {
       }
       item.textContent = String(amount);
     }
-    element("objective").textContent = "Field trial · move, select and stop your units.";
+    element("kc3-population").hidden = false;
+    const population = snapshot.kc3.players.find((p) => p.slot === snapshot.kc3!.viewer_slot)!.population;
+    element("population").textContent = `${population.used} + ${population.reserved} / ${population.cap}`;
+    element("population").title = "Living units + paid queue reservations / capacity";
+    element("objective").textContent = "Economy field trial · gather, build and train.";
   }
   const enemy = snapshot.buildings.find((b) => b.owner === "enemy"); enemyHpLabel.textContent = String(enemy?.hp ?? 0);
   const seconds = Math.floor(snapshot.tick / 10); tickLabel.textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   if (graphicsFailed) return;
   try {
     if (view) view.update(snapshot);
-    else { view = new WorldView(sceneMount, snapshot, actions); loading.hidden = true; showNotice(snapshot.kc3 ? "Select your workers, then right click open ground." : "Select your villagers, then right click a resource."); }
+    else { view = new WorldView(sceneMount, snapshot, actions); loading.hidden = true; showNotice(snapshot.kc3 ? "Select workers and right click berries or trees. Select the hall to queue workers." : "Select your villagers, then right click a resource."); }
     updateControls();
     if (view) minimap.draw(snapshot, view.getFocus(), view.getViewport());
     if (snapshot.outcome !== "playing" && previousOutcome !== snapshot.outcome) showNotice(snapshot.outcome === "victory" ? "Victory! The enemy base is destroyed." : "Defeat.");
@@ -126,13 +143,15 @@ const actions = {
   },
   selectArea(ids: number[], additive: boolean): void { if (!additive) selectedVillagers.clear(); ids.filter((id) => world?.villagers.some((v) => v.id === id && controllable(v))).forEach((id) => selectedVillagers.add(id)); selectedBuilding = null; selectedInfo = null; updateControls(); },
   order(hit: MapHit): boolean {
-    placing = false; updateControls(); if (!selectedVillagers.size) return false;
+    placing = false; updateControls();
     const villager_ids = [...selectedVillagers];
     if (world?.kc3) {
-      if (hit.kind !== "ground") { showNotice("Choose open ground between the obstacles."); return false; }
-      send({ type: "move", entity_ids: villager_ids, x: Math.round(hit.point.x * 256), z: Math.round(hit.point.z * 256) });
-      return true;
+      const outcome = contextOrder(world.kc3, villager_ids, selectedBuilding, hit);
+      if (outcome.command) { send(outcome.command); return true; }
+      if (outcome.reason) showNotice(outcome.reason);
+      return false;
     }
+    if (!selectedVillagers.size) return false;
     if (hit.kind === "resource") send({ type: "order", villager_ids, order: { kind: "gather", id: hit.id } });
     else if (hit.kind === "building") {
       const b = world?.buildings.find((item) => item.id === hit.id);
@@ -143,14 +162,19 @@ const actions = {
     } else if (hit.kind === "ground") send({ type: "order", villager_ids, order: { kind: "move", ...hit.point } });
     return true;
   },
-  place(point: GroundPoint): void { if (!placing) return; placing = false; updateControls(); send({ type: "build", villager_ids: [...selectedVillagers], ...point }); },
+  place(point: GroundPoint): void {
+    if (!placing) return;
+    placing = false; updateControls();
+    if (world?.kc3 && buildRecipe) send({ type: "produce", ...buildRecipe, x: Math.round(point.x * 256), z: Math.round(point.z * 256) });
+    else send({ type: "build", villager_ids: [...selectedVillagers], ...point });
+  },
   isPlacing: (): boolean => placing,
 };
 recruitButton.addEventListener("click", () => { const center = selectedCenter(); if (center) send({ type: "spawn_villager", building_id: center.id }); });
 stopButton.addEventListener("click", () => { if (selectedVillagers.size) send(world?.kc3 ? { type: "stop", entity_ids: [...selectedVillagers] } : { type: "stop", villager_ids: [...selectedVillagers] }); });
 buildButton.addEventListener("click", () => { placing = !placing; updateControls(); if (placing) showNotice("Click open ground to place the town center."); });
 window.addEventListener("keydown", (e) => {
-  if (e.altKey || e.metaKey || e.repeat) return;
+  if (e.altKey || e.metaKey || e.repeat || (e.target instanceof HTMLElement && e.target.matches("input, textarea, select, [contenteditable=true]"))) return;
   const digit = /^Digit([1-9])$/.exec(e.code);
   if (digit) {
     const number = Number(digit[1]);
