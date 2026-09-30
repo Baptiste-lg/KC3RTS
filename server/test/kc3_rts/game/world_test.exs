@@ -154,6 +154,103 @@ defmodule KC3RTS.Game.WorldTest do
     assert moved.order == nil
   end
 
+  test "villagers route around a center and reject occupied move destinations" do
+    start = World.new(seed: 1234)
+
+    assert {:error, :invalid_location} =
+             World.command(start, %{
+               type: :order,
+               villager_ids: [1],
+               order: {:move, %{x: 0, z: 0}}
+             })
+
+    for resource <- [
+          Enum.find(start.resources, &(&1.kind == :wood)),
+          Enum.find(start.resources, &(&1.kind == :stone))
+        ] do
+      assert {:error, :invalid_location} =
+               World.command(start, %{
+                 type: :order,
+                 villager_ids: [1],
+                 order: {:move, %{x: resource.x, z: resource.z}}
+               })
+    end
+
+    world = %{start | resources: [], villagers: [%{hd(start.villagers) | x: -7.0, z: 0.0}]}
+
+    assert {:ok, ordered} =
+             World.command(world, %{
+               type: :order,
+               villager_ids: [1],
+               order: {:move, %{x: 7, z: 0}}
+             })
+
+    final =
+      Enum.reduce(1..100, ordered, fn _, current ->
+        next = World.step(current)
+        assert distance(hd(next.villagers), %{x: 0, z: 0}) >= 2.9 - 1.0e-8
+        next
+      end)
+
+    assert hd(final.villagers).x == 7
+    assert hd(final.villagers).order == nil
+  end
+
+  test "villagers escape a building edge and stop an unreachable order" do
+    start = World.new(seed: 1234)
+    angle = :math.pi() / 6
+    villager = %{hd(start.villagers) | x: 3.05 * :math.cos(angle), z: 3.05 * :math.sin(angle)}
+    world = %{start | resources: [], villagers: [villager]}
+
+    assert {:ok, ordered} =
+             World.command(world, %{
+               type: :order,
+               villager_ids: [1],
+               order: {:move, %{x: -7 * :math.cos(angle), z: -7 * :math.sin(angle)}}
+             })
+
+    escaped = World.step(ordered, 100)
+    assert hd(escaped.villagers).order == nil
+    assert_in_delta hd(escaped.villagers).x, -7 * :math.cos(angle), 1.0e-6
+
+    ore = Enum.find(start.resources, &(&1.kind == :stone))
+
+    ring =
+      Enum.map(0..7, fn i ->
+        %{
+          ore
+          | id: i + 1,
+            x: 4 * :math.cos(i * :math.pi() / 4),
+            z: 4 * :math.sin(i * :math.pi() / 4)
+        }
+      end)
+
+    buildings =
+      Enum.map(start.buildings, fn building ->
+        if building.owner == :player,
+          do: %{building | x: 30.0, z: 30.0},
+          else: %{building | x: -30.0, z: -30.0}
+      end)
+
+    world = %{
+      start
+      | resources: ring,
+        buildings: buildings,
+        villagers: [%{hd(start.villagers) | x: 0.0, z: 0.0}]
+    }
+
+    assert {:ok, ordered} =
+             World.command(world, %{
+               type: :order,
+               villager_ids: [1],
+               order: {:move, %{x: 10, z: 0}}
+             })
+
+    stopped = World.step(ordered)
+    assert hd(stopped.villagers).order == nil
+    assert hd(stopped.villagers).x == 0
+  end
+
   test "recruitment finds free positions without charging for a full spawn area" do
     world = World.new(seed: 1234, starting_stockpile: %{wood: 1_000, stone: 15, gold: 1_000})
 
@@ -238,7 +335,14 @@ defmodule KC3RTS.Game.WorldTest do
         end
       end)
 
-    world = %{world | villagers: villagers}
+    buildings =
+      Enum.map(world.buildings, fn building ->
+        if building.owner == :player,
+          do: %{building | x: 20.0, z: 20.0},
+          else: %{building | x: -20.0, z: -20.0}
+      end)
+
+    world = %{world | villagers: villagers, resources: [], buildings: buildings}
 
     {:ok, world} =
       World.command(world, %{type: :order, villager_ids: [1], order: {:move, %{x: 2.0, z: 0.0}}})

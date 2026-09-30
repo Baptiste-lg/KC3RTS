@@ -53,6 +53,44 @@ defmodule KC3RTS.Game.WorldServerTest do
     assert %{world: %{tick: ^tick}, revision: ^revision} = WorldServer.view(server)
   end
 
+  test "counts only applied catch-up ticks when a match ends inside the batch" do
+    game_id = "catchup-end-#{System.unique_integer([:positive])}"
+
+    assert {:ok, server} =
+             start_supervised({WorldServer, game_id: game_id, tick_interval: 50, seed: 4})
+
+    :sys.replace_state(server, fn state ->
+      enemy = Enum.find(state.world.buildings, &(&1.owner == :enemy))
+
+      buildings =
+        Enum.map(state.world.buildings, fn b -> if b.id == enemy.id, do: %{b | hp: 5}, else: b end)
+
+      villagers =
+        Enum.map(state.world.villagers, fn v ->
+          if v.id == 1,
+            do: %{
+              v
+              | x: enemy.x + 3.0,
+                z: enemy.z,
+                attack_interval_ticks: 1,
+                order: {:attack, enemy.id}
+            },
+            else: v
+        end)
+
+      %{state | world: %{state.world | buildings: buildings, villagers: villagers}}
+    end)
+
+    :sys.suspend(server)
+    Process.sleep(220)
+    :sys.resume(server)
+
+    assert eventually(fn -> WorldServer.view(server).world.outcome == "victory" end)
+    assert %{world: %{tick: 1, outcome: "victory"}, revision: 1} = WorldServer.view(server)
+    Process.sleep(100)
+    assert %{world: %{tick: 1}, revision: 1} = WorldServer.view(server)
+  end
+
   test "returns one versioned result for a retried command" do
     game_id = "revision-#{System.unique_integer([:positive])}"
 

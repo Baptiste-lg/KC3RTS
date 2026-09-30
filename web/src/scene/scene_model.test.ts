@@ -15,7 +15,7 @@ describe("SceneModel", () => {
       }) }),
     });
     const world: WorldSnapshot = {
-      protocol_version: 3, seed: 12345, tick: 0, map_radius: 32,
+      protocol_version: 3, ruleset_version: 2, seed: 12345, tick: 0, map_radius: 32,
       stockpile: { wood: 30, stone: 15, gold: 20 }, outcome: "playing",
       resources: [], buildings: [],
       villagers: [{ id: 1, x: 0, z: 0, cargo: 0, cargo_kind: null, hp: 30, max_hp: 30, attack_interval_ticks: 6, order: null }],
@@ -51,7 +51,7 @@ describe("SceneModel", () => {
     });
 
     const initial: WorldSnapshot = {
-      protocol_version: 3, seed: 12345, tick: 0, map_radius: 32,
+      protocol_version: 3, ruleset_version: 2, seed: 12345, tick: 0, map_radius: 32,
       stockpile: { wood: 30, stone: 15, gold: 20 }, outcome: "playing",
       resources: [{ id: 1, kind: "wood", x: 8, z: 3, amount: 10, initial_amount: 10 }],
       buildings: [{ id: 1, owner: "player", x: 0, z: 0, hp: 350, max_hp: 350, progress: 100 }],
@@ -88,7 +88,7 @@ describe("SceneModel", () => {
       }),
     });
     const world: WorldSnapshot = {
-      protocol_version: 3, seed: 12345, tick: 2, map_radius: 32,
+      protocol_version: 3, ruleset_version: 2, seed: 12345, tick: 2, map_radius: 32,
       stockpile: { wood: 30, stone: 15, gold: 20 }, outcome: "playing",
       resources: [{ id: 1, kind: "wood", x: 8, z: 3, amount: 10, initial_amount: 10 }],
       buildings: [{ id: 1, owner: "player", x: 0, z: 0, hp: 350, max_hp: 350, progress: 100 }],
@@ -116,7 +116,7 @@ describe("SceneModel", () => {
       }),
     });
     const world: WorldSnapshot = {
-      protocol_version: 3, seed: 12345, tick: 5, map_radius: 32,
+      protocol_version: 3, ruleset_version: 2, seed: 12345, tick: 5, map_radius: 32,
       stockpile: { wood: 30, stone: 15, gold: 20 }, outcome: "playing",
       resources: [],
       buildings: [

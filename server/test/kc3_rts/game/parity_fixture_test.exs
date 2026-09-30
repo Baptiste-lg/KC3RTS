@@ -4,7 +4,7 @@ defmodule KC3RTS.Game.ParityFixtureTest do
 
   test "server replays all golden scenarios without changing canonical state" do
     golden = ParityFixture.golden_path() |> File.read!() |> Jason.decode!()
-    assert golden["version"] == 3
+    assert golden["version"] == 4
 
     expected = Map.new(golden["scenarios"], &{&1["name"], &1})
 

@@ -124,6 +124,44 @@ describe("RTS simulation", () => {
     expect(moved.x).toBe(40);
     expect(moved.order).toBeNull();
   });
+  it("routes around a center and rejects occupied move destinations", () => {
+    const start = createLocalWorld(1234);
+    expect(applyLocalCommand(start, { type: "order", villager_ids: [1], order: { kind: "move", x: 0, z: 0 } })).toEqual({ ok: false, reason: "invalid_location" });
+    const wood = start.resources.find((r) => r.kind === "wood")!;
+    expect(applyLocalCommand(start, { type: "order", villager_ids: [1], order: { kind: "move", x: wood.x, z: wood.z } })).toEqual({ ok: false, reason: "invalid_location" });
+    const ore = start.resources.find((r) => r.kind === "stone")!;
+    expect(applyLocalCommand(start, { type: "order", villager_ids: [1], order: { kind: "move", x: ore.x, z: ore.z } })).toEqual({ ok: false, reason: "invalid_location" });
+
+    let world: LocalWorld = { ...start, resources: [], villagers: [{ ...start.villagers[0], x: -7, z: 0 }] };
+    const ordered = applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "move", x: 7, z: 0 } });
+    expect(ordered.ok).toBe(true); if (!ordered.ok) return;
+    world = ordered.world;
+    for (let tick = 0; tick < 100; tick += 1) {
+      world = stepLocalWorld(world);
+      expect(Math.hypot(world.villagers[0].x, world.villagers[0].z)).toBeGreaterThanOrEqual(2.9 - 1e-8);
+    }
+    expect(world.villagers[0].x).toBe(7);
+    expect(world.villagers[0].order).toBeNull();
+  });
+  it("escapes a building edge and stops an unreachable order", () => {
+    const start = createLocalWorld(1234);
+    const angle = Math.PI / 6;
+    let world: LocalWorld = { ...start, resources: [], villagers: [{ ...start.villagers[0], x: 3.05 * Math.cos(angle), z: 3.05 * Math.sin(angle) }] };
+    const escape = applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "move", x: -7 * Math.cos(angle), z: -7 * Math.sin(angle) } });
+    expect(escape.ok).toBe(true); if (!escape.ok) return;
+    world = stepLocalWorld(escape.world, 100);
+    expect(world.villagers[0].order).toBeNull();
+    expect(world.villagers[0].x).toBeCloseTo(-7 * Math.cos(angle));
+
+    const ore = start.resources.find((r) => r.kind === "stone")!;
+    const ring = Array.from({ length: 8 }, (_, i) => ({ ...ore, id: i + 1, x: 4 * Math.cos(i * Math.PI / 4), z: 4 * Math.sin(i * Math.PI / 4) }));
+    world = { ...start, resources: ring, buildings: start.buildings.map((b) => b.owner === "player" ? { ...b, x: 30, z: 30 } : { ...b, x: -30, z: -30 }), villagers: [{ ...start.villagers[0], x: 0, z: 0 }] };
+    const trapped = applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "move", x: 10, z: 0 } });
+    expect(trapped.ok).toBe(true); if (!trapped.ok) return;
+    const stopped = stepLocalWorld(trapped.world);
+    expect(stopped.villagers[0].order).toBeNull();
+    expect(stopped.villagers[0].x).toBe(0);
+  });
   it("recruits into free spaces and does not charge when no spawn position exists", () => {
     let world = { ...createLocalWorld(1234), stockpile: { wood: 1000, stone: 15, gold: 1000 } };
     for (let i = 0; i < 37; i += 1) {
@@ -170,7 +208,7 @@ describe("RTS simulation", () => {
   });
   it("steers opposing movers around one another", () => {
     const start = createLocalWorld(1234);
-    let world = { ...start, villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: -2, z: 0 } : v.id === 2 ? { ...v, x: 2, z: 0 } : { ...v, x: 0, z: 5 }) };
+    let world: LocalWorld = { ...start, resources: [], buildings: start.buildings.map((b) => b.owner === "player" ? { ...b, x: 20, z: 20 } : { ...b, x: -20, z: -20 }), villagers: start.villagers.map((v) => v.id === 1 ? { ...v, x: -2, z: 0 } : v.id === 2 ? { ...v, x: 2, z: 0 } : { ...v, x: 0, z: 5 }) };
     const first = applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "move", x: 2, z: 0 } });
     expect(first.ok).toBe(true); if (!first.ok) return; world = first.world;
     const second = applyLocalCommand(world, { type: "order", villager_ids: [2], order: { kind: "move", x: -2, z: 0 } });

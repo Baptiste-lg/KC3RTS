@@ -136,11 +136,11 @@ describe("GameConnection", () => {
     const world = createLocalWorld();
     socket.gameChannel.joinPush.resolve("ok", state(world, 0));
     const empty = { upsert: [], remove: [] };
-    socket.gameChannel.emit("world_patch", { protocol_version: 3, base_revision: 0, revision: 1, tick: 1,
+    socket.gameChannel.emit("world_patch", { protocol_version: 3, ruleset_version: 2, base_revision: 0, revision: 1, tick: 1,
       stockpile: { ...world.stockpile, wood: 29 }, outcome: null, resources: empty, buildings: empty,
       villagers: { upsert: [{ ...world.villagers[0], x: world.villagers[0].x + 0.5 }], remove: [] } });
     expect(snapshots).toEqual([0, 1]);
-    socket.gameChannel.emit("world_patch", { protocol_version: 3, base_revision: 2, revision: 3, tick: 3,
+    socket.gameChannel.emit("world_patch", { protocol_version: 3, ruleset_version: 2, base_revision: 2, revision: 3, tick: 3,
       stockpile: null, outcome: null, resources: empty, buildings: empty, villagers: empty });
     expect(socket.gameChannel.lastEvent).toBe("request_snapshot");
     socket.gameChannel.snapshotPush.resolve("ok", state({ ...world, tick: 3 }, 3));
@@ -156,12 +156,20 @@ describe("GameConnection", () => {
     expect(statuses.at(-1)).toBe("incompatible");
     expect(outcomes.at(-1)).toEqual({ ok: false, reason: "invalid_response" });
   });
+  it("rejects a patch from another ruleset", async () => {
+    const socket = new FakeSocket(); const statuses: string[] = [];
+    const connection = new GameConnection({ onSnapshot: () => undefined, onStatus: (status) => statuses.push(status), onCommand: () => undefined }, socket as unknown as Socket, provideMatch);
+    connection.connect(); await ready();
+    socket.gameChannel.joinPush.resolve("ok", state(createLocalWorld(), 0));
+    socket.gameChannel.emit("world_patch", { protocol_version: 3, ruleset_version: 1, base_revision: 0, revision: 1, tick: 1 });
+    expect(statuses.at(-1)).toBe("incompatible");
+  });
   it("resyncs an invalid patch and reports an unavailable match", async () => {
     const socket = new FakeSocket(); const statuses: string[] = []; const outcomes: unknown[] = [];
     const connection = new GameConnection({ onSnapshot: () => undefined, onStatus: (status) => statuses.push(status), onCommand: (outcome) => outcomes.push(outcome) }, socket as unknown as Socket, provideMatch);
     connection.connect(); await ready();
     socket.gameChannel.joinPush.resolve("ok", state(createLocalWorld(), 0));
-    socket.gameChannel.emit("world_patch", { protocol_version: 3, base_revision: 0, revision: 1, tick: 1 });
+    socket.gameChannel.emit("world_patch", { protocol_version: 3, ruleset_version: 2, base_revision: 0, revision: 1, tick: 1 });
     expect(socket.gameChannel.lastEvent).toBe("request_snapshot");
     socket.gameChannel.snapshotPush.resolve("error", { reason: "unauthorized" });
     expect(statuses.at(-1)).toBe("offline");

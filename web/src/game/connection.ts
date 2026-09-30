@@ -144,6 +144,7 @@ export class GameConnection implements GameClient {
   private acceptPatch(channel: Channel, payload: unknown): void {
     if (this.channel !== channel || !this.currentWorld || typeof payload !== "object" || payload === null) return;
     if (!("protocol_version" in payload) || payload.protocol_version !== 3 ||
+      !("ruleset_version" in payload) || payload.ruleset_version !== 2 ||
       !("base_revision" in payload) || !Number.isSafeInteger(payload.base_revision) ||
       !("revision" in payload) || !Number.isSafeInteger(payload.revision)) {
       this.ready = false; this.setStatus("incompatible"); return;

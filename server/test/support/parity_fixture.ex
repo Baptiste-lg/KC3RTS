@@ -4,7 +4,7 @@ defmodule KC3RTS.Game.ParityFixture do
   alias KC3RTS.Game.World
 
   def scenarios_path, do: Path.expand("../../../fixtures/parity_scenarios.json", __DIR__)
-  def golden_path, do: Path.expand("../../../fixtures/parity_v3.json", __DIR__)
+  def golden_path, do: Path.expand("../../../fixtures/parity_v4.json", __DIR__)
 
   def scenarios do
     scenarios_path() |> File.read!() |> Jason.decode!() |> Map.fetch!("scenarios")

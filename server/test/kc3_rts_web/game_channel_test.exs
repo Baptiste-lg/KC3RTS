@@ -13,7 +13,7 @@ defmodule KC3RTSWeb.GameChannelTest do
     reference = command(socket, %{"type" => "spawn_villager", "building_id" => 1})
     assert_reply(reference, :ok, %{world: %{villagers: villagers}})
     assert length(villagers) == 4
-    assert_broadcast("world_patch", %{protocol_version: 3, revision: 1})
+    assert_broadcast("world_patch", %{protocol_version: 3, ruleset_version: 2, revision: 1})
   end
 
   test "rejects malformed game ids" do
@@ -39,11 +39,11 @@ defmodule KC3RTSWeb.GameChannelTest do
       command(socket, %{
         "type" => "order",
         "villager_ids" => [1, 2],
-        "order" => %{"kind" => "move", "x" => 8, "z" => 8}
+        "order" => %{"kind" => "move", "x" => 0, "z" => 6}
       })
 
     assert_reply(reference, :ok, %{world: %{villagers: villagers}})
-    assert Enum.at(villagers, 0).order == %{kind: "move", x: 8, z: 8}
+    assert Enum.at(villagers, 0).order == %{kind: "move", x: 0, z: 6}
 
     reference = command(socket, %{"type" => "stop", "villager_ids" => [1]})
     assert_reply(reference, :ok, %{world: %{villagers: stopped}})

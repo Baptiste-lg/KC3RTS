@@ -18,7 +18,7 @@ export interface Villager extends GroundPoint {
   order: VillagerOrder;
 }
 export interface WorldSnapshot {
-  protocol_version: 3; seed: number; tick: number; map_radius: number; stockpile: Stockpile;
+  protocol_version: 3; ruleset_version: 2; seed: number; tick: number; map_radius: number; stockpile: Stockpile;
   resources: ResourceNode[]; buildings: Building[]; villagers: Villager[];
   outcome: "playing" | "victory" | "defeat";
 }
@@ -46,7 +46,7 @@ const villager = (value: unknown): value is Villager => record(value) && point(v
 const uniqueIds = (values: { id: number }[]): boolean => new Set(values.map((item) => item.id)).size === values.length;
 
 export function parseSnapshot(value: unknown): WorldSnapshot | null {
-  if (!record(value) || value.protocol_version !== 3 || !positive(value.seed) || !count(value.tick) || !finite(value.map_radius) || value.map_radius <= 0) return null;
+  if (!record(value) || value.protocol_version !== 3 || value.ruleset_version !== 2 || !positive(value.seed) || !count(value.tick) || !finite(value.map_radius) || value.map_radius <= 0) return null;
   if (!stockpile(value.stockpile) || !Array.isArray(value.resources) || !value.resources.every(resource)) return null;
   if (!Array.isArray(value.buildings) || !value.buildings.every(building) || !Array.isArray(value.villagers) || !value.villagers.every(villager)) return null;
   if (value.outcome !== "playing" && value.outcome !== "victory" && value.outcome !== "defeat") return null;

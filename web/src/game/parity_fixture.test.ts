@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import scenariosFile from "../../../fixtures/parity_scenarios.json";
-import goldenFile from "../../../fixtures/parity_v3.json";
+import goldenFile from "../../../fixtures/parity_v4.json";
 import { applyLocalCommand, createLocalWorld, stepLocalWorld, type LocalWorld } from "./local_world";
 import type { GameCommand, ResourceNode } from "./protocol";
 
@@ -30,10 +30,10 @@ function canonical(world: LocalWorld): unknown {
   })) as unknown;
 }
 
-describe("legacy server/browser full-state parity", () => {
+describe("legacy ruleset 2 server/browser full-state parity", () => {
   it("replays seeded economy, depletion, placement, death and boundary scenarios", () => {
-    expect(scenariosFile.version).toBe(3);
-    expect(goldenFile.version).toBe(3);
+    expect(scenariosFile.version).toBe(4);
+    expect(goldenFile.version).toBe(4);
     const golden = new Map(goldenFile.scenarios.map((scenario) => [scenario.name, scenario]));
 
     for (const scenario of scenariosFile.scenarios as FixtureScenario[]) {

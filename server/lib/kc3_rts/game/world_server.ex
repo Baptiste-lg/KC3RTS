@@ -178,15 +178,21 @@ defmodule KC3RTS.Game.WorldServer do
     due =
       min(@max_catchup_ticks, max(1, div(max(0, now() - deadline), state.tick_interval) + 1))
 
+    world = World.step(state.world, due)
+    applied_ticks = world.tick - state.world.tick
+
+    next_deadline =
+      if world.outcome == :playing, do: deadline + due * state.tick_interval, else: nil
+
     updated = %{
       state
-      | world: World.step(state.world, due),
-        revision: state.revision + due,
-        next_deadline: deadline + due * state.tick_interval
+      | world: world,
+        revision: state.revision + applied_ticks,
+        next_deadline: next_deadline
     }
 
     broadcast_patch(state, updated)
-    schedule_tick(updated.next_deadline)
+    schedule_tick(next_deadline)
     {:noreply, updated}
   end
 
@@ -201,6 +207,7 @@ defmodule KC3RTS.Game.WorldServer do
       "world_patch",
       %{
         protocol_version: 3,
+        ruleset_version: 2,
         base_revision: previous.revision,
         revision: state.revision,
         tick: after_world.tick,

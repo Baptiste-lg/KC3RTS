@@ -5,6 +5,7 @@ defmodule KC3RTS.Game.Snapshot do
   def from_world(%World{} = world) do
     %{
       protocol_version: 3,
+      ruleset_version: 2,
       seed: world.seed,
       tick: world.tick,
       map_radius: world.map_radius,
