@@ -3,7 +3,7 @@ defmodule RTS.Protocol do
     reason = void
     operation = RTS.Data.get(request, "operation")
     if (! RTS.Data.integer?(RTS.Data.get(request, "protocol_version"), 2, 2)) ||
-       (! RTS.Data.integer?(RTS.Data.get(request, "ruleset_version"), 1, 1)) do
+       (! RTS.Data.integer?(RTS.Data.get(request, "ruleset_version"), 2, 2)) do
       reason = "incompatible_version"
     end
     if reason == void && RTS.Data.get(request, "content_hash") != RTS.Data.get(RTS.Data.get(content, "public"), "content_hash") do
@@ -31,7 +31,7 @@ defmodule RTS.Protocol do
             if RTS.Data.get(request, "expected_revision") != RTS.Data.get(state, "revision") do
               reason = "stale_revision"
             else
-              if operation == "tick" do state = RTS.World.tick(state) else
+              if operation == "tick" do state = RTS.World.tick(content, state) else
                 if operation == "command" do
                   result = RTS.World.command(content, state, RTS.Data.get(request, "actor_slot"), RTS.Data.get(request, "command"))
                   state = RTS.Data.get(result, "state")
@@ -47,7 +47,7 @@ defmodule RTS.Protocol do
   }
   def reply = fn (content, request, result) {
     state = RTS.Data.get(result, "state")
-    %{"protocol_version" => 2, "ruleset_version" => 1,
+    %{"protocol_version" => 2, "ruleset_version" => 2,
       "content_hash" => RTS.Data.get(RTS.Data.get(content, "public"), "content_hash"),
       "request_id" => RTS.Data.get(request, "request_id"), "match_id" => RTS.Data.get(request, "match_id"),
       "accepted" => RTS.Data.get(result, "accepted"), "reason" => RTS.Data.get(result, "reason"),

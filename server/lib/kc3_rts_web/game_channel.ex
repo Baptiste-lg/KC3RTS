@@ -1,6 +1,7 @@
 defmodule KC3RTSWeb.GameChannel do
   @moduledoc "Phoenix channel for authoritative RTS commands and snapshots."
   use Phoenix.Channel
+  alias KC3RTS.Game.KC3Protocol
   alias KC3RTS.Game.MatchManager
   alias KC3RTS.Game.WorldServer
   @max_game_id_length 48
@@ -78,6 +79,12 @@ defmodule KC3RTSWeb.GameChannel do
   end
 
   defp command_id(_), do: :error
+
+  defp parse_command(%{"type" => type, "entity_ids" => _} = payload)
+       when type in ["move", "stop"] do
+    command = Map.delete(payload, "command_id")
+    if KC3Protocol.command_payload?(command), do: {:ok, command}, else: :error
+  end
 
   defp parse_command(%{"type" => "spawn_villager", "building_id" => id}) when is_integer(id),
     do: {:ok, %{type: :spawn_villager, building_id: id}}

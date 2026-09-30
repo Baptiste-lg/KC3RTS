@@ -1,6 +1,5 @@
 load!(__DIR__ + "../load.kc3")
-load!(__DIR__ + "../rts/world.kc3")
-load!(__DIR__ + "../rts/protocol.kc3")
+RTS.Loader.world(__DIR__ + "../")
 content = RTS.Content.compile(RTS.Core.catalog())
 state = RTS.World.opening(content, "port-test", 1234, ["kiln.concord", "lantern.synod"])
 entity = List.first(RTS.Data.get(state, "entities"))

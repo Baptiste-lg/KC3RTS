@@ -17,6 +17,7 @@ defmodule KC3RTS.Game.MatchManager do
   end
 
   def create(server \\ __MODULE__), do: GenServer.call(server, :create)
+  def create_kc3(server \\ __MODULE__), do: GenServer.call(server, {:create, :kc3}, 35_000)
   def authorize(token, server \\ __MODULE__), do: GenServer.call(server, {:authorize, token})
 
   def member?(match_id, token, server \\ __MODULE__),
@@ -36,7 +37,9 @@ defmodule KC3RTS.Game.MatchManager do
   end
 
   @impl true
-  def handle_call(:create, _from, state) do
+  def handle_call(:create, from, state), do: handle_call({:create, :legacy}, from, state)
+
+  def handle_call({:create, engine}, _from, state) when engine in [:legacy, :kc3] do
     state = expire_idle(state)
 
     if map_size(state.matches) >= state.max_matches do
@@ -46,7 +49,7 @@ defmodule KC3RTS.Game.MatchManager do
       nonce = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
       token = Phoenix.Token.sign(KC3RTSWeb.Endpoint, @token_salt, {match_id, nonce})
 
-      case WorldServer.ensure_started(match_id) do
+      case WorldServer.ensure_started(match_id, engine: engine) do
         {:ok, _pid} ->
           entry = %{token_hash: hash(token), last_seen: now()}
 

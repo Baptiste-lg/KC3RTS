@@ -1,7 +1,7 @@
 # Run with the pinned interpreter: --load kc3/benchmark.kc3 --quit.
 require Time
 load!(__DIR__ + "load.kc3")
-load!(__DIR__ + "rts/world.kc3")
+RTS.Loader.world(__DIR__)
 defmodule RTS.Benchmark do
   def microseconds = fn (start, finish) {
     (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
@@ -17,12 +17,17 @@ end
 facts_us = RTS.Benchmark.microseconds(start, Time.uptime())
 world = RTS.World.opening(content, "benchmark", 1234, ["kiln.concord", "lantern.synod"])
 start = Time.uptime()
+result = RTS.World.command(content, world, 1, %{"type" => "move", "entity_ids" => [2, 3, 4, 5, 6, 7], "x" => 1536, "z" => 512})
+if (! RTS.Data.get(result, "accepted")) do exit(1) end
+world = RTS.Data.get(result, "state")
+route_us = RTS.Benchmark.microseconds(start, Time.uptime())
+start = Time.uptime()
 i = 0
 while i < 100 do
-  world = RTS.World.tick(world)
+  world = RTS.World.tick(content, world)
   encoded = RTS.Wire.encode(world)
   i = i + 1
 end
-puts(RTS.Wire.encode(%{"facts_queries" => 1000, "facts_total_us" => facts_us,
+puts(RTS.Wire.encode(%{"group_route_us" => route_us, "facts_queries" => 1000, "facts_total_us" => facts_us,
   "ticks_and_encodes" => 100, "tick_encode_total_us" => RTS.Benchmark.microseconds(start, Time.uptime()),
   "state_bytes" => Str.size(RTS.Wire.encode(world)), "entities" => 14}))

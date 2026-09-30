@@ -1,0 +1,51 @@
+# P02 bounded field, four-unit cells. The same blocked cells drive routing and art.
+defmodule RTS.Map do
+  def opening = fn () {
+    %{"width" => 12, "height" => 10, "cell_size" => 1024,
+      "origin_x" => -6144, "origin_z" => -5120,
+      "blocked" => [17, 18, 29, 30, 41, 42, 77, 78, 89, 90, 101, 102]}
+  }
+  def cell = fn (map, x, z) {
+    dx = x - RTS.Data.get(map, "origin_x")
+    dz = z - RTS.Data.get(map, "origin_z")
+    size = RTS.Data.get(map, "cell_size")
+    width = RTS.Data.get(map, "width")
+    if dx < 0 || dz < 0 || dx >= width * size || dz >= RTS.Data.get(map, "height") * size do -1
+    else (dz / size) * width + dx / size end
+  }
+  def point = fn (map, cell) {
+    size = RTS.Data.get(map, "cell_size")
+    width = RTS.Data.get(map, "width")
+    %{"x" => RTS.Data.get(map, "origin_x") + (cell mod width) * size + size / 2,
+      "z" => RTS.Data.get(map, "origin_z") + (cell / width) * size + size / 2}
+  }
+  def neighbors = fn (map, cell) {
+    width = RTS.Data.get(map, "width")
+    total = width * RTS.Data.get(map, "height")
+    result = []
+    if cell >= width do result = [cell - width | result] end
+    if cell mod width > 0 do result = [cell - 1 | result] end
+    if cell mod width < width - 1 do result = [cell + 1 | result] end
+    if cell + width < total do result = [cell + width | result] end
+    result
+  }
+  def occupied = fn (content, state) {
+    map = RTS.Data.get(state, "map")
+    occupied = %{}
+    cells = RTS.Data.get(map, "blocked")
+    while cells != [] do
+      occupied = Map.put(occupied, (Str) List.first(cells), true)
+      cells = List.next(cells)
+    end
+    entities = RTS.Data.get(state, "entities")
+    while entities != [] do
+      entity = List.first(entities)
+      definition = RTS.World.definition(content, RTS.Data.get(entity, "type_id"))
+      if RTS.Data.get(definition, "kind") == "building" do
+        occupied = Map.put(occupied, (Str) RTS.Map.cell(map, RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z")), true)
+      end
+      entities = List.next(entities)
+    end
+    occupied
+  }
+end

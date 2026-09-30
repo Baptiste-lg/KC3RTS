@@ -7,8 +7,8 @@ defmodule KC3RTS.Game.KC3Protocol do
   @safe_integer 9_007_199_254_740_991
   @envelope ~w(protocol_version ruleset_version content_hash request_id match_id expected_revision operation)
   @reply ~w(protocol_version ruleset_version content_hash request_id match_id accepted reason revision state)
-  @state ~w(schema_version content_hash match_id seed rng_state tick revision next_entity_id players entities outcome)
-  @reasons ~w(incompatible_version incompatible_content invalid_request match_exists unknown_match stale_revision invalid_command unknown_content invalid_producer prerequisite_required invalid_location entity_limit insufficient_resources)
+  @state ~w(schema_version content_hash match_id seed rng_state tick revision next_entity_id players entities outcome map)
+  @reasons ~w(incompatible_version incompatible_content invalid_request match_exists unknown_match stale_revision invalid_command unknown_content invalid_producer prerequisite_required invalid_location entity_limit insufficient_resources invalid_selection unreachable)
 
   def content_hash, do: @document["content_hash"]
 
@@ -33,7 +33,7 @@ defmodule KC3RTS.Game.KC3Protocol do
   end
 
   defp request?(p) when is_map(p) do
-    p["protocol_version"] === 2 and p["ruleset_version"] === 1 and hash?(p["content_hash"]) and
+    p["protocol_version"] === 2 and p["ruleset_version"] === 2 and hash?(p["content_hash"]) and
       integer?(p["request_id"], 1) and match_id?(p["match_id"]) and
       integer?(p["expected_revision"], 0) and operation?(p)
   end
@@ -47,9 +47,7 @@ defmodule KC3RTS.Game.KC3Protocol do
 
   defp operation?(%{"operation" => "command", "actor_slot" => slot, "command" => c} = p) do
     fields?(p, @envelope ++ ~w(actor_slot command)) and slot in [1, 2] and
-      fields?(c, ~w(type recipe_id entity_id x z)) and c["type"] == "produce" and
-      id?(c["recipe_id"]) and integer?(c["entity_id"], 1) and
-      integer?(c["x"], -@safe_integer) and integer?(c["z"], -@safe_integer)
+      command_payload?(c)
   end
 
   defp operation?(%{"operation" => op} = p) when op in ["tick", "snapshot"],
@@ -57,8 +55,24 @@ defmodule KC3RTS.Game.KC3Protocol do
 
   defp operation?(_), do: false
 
+  def command_payload?(%{"type" => "produce"} = c) do
+    fields?(c, ~w(type recipe_id entity_id x z)) and id?(c["recipe_id"]) and
+      integer?(c["entity_id"], 1) and point?(c)
+  end
+
+  def command_payload?(%{"type" => type, "entity_ids" => ids} = c)
+      when type in ["move", "stop"] do
+    keys = if type == "move", do: ~w(type entity_ids x z), else: ~w(type entity_ids)
+
+    fields?(c, keys) and is_list(ids) and length(ids) in 1..16 and
+      Enum.all?(ids, &integer?(&1, 1)) and (type == "stop" or point?(c))
+  end
+
+  def command_payload?(_), do: false
+  defp point?(p), do: integer?(p["x"], -@safe_integer) and integer?(p["z"], -@safe_integer)
+
   defp reply?(r, q, previous) do
-    fields?(r, @reply) and r["protocol_version"] === 2 and r["ruleset_version"] === 1 and
+    fields?(r, @reply) and r["protocol_version"] === 2 and r["ruleset_version"] === 2 and
       reply_identity?(r, q) and integer?(r["revision"], 0) and
       result?(r) and state?(r["state"]) and revision?(r) and continuity?(r, q, previous)
   end
@@ -78,9 +92,10 @@ defmodule KC3RTS.Game.KC3Protocol do
   defp state?(nil), do: true
 
   defp state?(s) do
-    fields?(s, @state) and s["schema_version"] === 1 and s["content_hash"] == content_hash() and
+    fields?(s, @state) and s["schema_version"] === 2 and s["content_hash"] == content_hash() and
       match_id?(s["match_id"]) and counters?(s) and players?(s["players"]) and
-      entities?(s["entities"], s["next_entity_id"]) and outcome?(s["outcome"])
+      map?(s["map"]) and entities?(s["entities"], s["next_entity_id"], s["map"]) and
+      outcome?(s["outcome"])
   end
 
   defp counters?(s) do
@@ -100,20 +115,39 @@ defmodule KC3RTS.Game.KC3Protocol do
       Enum.all?(p["stocks"], fn {id, amount} -> integer?(amount, 0, @definitions[id]["cap"]) end)
   end
 
-  defp entities?(entities, next_id) when is_list(entities) and length(entities) <= 512 do
-    Enum.all?(entities, &entity?/1) and
+  defp entities?(entities, next_id, map) when is_list(entities) and length(entities) <= 512 do
+    Enum.all?(entities, &entity?(&1, map)) and
       Enum.reduce_while(entities, 0, fn e, last ->
         if e["id"] > last and e["id"] < next_id, do: {:cont, e["id"]}, else: {:halt, false}
       end) != false
   end
 
-  defp entities?(_, _), do: false
+  defp entities?(_, _, _), do: false
 
-  defp entity?(e) do
-    fields?(e, ~w(id type_id owner x z hp construction)) and integer?(e["id"], 1) and
+  defp entity?(e, map) do
+    fields?(e, ~w(id type_id owner x z hp construction order)) and integer?(e["id"], 1) and
       definition?(e["type_id"], ["unit", "building"]) and e["owner"] in [1, 2] and
       integer?(e["x"], -@safe_integer) and integer?(e["z"], -@safe_integer) and
-      integer?(e["hp"], 1) and construction?(e["construction"], e["type_id"])
+      integer?(e["hp"], 1) and order?(e["order"], map) and
+      construction?(e["construction"], e["type_id"])
+  end
+
+  defp map?(m) do
+    fields?(m, ~w(width height cell_size origin_x origin_z blocked)) and
+      integer?(m["width"], 1, 32) and integer?(m["height"], 1, 32) and
+      integer?(m["cell_size"], 1, 4096) and integer?(m["origin_x"], -@safe_integer) and
+      integer?(m["origin_z"], -@safe_integer) and is_list(m["blocked"]) and
+      Enum.all?(m["blocked"], &integer?(&1, 0, m["width"] * m["height"] - 1)) and
+      Enum.uniq(m["blocked"]) == m["blocked"]
+  end
+
+  defp order?(nil, _), do: true
+
+  defp order?(o, map) do
+    fields?(o, ~w(kind path offset)) and o["kind"] == "move" and
+      fields?(o["offset"], ~w(x z)) and point?(o["offset"]) and is_list(o["path"]) and
+      length(o["path"]) in 1..1024 and
+      Enum.all?(o["path"], &integer?(&1, 0, map["width"] * map["height"] - 1))
   end
 
   defp construction?(nil, _), do: true
@@ -159,8 +193,8 @@ defmodule KC3RTS.Game.KC3Protocol do
         q["content_hash"] == content_hash()
 
   defp same_identity?(state, previous) do
-    Map.take(state, ~w(match_id seed content_hash schema_version)) ==
-      Map.take(previous, ~w(match_id seed content_hash schema_version)) and
+    Map.take(state, ~w(match_id seed content_hash schema_version map)) ==
+      Map.take(previous, ~w(match_id seed content_hash schema_version map)) and
       Enum.map(state["players"], &Map.take(&1, ~w(slot faction_id))) ==
         Enum.map(previous["players"], &Map.take(&1, ~w(slot faction_id)))
   end

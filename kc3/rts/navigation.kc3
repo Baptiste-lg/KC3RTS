@@ -1,0 +1,117 @@
+
+defmodule RTS.Navigation do
+  # One reverse BFS per group command, shared by all selected units.
+  # Cells and neighbor iteration have stable order; no PRNG is consumed.
+  def field = fn (map, occupied, goal) {
+    parents = Map.put(%{}, (Str) goal, goal)
+    frontier = [goal]
+    while frontier != [] do
+      next = []
+      while frontier != [] do
+        cell = List.first(frontier)
+        neighbors = RTS.Map.neighbors(map, cell)
+        while neighbors != [] do
+          neighbor = List.first(neighbors)
+          key = (Str) neighbor
+          if RTS.Data.get(occupied, key) != true && RTS.Data.get(parents, key) == void do
+            parents = Map.put(parents, key, cell)
+            next = [neighbor | next]
+          end
+          neighbors = List.next(neighbors)
+        end
+        frontier = List.next(frontier)
+      end
+      frontier = List.reverse(next)
+    end
+    parents
+  }
+  def selection? = fn (content, state, slot, ids) {
+    RTS.Data.list?(ids, 16) && ids != [] && RTS.Data.unique?(ids) && List.all?(ids, fn (id) {
+      e = RTS.Data.find(RTS.Data.get(state, "entities"), "id", id)
+      RTS.Data.integer?(id, 1, 9007199254740991) && RTS.Data.get(e, "owner") == slot &&
+        RTS.Data.get(e, "construction") == void &&
+        RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "kind") == "unit" &&
+        List.has?(RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "capabilities"), "move")
+    })
+  }
+  def command = fn (content, state, slot, command) {
+    ids = RTS.Data.get(command, "entity_ids")
+    if (! RTS.Navigation.selection?(content, state, slot, ids)) do RTS.World.result(state, "invalid_selection") else
+      if RTS.Data.get(command, "type") == "stop" do
+        RTS.World.result(RTS.Navigation.apply(state, ids, %{}), void)
+      else RTS.Navigation.move(content, state, List.sort(ids), command) end
+    end
+  }
+  def move = fn (content, state, ids, command) {
+    map = RTS.Data.get(state, "map")
+    x = RTS.Data.get(command, "x")
+    z = RTS.Data.get(command, "z")
+    if (! RTS.Data.integer?(x, -9007199254740991, 9007199254740991)) ||
+       (! RTS.Data.integer?(z, -9007199254740991, 9007199254740991)) do RTS.World.result(state, "invalid_location") else
+      goal = RTS.Map.cell(map, x, z)
+      occupied = RTS.Map.occupied(content, state)
+      if goal < 0 || RTS.Data.get(occupied, (Str) goal) == true do RTS.World.result(state, "invalid_location") else
+        field = RTS.Navigation.field(map, occupied, goal)
+        reachable = List.all?(ids, fn (id) {
+          e = RTS.Data.find(RTS.Data.get(state, "entities"), "id", id)
+          RTS.Data.get(field, (Str) RTS.Map.cell(map, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))) != void
+        })
+        if reachable do
+          orders = RTS.Navigation.orders(state, ids, field, goal)
+          RTS.World.result(RTS.Navigation.apply(state, ids, orders), void)
+        else RTS.World.result(state, "unreachable") end
+      end
+    end
+  }
+  def orders = fn (state, ids, field, goal) {
+    map = RTS.Data.get(state, "map")
+    result = %{}
+    position = 0
+    while ids != [] do
+      id = List.first(ids)
+      e = RTS.Data.find(RTS.Data.get(state, "entities"), "id", id)
+      cell = RTS.Map.cell(map, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))
+      path = [cell]
+      while cell != goal do
+        cell = RTS.Data.get(field, (Str) cell)
+        path = [cell | path]
+      end
+      # Keep each member in its own lane within traversed cells. P04 adds local avoidance.
+      offset = %{"x" => (position mod 4) * 256 - 384, "z" => (position / 4) * 256 - 384}
+      result = Map.put(result, (Str) id, %{"kind" => "move", "path" => List.reverse(path), "offset" => offset})
+      position = position + 1
+      ids = List.next(ids)
+    end
+    result
+  }
+  def apply = fn (state, ids, orders) {
+    state = Map.put(state, "entities", List.map(RTS.Data.get(state, "entities"), fn (e) {
+      if List.has?(ids, RTS.Data.get(e, "id")) do Map.put(e, "order", RTS.Data.get(orders, (Str) RTS.Data.get(e, "id"))) else e end
+    }))
+    Map.put(state, "revision", RTS.Data.get(state, "revision") + 1)
+  }
+  def advance = fn (content, map, entity) {
+    order = RTS.Data.get(entity, "order")
+    if order == void do entity else
+      path = RTS.Data.get(order, "path")
+      target = RTS.Map.point(map, List.first(path))
+      offset = RTS.Data.get(order, "offset")
+      dx = RTS.Data.get(target, "x") + RTS.Data.get(offset, "x") - RTS.Data.get(entity, "x")
+      dz = RTS.Data.get(target, "z") + RTS.Data.get(offset, "z") - RTS.Data.get(entity, "z")
+      speed = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(entity, "type_id")), "speed")
+      # Axis-aligned waypoints and integer steps prevent rounding drift.
+      if dx != 0 do entity = Map.put(entity, "x", RTS.Data.get(entity, "x") + RTS.Navigation.step(dx, speed)) else
+        entity = Map.put(entity, "z", RTS.Data.get(entity, "z") + RTS.Navigation.step(dz, speed))
+      end
+      if RTS.Data.get(entity, "x") == RTS.Data.get(target, "x") + RTS.Data.get(offset, "x") &&
+         RTS.Data.get(entity, "z") == RTS.Data.get(target, "z") + RTS.Data.get(offset, "z") do
+        path = List.next(path)
+        entity = Map.put(entity, "order", if path == [] do void else Map.put(order, "path", path) end)
+      end
+      entity
+    end
+  }
+  def step = fn (delta, speed) {
+    if delta > speed do speed else if delta < (0 - speed) do 0 - speed else delta end end
+  }
+end

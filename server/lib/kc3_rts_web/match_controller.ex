@@ -4,10 +4,13 @@ defmodule KC3RTSWeb.MatchController do
 
   alias KC3RTS.Game.MatchManager
 
-  def create(conn, _params) do
+  def create(conn, params) do
     conn = Plug.Conn.put_resp_header(conn, "cache-control", "no-store")
 
-    case MatchManager.create() do
+    result =
+      if params["mode"] == "kc3", do: MatchManager.create_kc3(), else: MatchManager.create()
+
+    case result do
       {:ok, match} ->
         json(Plug.Conn.put_status(conn, :created), match)
 

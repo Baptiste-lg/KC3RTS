@@ -2,8 +2,9 @@
 defmodule RTS.Core do
   def entity = fn (id, kind, label, hp, capabilities) {
     %{"id" => id, "kind" => kind, "label" => label,
-      "art" => "placeholder." + kind, "hp" => hp,
-      "footprint" => 256, "capabilities" => capabilities}
+      "art" => id, "hp" => hp,
+      "footprint" => if kind == "building" do 1024 else 128 end,
+      "speed" => if kind == "unit" do 64 else 0 end, "capabilities" => capabilities}
   }
   def resource = fn (id, label, sources) {
     %{"id" => id, "kind" => "resource", "label" => label,
@@ -11,7 +12,7 @@ defmodule RTS.Core do
       "cap" => 1000000, "sources" => sources}
   }
   def catalog = fn () {
-    %{"schema_version" => 1, "ruleset_version" => 1, "definitions" => [
+    %{"schema_version" => 2, "ruleset_version" => 2, "definitions" => [
       RTS.Core.resource("core.food", "Food", ["node", "farm", "market", "tribe"]),
       RTS.Core.resource("core.wood", "Wood", ["node", "market", "tribe"]),
       RTS.Core.resource("core.stone", "Stone", ["node", "market", "tribe"]),
@@ -40,6 +41,10 @@ defmodule RTS.Core do
                     %{"type_id" => "core.worker", "count" => 5},
                     %{"type_id" => "core.scout", "count" => 1}],
       "stocks" => %{"core.food" => 200, "core.wood" => 200,
-                    "core.stone" => 50, "core.gold" => 50}, "overrides" => []}
+                    "core.stone" => 50, "core.gold" => 50}, "overrides" => [
+        %{"target" => "core.worker", "art" => id + ".worker"},
+        %{"target" => "core.scout", "art" => id + ".scout"},
+        %{"target" => "core.hall", "art" => id + ".hall"},
+        %{"target" => "core.house", "art" => id + ".house"}]}
   }
 end

@@ -31,10 +31,23 @@ defmodule KC3RTS.Game.KC3Worker do
 
     Process.flag(:trap_exit, true)
 
+    runtime = Path.dirname(Path.dirname(bin))
+
+    libraries =
+      Enum.join(
+        [
+          Path.join(runtime, "libkc3"),
+          Path.join(runtime, "lib/kc3/0.1"),
+          System.get_env("LD_LIBRARY_PATH", "")
+        ],
+        ":"
+      )
+
     port =
       Port.open({:spawn_executable, String.to_charlist(bin)}, [
         :binary,
         :exit_status,
+        {:env, [{~c"LD_LIBRARY_PATH", String.to_charlist(libraries)}]},
         {:args, ["--load", script, "--quit"]},
         {:cd, Path.dirname(Path.dirname(bin))},
         {:line, @max_reply_bytes + 1}

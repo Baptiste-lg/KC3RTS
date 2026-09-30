@@ -7,9 +7,9 @@ defmodule RTS.World do
     definition = RTS.World.definition(content, type_id)
     override = RTS.Data.find(RTS.Data.get(RTS.World.definition(content, faction), "overrides"), "target", type_id)
     hp = RTS.Data.get(definition, "hp")
-    if override != void do hp = RTS.Data.get(override, "hp") end
+    if RTS.Data.get(override, "hp") != void do hp = RTS.Data.get(override, "hp") end
     %{"id" => id, "type_id" => type_id, "owner" => owner, "x" => x, "z" => z,
-      "hp" => hp, "construction" => construction}
+      "hp" => hp, "construction" => construction, "order" => void}
   }
   def opening = fn (content, match_id, seed, factions) {
     players = []
@@ -35,9 +35,12 @@ defmodule RTS.World do
         entry = List.first(roster)
         count = RTS.Data.get(entry, "count")
         while count > 0 do
-          origin = if slot == 1 do -6144 else 6144 end
+          origin = if slot == 1 do -3584 else 3584 end
+          index = (offset - 512) / 512
+          x = if offset == 0 do origin else (1536 + (index mod 3) * 512) * if slot == 1 do -1 else 1 end end
+          z = if offset == 0 do 512 else if slot == 1 do -1536 + (index / 3) * 768 else 2560 - (index / 3) * 768 end end
           entities = List.append_one(entities, RTS.World.entity(content, faction, next_id,
-            RTS.Data.get(entry, "type_id"), slot, origin, offset, void))
+            RTS.Data.get(entry, "type_id"), slot, x, z, void))
           next_id = next_id + 1
           offset = offset + 512
           count = count - 1
@@ -47,10 +50,10 @@ defmodule RTS.World do
       slot = slot + 1
       factions = List.next(factions)
     end
-    %{"schema_version" => 1, "content_hash" => RTS.Data.get(RTS.Data.get(content, "public"), "content_hash"),
+    %{"schema_version" => 2, "content_hash" => RTS.Data.get(RTS.Data.get(content, "public"), "content_hash"),
       "match_id" => match_id, "seed" => seed, "rng_state" => RTS.Data.random_next(seed),
       "tick" => 0, "revision" => 1, "next_entity_id" => next_id,
-      "players" => players, "entities" => entities,
+      "players" => players, "entities" => entities, "map" => RTS.Map.opening(),
       "outcome" => %{"status" => "ongoing", "winner_slot" => void, "reason" => void}}
   }
   def producer? = fn (content, player, entity, recipe, slot) {
@@ -71,6 +74,11 @@ defmodule RTS.World do
       })
   }
   def command = fn (content, state, slot, command) {
+    if List.has?(["move", "stop"], RTS.Data.get(command, "type")) do
+      RTS.Navigation.command(content, state, slot, command)
+    else RTS.World.production_command(content, state, slot, command) end
+  }
+  def production_command = fn (content, state, slot, command) {
     reason = void
     recipe = RTS.World.definition(content, RTS.Data.get(command, "recipe_id"))
     entity = RTS.Data.find(RTS.Data.get(state, "entities"), "id", RTS.Data.get(command, "entity_id"))
@@ -126,7 +134,7 @@ defmodule RTS.World do
     state = Map.put(state, "next_entity_id", id + 1)
     Map.put(state, "revision", RTS.Data.get(state, "revision") + 1)
   }
-  def tick = fn (state) {
+  def tick = fn (content, state) {
     state = Map.put(state, "entities", List.map(RTS.Data.get(state, "entities"), fn (e) {
       construction = RTS.Data.get(e, "construction")
       if construction != void do
@@ -134,7 +142,7 @@ defmodule RTS.World do
         construction = if remaining == 0 do void else Map.put(construction, "remaining_ticks", remaining) end
         e = Map.put(e, "construction", construction)
       end
-      e
+      RTS.Navigation.advance(content, RTS.Data.get(state, "map"), e)
     }))
     state = Map.put(state, "tick", RTS.Data.get(state, "tick") + 1)
     Map.put(state, "revision", RTS.Data.get(state, "revision") + 1)

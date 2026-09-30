@@ -15,7 +15,7 @@ defmodule KC3RTS.Game.KC3WorkerTest do
              KC3Worker.request(worker, request(1, "new_match"))
 
     fixture =
-      Path.expand("../../../../fixtures/kc3_opening_v1.json", __DIR__)
+      Path.expand("../../../../fixtures/kc3_opening_v2.json", __DIR__)
       |> File.read!()
       |> Jason.decode!()
 
@@ -56,7 +56,10 @@ defmodule KC3RTS.Game.KC3WorkerTest do
     build = command(2, 1, "core.build_house", 2)
 
     assert {:ok, %{"reason" => "invalid_location"}} =
-             KC3Worker.request(worker, put_in(build, ["command", "x"], -6144))
+             KC3Worker.request(
+               worker,
+               build |> put_in(["command", "x"], -3584) |> put_in(["command", "z"], 512)
+             )
 
     assert {:ok, %{"reason" => "invalid_producer"}} =
              KC3Worker.request(worker, put_in(build, ["command", "entity_id"], 99))

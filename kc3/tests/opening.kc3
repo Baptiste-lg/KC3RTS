@@ -1,8 +1,7 @@
 load!(__DIR__ + "../load.kc3")
-load!(__DIR__ + "../rts/world.kc3")
-load!(__DIR__ + "../rts/protocol.kc3")
+RTS.Loader.world(__DIR__ + "../")
 content = RTS.Content.compile(RTS.Core.catalog())
-request = %{"protocol_version" => 2, "ruleset_version" => 1, "request_id" => 1,
+request = %{"protocol_version" => 2, "ruleset_version" => 2, "request_id" => 1,
   "match_id" => "port-test", "seed" => 1234, "factions" => ["kiln.concord", "lantern.synod"],
   "content_hash" => RTS.Data.get(RTS.Data.get(content, "public"), "content_hash"),
   "operation" => "new_match", "expected_revision" => 0}

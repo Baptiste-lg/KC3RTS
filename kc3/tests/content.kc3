@@ -1,5 +1,6 @@
 load!(__DIR__ + "check.kc3")
 load!(__DIR__ + "../load.kc3")
+RTS.Loader.core(__DIR__ + "../")
 load!(__DIR__ + "extension.kc3")
 
 catalog = RTS.Core.catalog()

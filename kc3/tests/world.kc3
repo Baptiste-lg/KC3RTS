@@ -1,6 +1,6 @@
 load!(__DIR__ + "check.kc3")
 load!(__DIR__ + "../load.kc3")
-load!(__DIR__ + "../rts/world.kc3")
+RTS.Loader.world(__DIR__ + "../")
 content = RTS.Content.compile(RTS.Core.catalog())
 world = RTS.World.opening(content, "native-test", 1234, ["kiln.concord", "lantern.synod"])
 RTS.Check.that("deterministic seeded world", world == RTS.World.opening(content,
@@ -26,7 +26,7 @@ RTS.Check.that("generic construction reserves cost", RTS.Data.get(result, "accep
 RTS.Check.that("overlapping construction rejected", RTS.Data.get(RTS.World.command(content, built, 1, command), "reason") == "invalid_location")
 i = 0
 while i < 100 do
-  built = RTS.World.tick(built)
+  built = RTS.World.tick(content, built)
   i = i + 1
 end
 RTS.Check.that("construction finishes on integer ticks", RTS.Data.get(List.last(
@@ -46,7 +46,7 @@ recruit = %{"type" => "produce", "entity_id" => 15, "recipe_id" => "core.train_w
 RTS.Check.that("unfinished hall cannot produce", RTS.Data.get(RTS.World.command(content, hall, 1, recruit), "reason") == "invalid_producer")
 i = 0
 while i < 100 do
-  hall = RTS.World.tick(hall)
+  hall = RTS.World.tick(content, hall)
   i = i + 1
 end
 RTS.Check.that("completed new hall can produce", RTS.Data.get(RTS.World.command(content, hall, 1, recruit), "accepted"))

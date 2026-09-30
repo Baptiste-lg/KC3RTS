@@ -1,4 +1,16 @@
-load!(__DIR__ + "rts/data.kc3")
-load!(__DIR__ + "rts/wire.kc3")
-load!(__DIR__ + "rts/content.kc3")
-load!(__DIR__ + "content/core.kc3")
+# Module caches must contain no caller-relative paths: pass the entrypoint root.
+defmodule RTS.Loader do
+  def core = fn (root) {
+    load!(root + "rts/data.kc3")
+    load!(root + "rts/wire.kc3")
+    load!(root + "rts/content.kc3")
+    load!(root + "content/core.kc3")
+  }
+  def world = fn (root) {
+    RTS.Loader.core(root)
+    load!(root + "rts/map.kc3")
+    load!(root + "rts/navigation.kc3")
+    load!(root + "rts/world.kc3")
+    load!(root + "rts/protocol.kc3")
+  }
+end

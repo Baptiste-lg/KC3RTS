@@ -3,7 +3,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
   alias KC3RTS.Game.KC3Protocol
   import KC3RTS.KC3Boundary
 
-  @fixture Path.expand("../../../../fixtures/kc3_opening_v1.json", __DIR__)
+  @fixture Path.expand("../../../../fixtures/kc3_opening_v2.json", __DIR__)
            |> File.read!()
            |> Jason.decode!()
 
@@ -30,7 +30,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       %{},
       Map.put(request(1, "tick"), "padding", self()),
       Map.put(request(1, "tick"), "protocol_version", 1),
-      Map.put(request(1, "tick"), "ruleset_version", 2),
+      Map.put(request(1, "tick"), "ruleset_version", 3),
       Map.put(request(1, "tick"), "match_id", "bad/id"),
       Map.put(request(1, "tick"), "match_id", <<255>>),
       Map.put(request(1, "tick"), "request_id", 9_007_199_254_740_992),
@@ -65,7 +65,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       {["protocol_version"], 2.0},
       {["request_id"], 1.0},
       {["state", "schema_version"], 1.0},
-      {["ruleset_version"], 2},
+      {["ruleset_version"], 3},
       {["request_id"], 99},
       {["match_id"], "other"},
       {["content_hash"], String.duplicate("0", 64)},
@@ -73,7 +73,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       {["reason"], "unknown"},
       {["revision"], 2},
       {["state"], nil},
-      {["state", "schema_version"], 2},
+      {["state", "schema_version"], 3},
       {["state", "seed"], 0},
       {["state", "rng_state"], 0},
       {["state", "tick"], 1.1},

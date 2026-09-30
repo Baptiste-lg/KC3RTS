@@ -2,8 +2,7 @@
 require Buf
 require File
 load!(__DIR__ + "load.kc3")
-load!(__DIR__ + "rts/world.kc3")
-load!(__DIR__ + "rts/protocol.kc3")
+RTS.Loader.world(__DIR__)
 
 defmodule RTS.Port do
   def open_fd = cfn Buf* "buf_fd_open_r" (Buf, S32)

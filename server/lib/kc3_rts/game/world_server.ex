@@ -5,6 +5,7 @@ defmodule KC3RTS.Game.WorldServer do
 
   use GenServer
 
+  alias KC3RTS.Game.KC3Match
   alias KC3RTS.Game.Snapshot
   alias KC3RTS.Game.World
 
@@ -64,6 +65,27 @@ defmodule KC3RTS.Game.WorldServer do
 
   @impl true
   def init(opts) do
+    case new_world(opts) do
+      {:ok, world} -> init_world(opts, world)
+      {:error, reason} -> {:stop, reason}
+    end
+  end
+
+  defp new_world(opts) do
+    if Keyword.get(opts, :engine) == :kc3 do
+      KC3Match.new(opts)
+    else
+      {:ok,
+       World.new(
+         seed:
+           Keyword.get_lazy(opts, :seed, fn ->
+             :binary.decode_unsigned(:crypto.strong_rand_bytes(4))
+           end)
+       )}
+    end
+  end
+
+  defp init_world(opts, world) do
     tick_interval = Keyword.get(opts, :tick_interval, @default_tick_interval)
 
     next_deadline =
@@ -73,16 +95,10 @@ defmodule KC3RTS.Game.WorldServer do
 
     {:ok,
      %{
-       world:
-         World.new(
-           seed:
-             Keyword.get_lazy(opts, :seed, fn ->
-               :binary.decode_unsigned(:crypto.strong_rand_bytes(4))
-             end)
-         ),
+       world: world,
        tick_interval: tick_interval,
        next_deadline: next_deadline,
-       revision: 0,
+       revision: if(is_struct(world, KC3Match), do: 1, else: 0),
        command_cache: %{},
        command_order: :queue.new(),
        command_window: now(),
@@ -98,7 +114,7 @@ defmodule KC3RTS.Game.WorldServer do
   def handle_call(:view, _from, state), do: {:reply, view_payload(state), state}
 
   def handle_call({:command, command}, _from, state) do
-    case World.command(state.world, command) do
+    case world_command(state.world, command) do
       {:ok, world} ->
         updated = %{state | world: world, revision: state.revision + 1}
         broadcast_patch(state, updated)
@@ -139,15 +155,14 @@ defmodule KC3RTS.Game.WorldServer do
   end
 
   defp apply_command(state, command_id, command) do
-    case World.command(state.world, command) do
+    case world_command(state.world, command) do
       {:ok, world} ->
         updated = %{state | world: world, revision: state.revision + 1}
         broadcast_patch(state, updated)
         {{:ok, Map.put(view_payload(updated), :command_id, command_id)}, updated}
 
       {:error, reason} ->
-        {{:error,
-          %{reason: Atom.to_string(reason), revision: state.revision, command_id: command_id}},
+        {{:error, %{reason: to_string(reason), revision: state.revision, command_id: command_id}},
          state}
     end
   end
@@ -178,7 +193,7 @@ defmodule KC3RTS.Game.WorldServer do
     due =
       min(@max_catchup_ticks, max(1, div(max(0, now() - deadline), state.tick_interval) + 1))
 
-    world = World.step(state.world, due)
+    world = world_step(state.world, due)
     applied_ticks = world.tick - state.world.tick
 
     next_deadline =
@@ -197,6 +212,25 @@ defmodule KC3RTS.Game.WorldServer do
   end
 
   def handle_info({:tick, _stale_deadline}, state), do: {:noreply, state}
+
+  def handle_info(
+        {:DOWN, monitor, :process, worker, _reason},
+        %{world: %KC3Match{monitor: monitor, worker: worker}} = state
+      ),
+      do: {:stop, :normal, state}
+
+  @impl true
+  def terminate(_reason, %{world: %KC3Match{} = world}), do: KC3Match.close(world)
+  def terminate(_reason, _state), do: :ok
+
+  defp world_command(%KC3Match{} = world, command), do: KC3Match.command(world, command)
+  defp world_command(world, command), do: World.command(world, command)
+  defp world_step(%KC3Match{} = world, ticks), do: KC3Match.step(world, ticks)
+  defp world_step(world, ticks), do: World.step(world, ticks)
+
+  defp broadcast_patch(_previous, %{world: %KC3Match{}} = state) do
+    KC3RTSWeb.Endpoint.broadcast(topic(state.game_id), "world_snapshot", view_payload(state))
+  end
 
   defp broadcast_patch(previous, state) do
     before = Snapshot.from_world(previous.world)

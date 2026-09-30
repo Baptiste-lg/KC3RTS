@@ -23,8 +23,8 @@ defmodule RTS.Content do
     kind = RTS.Data.get(d, "kind")
     fields = RTS.Data.get(%{
       "resource" => ["art", "category", "cap", "sources"],
-      "unit" => ["art", "hp", "footprint", "capabilities"],
-      "building" => ["art", "hp", "footprint", "capabilities"],
+      "unit" => ["art", "hp", "footprint", "speed", "capabilities"],
+      "building" => ["art", "hp", "footprint", "speed", "capabilities"],
       "recipe" => ["producer", "output", "ticks", "cost", "prerequisites"],
       "technology" => ["ticks", "cost", "prerequisites", "effects"],
       "effect" => ["handler", "stat", "operation", "amount", "stacking", "group", "duration_ticks"],
@@ -68,8 +68,7 @@ defmodule RTS.Content do
             RTS.Data.integer?(RTS.Data.get(r, "count"), 1, 16)
         }) && RTS.Data.list?(RTS.Data.get(d, "overrides"), 256) &&
         List.all?(RTS.Data.get(d, "overrides"), fn (o) {
-          RTS.Content.fields?(o, ["target", "hp"]) && RTS.Data.id?(RTS.Data.get(o, "target")) &&
-            RTS.Data.integer?(RTS.Data.get(o, "hp"), 1, 1000000)
+          RTS.Content.override?(o)
         }) && RTS.Data.unique?(List.map(RTS.Data.get(d, "overrides"), fn (o) { RTS.Data.get(o, "target") }))
     }
     ("tribe", d) {
@@ -85,8 +84,14 @@ defmodule RTS.Content do
   }
   def entity? = fn (d) {
     RTS.Data.id?(RTS.Data.get(d, "art")) && RTS.Data.integer?(RTS.Data.get(d, "hp"), 1, 1000000) &&
-        RTS.Data.integer?(RTS.Data.get(d, "footprint"), 1, 4096) &&
+        RTS.Data.integer?(RTS.Data.get(d, "footprint"), 1, 1024) &&
+        RTS.Data.integer?(RTS.Data.get(d, "speed"), 0, 256) &&
         RTS.Content.choices?(RTS.Data.get(d, "capabilities"), ["move", "build", "train"])
+  }
+  def override? = fn (o) {
+    RTS.Data.id?(RTS.Data.get(o, "target")) &&
+      ((RTS.Content.fields?(o, ["target", "hp"]) && RTS.Data.integer?(RTS.Data.get(o, "hp"), 1, 1000000)) ||
+       (RTS.Content.fields?(o, ["target", "art"]) && RTS.Data.id?(RTS.Data.get(o, "art"))))
   }
   def production? = fn (d) {
     RTS.Content.amounts?(RTS.Data.get(d, "cost")) && RTS.Data.integer?(RTS.Data.get(d, "ticks"), 1, 36000) &&
@@ -162,8 +167,8 @@ defmodule RTS.Content do
   def validate = fn (catalog) {
     error = void
     if (! RTS.Content.fields?(catalog, ["schema_version", "ruleset_version", "definitions"])) ||
-       (! RTS.Data.integer?(RTS.Data.get(catalog, "schema_version"), 1, 1)) ||
-       (! RTS.Data.integer?(RTS.Data.get(catalog, "ruleset_version"), 1, 1)) ||
+       (! RTS.Data.integer?(RTS.Data.get(catalog, "schema_version"), 2, 2)) ||
+       (! RTS.Data.integer?(RTS.Data.get(catalog, "ruleset_version"), 2, 2)) ||
        (! RTS.Data.list?(RTS.Data.get(catalog, "definitions"), 2048)) || RTS.Data.get(catalog, "definitions") == [] do
       error = "invalid_catalog"
     else

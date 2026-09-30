@@ -121,6 +121,35 @@ defmodule KC3RTSWeb.GameChannelTest do
     assert :error = MatchManager.authorize(token)
   end
 
+  @tag skip: System.get_env("KC3RTS_KC3S") == nil
+  test "HTTP selects KC3, channel enforces ownership and reports worker death" do
+    conn =
+      Phoenix.ConnTest.build_conn()
+      |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/matches?mode=kc3")
+
+    %{"match_id" => id, "token" => token} = Phoenix.ConnTest.json_response(conn, 201)
+
+    assert {:ok, %{world: %{"entities" => entities, "protocol_version" => 4}}, socket} =
+             socket(KC3RTSWeb.UserSocket, nil, %{match_id: id, token: token})
+             |> subscribe_and_join(KC3RTSWeb.GameChannel, "game:" <> id)
+
+    assert length(entities) == 14
+    reference = command(socket, %{"type" => "stop", "entity_ids" => [2], "actor_slot" => 2})
+    assert_reply(reference, :error, %{reason: "invalid_command"})
+
+    reference =
+      command(socket, %{"type" => "move", "entity_ids" => [2, 9], "x" => 1536, "z" => 512})
+
+    assert_reply(reference, :error, %{reason: "invalid_selection"}, 5000)
+    reference = command(socket, %{"type" => "move", "entity_ids" => [2], "x" => 1536, "z" => 512})
+    assert_reply(reference, :ok, %{world: %{"protocol_version" => 4}}, 5000)
+    [{pid, _}] = Registry.lookup(KC3RTS.GameRegistry, id)
+    worker = :sys.get_state(pid).world.worker
+    Port.close(:sys.get_state(worker).port)
+    assert_push("match_unavailable", %{reason: "match_unavailable"}, 5000)
+    assert :error = MatchManager.authorize(token)
+  end
+
   defp command(socket, payload) do
     push(
       socket,
