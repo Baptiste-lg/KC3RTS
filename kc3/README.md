@@ -1,99 +1,134 @@
-# KC3 field trial
+# KC3 economy field trial
 
 Install the pinned runtime with `sh scripts/setup-kc3.sh`, start Phoenix with
 `cd server && mix run --no-halt`, and start Vite with `cd web && npm run dev`
 in another terminal. Open `http://127.0.0.1:5173/?mode=kc3`.
 
-The field trial runs move/stop orders and integer simulation ticks in KC3.
-Phoenix owns guest identity, transport, request sequencing and process lifetime.
-The default network game and static Pages build retain the legacy simulation
-until the economy and combat migrations are complete. A missing or failed KC3
-worker makes the field trial unavailable; it never switches simulation engines.
+KC3 owns movement, gathering, delivery, construction, repair, production,
+population and refunds. Phoenix owns guest identity, transport, sequencing
+and process lifetime. The default network game and static Pages build still
+use the legacy simulation. Combat, larger armies and the default KC3 cutover
+remain subsequent packages. A failed worker makes the trial unavailable.
+
+## Playing the economy slice
+
+- Select workers, then right click berries, wood, stone or gold. Workers carry
+  up to their catalog capacity, return to reachable compatible storage, and
+  seek another node of the same resource after depletion. Stop retains cargo.
+- Select a worker and choose a building in the command grid, then click a
+  site. Cost is paid on placement; nearby assigned builders provide progress.
+  Right click unfinished buildings to resume work or damaged buildings to
+  repair them. A completed farm supports one assigned worker at a time.
+- Select a hall, barracks or range to queue its units. Entries display remaining
+  simulation time; click an entry to cancel. Right click ground to set rally.
+- Population shows living units + paid reservations / completed capacity.
+  A hall supplies 10, a house 5, up to 60. Lost capacity preserves existing
+  units; completed queued units wait for capacity and a clear exit.
+
+Both factions start with one hall, five workers, one scout, 200 food, 200 wood,
+50 stone and 50 gold. A worker costs 50 food and takes 150 ticks. The simulation
+uses ten ticks per second. All recipe costs, durations, cargo, storage, farm
+rates, queue sizes and policy values come from the KC3 catalog.
+
+Unstarted queue entries refund 100%; started entries refund 50%, rounded down
+per resource. Construction refunds 75% of its unbuilt cost, rounded down.
+Destruction refunds nothing. A refund that would overflow stocks is rejected;
+delivery overflow stays in cargo. Worker repair pays its catalog repair cost
+per repair interval, with HP clamped to the target maximum.
 
 ## Content
 
-Author trusted definitions in `content/core.kc3`. Stable, namespaced definition
-IDs differ from integer entity IDs. Resource balances and recipe costs are
-maps keyed by resource ID. Unit speed and footprint are catalog integers;
-faction art keys resolve through catalog overrides. Templates use shallow
-`Map.merge` overrides.
-`rts/content.kc3` validates closed schemas, references, costs, acquisition
-methods, prerequisite cycles, bounded effects and faction overrides. It
-builds immutable lookups and a worker-local Facts database for recipe rights.
-Unsupported mechanics require a new KC3 handler and tests.
+Author trusted definitions in `content/core.kc3`. Namespaced definition IDs
+are separate from integer entity, resource-node and job IDs. Stocks, recipe
+costs and paid investments are maps keyed by resource ID. Entity capabilities,
+footprints, population, supply, cargo, storage and yields drive generic rules.
+Faction art resolves through catalog overrides; templates use `Map.merge`.
 
-Generate browser metadata with:
+`rts/content.kc3` validates closed schemas, references, costs, acquisition
+methods, prerequisite cycles, bounded effects and coherent capabilities. It
+compiles one definition index, resource IDs, policies and a worker-local Facts
+database for recipe permissions. The compiled world does not duplicate the
+public catalog. Regenerate metadata after editing content:
 
 ```sh
 sh scripts/export-content.sh
 sh scripts/export-content.sh --check
 ```
 
-The second command runs in CI. `web/src/game/generated/catalog.json` contains
-canonical JSON and its SHA256. The Elixir boundary reads that same generated
-file at compilation, without maintaining another gameplay table. Changing
-content requires regeneration and server recompilation. Definitions are
-sorted by ID; object keys are sorted, arrays retain their defined order.
+The generated browser catalog contains canonical JSON and its SHA256. Phoenix
+reads that same file at compilation. Definitions sort by ID; object keys sort;
+arrays retain their defined order. Content edits require a server recompile.
 
-`tests/extension.kc3` adds a specialist resource, unit, production building,
-faction, technologies, offer, effect and tribe. It is never loaded by the
-production worker. Trade acquisition and treaty effect execution remain
-future work; this package validates and exports their data only.
+`tests/extension.kc3` adds a specialist resource, unit, producer, faction,
+technologies, offer, effect and tribe. The economy suite also harvests and
+delivers a new ordinary resource using only catalog and node data. These packs
+are test-only. Tribe trade, technologies and treaty effects are validated data;
+their gameplay handlers are future work. The two playable factions currently
+share economy mechanics and have distinct visual motifs.
 
-## Worker protocol 2 / KC3 ruleset 2 / state schema 2
+## Worker protocol 2 / KC3 ruleset 3 / state schema 3
 
-One persistent process owns one match. Input and output are UTF-8 JSON lines.
-Request fields: `protocol_version`, `ruleset_version`, `content_hash`,
-`request_id`, `match_id`, `expected_revision`, `operation`.
+Cold source parsing has a 90-second initialization budget; active match requests
+retain their two-second limit. One persistent worker owns one match. Input and output are UTF-8 JSON lines.
+Every request contains `protocol_version`, `ruleset_version`, `content_hash`,
+`request_id`, `match_id`, `expected_revision` and `operation`.
 
 - `new_match`: `seed` (1–2147483646), `factions` (two catalog IDs).
-- `command`: `actor_slot` (1 or 2), `command` with `type: "produce"`,
-  `recipe_id`, `entity_id`, integer `x` and `z`; or `type: "move"`,
-  `entity_ids`, integer `x`, `z`; or `type: "stop"`, `entity_ids`.
-  Phoenix supplies the guest's slot; browser commands cannot choose it.
-- `tick`: advance one tick with the current revision.
-- `snapshot`: read without requiring the current revision.
+- `command`: a trusted `actor_slot` and a closed command payload below.
+- `tick`: advance one deterministic step.
+- `snapshot`: read without mutation; does not require the current revision.
 
-Replies identify the request and include `accepted`, `reason`, `revision`,
-`content_hash` and the complete `state` (null before match creation).
-Rejected operations leave state unchanged. Revisions advance once per
-accepted mutation. Coordinates use 256 integer units per tile; ticks
-represent 100 ms. PRNG state uses Park–Miller, multiplier 48271. Outcome is
-explicitly `ongoing` until victory rules are implemented.
+| Command type | Payload after `type` |
+| --- | --- |
+| `move` | `entity_ids`, `x`, `z` |
+| `stop`, `deliver` | `entity_ids` |
+| `gather` | `entity_ids`, `target_kind` (`node`/`farm`), `target_id` |
+| `work`, `repair` | `entity_ids`, `target_id` |
+| `produce` | `entity_id`, `recipe_id`, `x`, `z` (zero for training) |
+| `cancel` | `entity_id`, `queue_id` |
+| `cancel_build` | `entity_id` |
+| `rally` | `entity_id`, `x`, `z` |
 
-The development scenario has two factions with shared mechanics, one hall,
-five workers and one scout each, on a 12×10 obstacle grid. Move commands
-accept 1–16 owned mobile entities atomically. One reverse breadth-first field
-serves a group; stable IDs assign lanes through the cells. Targets currently
-snap to a cell, with integer axis steps and stop clearing orders immediately.
-This bounded route implementation is for the first playable slice. Local
-avoidance, larger armies and terrain generation belong to P04.
+Replies contain request identity, `accepted`, `reason`, `revision`,
+`content_hash` and complete `state` (null before creation). Rejections leave
+state unchanged. Accepted mutations advance the revision once. Coordinates
+use 256 integer units per world unit. PRNG is Park–Miller, multiplier 48271.
+Outcome remains `ongoing` until combat and victory rules are implemented.
 
-The browser receives protocol 4 full snapshots, validates the catalog hash,
-and renders generic entities through a temporary one-way presentation bridge
-in `web/src/game/kc3_view.ts`. Selection, drag selection, control groups, camera
-and minimap stay available. Production exists only at the native boundary;
-its recruitment is still immediate. The field trial deliberately exposes only
-move and stop. Queues, gathering, faction rules, combat and tribe transactions
-remain later packages.
+Browser protocol 5 snapshots retain canonical entities, tasks, paid queues,
+cargo, nodes and population. `web/src/game/kc3_view.ts` validates them and
+provides a temporary one-way bridge into the existing scene. Context buttons
+are generated from faction recipes; the browser does not advance game rules.
 
-## Pixel scale
+The boundary checks IDs, ownership, numeric bounds, references, queue identity,
+content hash and revision continuity. One request may be pending; requests
+are limited to 4096 bytes and replies to 262144 bytes, excluding newline.
+The entity-plus-reservation limit is 512. This is a defensive limit, not a
+verified playable army size. Timeout, process exit or malformed output ends
+the worker; transport retries retain their original command result.
 
-`web/src/scene/pixel_art.ts` owns the shared palette and the scale of eight
-source pixels per world unit. Units use 24×24 frames, halls 64×64, trees 32×48
-and ore 32×32. Nearest filtering, disabled antialiasing and a fixed render
-pixel ratio preserve edges. Copper/teal kiln workers and indigo lantern mages
-have authored silhouettes; team markings remain separate from faction motifs.
-The default camera elevation is 30° (the 2:1 ground projection), with `?angle=steep` selecting 40° for
-comparison and `?zoom=tactical` selecting 0.7×. Camera snapping, animation
-sets and the full HUD redesign remain P06.
+## Map, timing and pixel scale
 
-The adapter checks every state field, content references, canonical ID order,
-ownership slots, resource caps and revision continuity. It permits one
-pending request, limits requests to 4096 bytes and replies to 262144 bytes
-(excluding newline), and stops on timeout, process exit or malformed output.
-The current scenario caps entities at 512. These are versioned boundary
-limits, not per-resource or per-faction switch statements.
+The current scenario is a fixed 12×10 field with four-unit cells and finite
+resource nodes. One reverse BFS serves a 1–16-unit move selection. Economy
+routing chooses reachable approach cells; construction, depletion and destruction
+change occupied cells. Group lanes are deterministic. Local avoidance, route
+caching, terrain generation and army-scale measurements belong to P04.
+
+Idle ticks skip occupancy work. Population is refreshed on mutations that
+change its ledger: commands, deaths, completed buildings and spawned units.
+KC3 catch-up yields after each tick so player commands can be processed between
+native round trips. Tick durations describe simulation time; overloaded hosts
+can run slower than real time.
+
+`web/src/scene/pixel_art.ts` owns the shared palette and eight source pixels
+per world unit. Units use 24×24 frames, halls 64×64, outbuildings 40×40, trees
+32×48, ore 32×32 and berries 32×24. Nearest filtering and disabled antialiasing
+preserve edges. Buildings keep pixel proportions while under construction.
+Copper/teal kiln dwarves and indigo lantern mages have authored silhouettes;
+team markings remain separate from faction motifs. The default camera is 30°;
+`?angle=steep` selects 40° and `?zoom=tactical` selects 0.7×. Animation atlases,
+foot sorting, occlusion handling and the full HUD redesign remain P06.
 
 ## Verification and measurement
 
@@ -104,26 +139,38 @@ LD_LIBRARY_PATH=../.toolchain/kc3/libkc3:../.toolchain/kc3/lib/kc3/0.1 \
 mix test --cover
 ```
 
-`cd web && npm run smoke:kc3` exercises the real browser→Phoenix→KC3 path:
-selection, control-group recall, movement, stop and continued ticks.
-`KC3RTS_OPENING_SCREENSHOT=/tmp/opening.png npm run smoke:kc3 -- --capture`
-saves the opening without replaying commands; `KC3RTS_ANGLE=steep` and
-`KC3RTS_ZOOM=tactical` select the comparison views.
+Native suites cover catalog extension, deterministic navigation, depletion,
+cargo, farms, construction interruption, repair, queue limits, blocked exits,
+population loss and exact refunds. Phoenix tests additionally exercise real
+ports, malformed messages, retries, channel identity and worker failure.
 
-Run `kc3/benchmark.kc3` with the same binary/library environment and
-`--load kc3/benchmark.kc3 --quit` to measure 1000 Facts queries and 100
-14-entity ticks including canonical serialization, plus a six-unit route. On the development OpenBSD host, one isolated run measured 157 ms for the
-six-unit route and 54.8 ms per tick plus encoding (100 ticks, 14 entities).
-This leaves little capacity for armies; route scheduling, snapshot frequency
-and encoding need profiling before increasing the scenario limits in P04.
-These measurements do not establish multiplayer capacity.
+`cd web && npm run smoke:kc3` exercises visible selection, group recall,
+move/stop, queueing, cancellation, food delivery, worker spawn and house
+completion through the browser→Phoenix→KC3 path. `KC3RTS_SMOKE_SCREENSHOT`
+saves the final view; `KC3RTS_OPENING_SCREENSHOT` saves the opening.
+`npm run smoke` and `npm run smoke:pages` check legacy compatibility.
 
-Runtime details covered by regressions: integer promotion; `!` grouping;
-`List.find_if` returning callback values; explicit script termination;
-module loading from another working directory (loader functions receive the
-entrypoint root at runtime so parse caches cannot retain the caller's path); Unicode/control escaping;
-list serialization; canonical hashing. The pinned native JSON writer cannot
-serialize lists, so `rts/wire.kc3` supplies a small integer-only encoder with
-a native fast check for strings needing escapes. Native `.kc3c` parse caches
-are ignored by Git. The pin emits a diagnostic to stderr for long strings;
-stdout is reserved for replies.
+Run `kc3/benchmark.kc3` with the pinned interpreter and library environment:
+`--load kc3/benchmark.kc3 --quit`. It reports 1000 Facts queries, a six-unit
+route, and 100 ticks each of idle, moving and gathering-with-production states.
+Tick and JSON encoding times are reported separately. Run without other heavy
+tests. These small scenarios do not establish multiplayer or army capacity.
+An isolated P03 run on the development OpenBSD host measured:
+
+| Scenario (14 entities, 100 ticks) | Mean tick | Mean JSON encoding |
+| --- | --- | --- |
+| Idle | 12.1 ms | 38.7 ms |
+| Six units moving | 93.5 ms | 55.4 ms |
+| One gatherer plus one paid queue | 48.2 ms | 52.2 ms |
+
+The group route took 218 ms. Active cases consume or exceed the 100 ms budget;
+P04 must reduce routing/occupancy and serialization cost before adding armies.
+A worker launched from an uncached source copy took 43.6 seconds to initialize.
+
+Runtime regressions cover integer promotion, boolean grouping, callback-valued
+`List.find_if`, canonical hashing, UTF-8/control escaping, list serialization
+and loading from another working directory. Loaders receive the entrypoint
+root explicitly so parse caches cannot retain a caller's path. The pinned
+native JSON writer lacks List support; `rts/wire.kc3` supplies the integer-only
+encoder. Generated `.kc3c` parse caches are ignored. The pin logs long-string
+diagnostics to stderr; stdout is reserved for replies.

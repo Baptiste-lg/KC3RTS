@@ -6,6 +6,27 @@ defmodule RTS.Benchmark do
   def microseconds = fn (start, finish) {
     (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
   }
+  def measure = fn (content, world) {
+    tick_us = 0
+    encode_us = 0
+    i = 0
+    while i < 100 do
+      start = Time.uptime()
+      world = RTS.World.tick(content, world)
+      tick_us = tick_us + RTS.Benchmark.microseconds(start, Time.uptime())
+      start = Time.uptime()
+      encoded = RTS.Wire.encode(world)
+      encode_us = encode_us + RTS.Benchmark.microseconds(start, Time.uptime())
+      i = i + 1
+    end
+    %{"ticks" => 100, "tick_total_us" => tick_us, "encode_total_us" => encode_us,
+      "state_bytes" => Str.size(RTS.Wire.encode(world)), "entities" => List.length(RTS.Data.get(world, "entities"))}
+  }
+  def command = fn (content, world, command) {
+    result = RTS.World.command(content, world, 1, command)
+    if (! RTS.Data.get(result, "accepted")) do exit(1) end
+    RTS.Data.get(result, "state")
+  }
 end
 content = RTS.Content.compile(RTS.Core.catalog())
 start = Time.uptime()
@@ -16,18 +37,14 @@ while i < 1000 do
 end
 facts_us = RTS.Benchmark.microseconds(start, Time.uptime())
 world = RTS.World.opening(content, "benchmark", 1234, ["kiln.concord", "lantern.synod"])
+idle = RTS.Benchmark.measure(content, world)
 start = Time.uptime()
-result = RTS.World.command(content, world, 1, %{"type" => "move", "entity_ids" => [2, 3, 4, 5, 6, 7], "x" => 1536, "z" => 512})
-if (! RTS.Data.get(result, "accepted")) do exit(1) end
-world = RTS.Data.get(result, "state")
+moving = RTS.Benchmark.command(content, world, %{"type" => "move", "entity_ids" => [2, 3, 4, 5, 6, 7], "x" => 1536, "z" => 512})
 route_us = RTS.Benchmark.microseconds(start, Time.uptime())
-start = Time.uptime()
-i = 0
-while i < 100 do
-  world = RTS.World.tick(content, world)
-  encoded = RTS.Wire.encode(world)
-  i = i + 1
-end
+moving = RTS.Benchmark.measure(content, moving)
+working = RTS.World.put(world, Map.merge(RTS.World.find(world, 2), %{"x" => -3584, "z" => -512}))
+working = RTS.Benchmark.command(content, working, %{"type" => "gather", "entity_ids" => [2], "target_kind" => "node", "target_id" => 39})
+working = RTS.Benchmark.command(content, working, %{"type" => "produce", "entity_id" => 1, "recipe_id" => "core.train_worker", "x" => 0, "z" => 0})
+working = RTS.Benchmark.measure(content, working)
 puts(RTS.Wire.encode(%{"group_route_us" => route_us, "facts_queries" => 1000, "facts_total_us" => facts_us,
-  "ticks_and_encodes" => 100, "tick_encode_total_us" => RTS.Benchmark.microseconds(start, Time.uptime()),
-  "state_bytes" => Str.size(RTS.Wire.encode(world)), "entities" => 14}))
+  "idle" => idle, "moving" => moving, "gathering_and_queue" => working}))

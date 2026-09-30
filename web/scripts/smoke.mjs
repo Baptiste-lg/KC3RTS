@@ -223,7 +223,7 @@ try {
       state.loadingHidden && state.fallbackHidden && (kc3Mode ? state.villagers === 6 && state.enemyHp === 1500 : state.recruitEnabled &&
       state.wood === 30 && state.stone === 15 && state.gold === 20 &&
       state.villagers === 3 && state.enemyHp === 250) ? state : false;
-  }, process.env.KC3RTS_SMOKE_QUALITY === "normal" ? 90_000 : 60_000, "live RTS map");
+  }, kc3Mode ? 120_000 : process.env.KC3RTS_SMOKE_QUALITY === "normal" ? 90_000 : 60_000, "live RTS map");
 
   if (process.env.KC3RTS_OPENING_SCREENSHOT) {
     const jpeg = /\.jpe?g$/i.test(process.env.KC3RTS_OPENING_SCREENSHOT);
@@ -293,7 +293,40 @@ try {
       const screenshot = await devtools.send("Page.captureScreenshot", { format: "png" });
       await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
     }
-    console.log("KC3 browser smoke passed: generic entities, faction art, selection/group recall, authoritative move and stop, continued ticks.");
+    // Exercise paid queues and the economy through visible controls.
+    const selectEntity = async (id, height = 1.2) => {
+      const current = await state(); const entity = current.entities.find((e) => e.id === id);
+      const at = project({ x: entity.x / 256, z: entity.z / 256 }, rect, height, 24);
+      await devtools.click(at.x, at.y);
+    };
+    const button = async (id) => devtools.evaluate(`(() => { const b = document.querySelector('[data-action="${id}"]'); if (!b || b.disabled) throw new Error("Command unavailable: ${id}"); b.click(); })()`);
+    await selectEntity(1, 2);
+    await button("core.train_worker");
+    await until(async () => (await state()).entities.find((e) => e.id === 1).queue.length === 1, 10_000, "first paid worker queue");
+    await button("core.train_worker");
+    const paid = await until(async () => { const v = await state(); return v.entities.find((e) => e.id === 1).queue.length === 2 ? v : false; }, 10_000, "second paid worker queue");
+    if (paid.players[0].stocks["core.food"] !== 100 || paid.players[0].population.reserved !== 2) throw new Error("Queue payment or reservation incorrect");
+    const waiting = paid.entities.find((e) => e.id === 1).queue[1];
+    await button(`cancel-${waiting.id}`);
+    await until(async () => { const v = await state(); return v.players[0].stocks["core.food"] === 150 && v.players[0].population.reserved === 1; }, 10_000, "exact unstarted cancellation refund");
+    await selectEntity(2);
+    const berries = paid.nodes.find((n) => n.id === 39);
+    const foodPoint = project({ x: berries.x / 256, z: berries.z / 256 }, rect, 1, 24);
+    await devtools.click(foodPoint.x, foodPoint.y, "right");
+    await until(async () => (await state()).entities.some((e) => e.owner === 1 && e.task?.kind === "gather"), 10_000, "visible berry gathering order");
+    const delivered = await until(async () => { const v = await state(); return v.players[0].stocks["core.food"] > 150 && v.players[0].population.used === 7 ? v : false; }, 100_000, "food delivery and queued worker spawn");
+    if (delivered.entities.find((e) => e.id === 1).queue.length !== 0) throw new Error("Completed queue did not clear");
+    await button("core.build_house");
+    const site = project({ x: -6, z: 2 }, rect, 0, 24);
+    await devtools.click(site.x, site.y);
+    const built = await until(async () => { const v = await state(); return v.entities.some((e) => e.type_id === "core.house" && e.construction) ? v : false; }, 15_000, "worker-built foundation");
+    if (built.players[0].stocks["core.wood"] !== 160 || built.players[0].population.cap !== 10) throw new Error("Foundation charged or supplied population incorrectly");
+    await until(async () => (await state()).players[0].population.cap === 15, 100_000, "worker completion and house capacity");
+    if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
+      const screenshot = await devtools.send("Page.captureScreenshot", { format: "png" });
+      await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
+    }
+    console.log("KC3 browser smoke passed: generic entities, faction art, selection/group recall, authoritative move/stop, paid queues, cancellation, food delivery, worker spawn and house completion.");
   } else {
     await devtools.evaluate('document.getElementById("recruit").click()');
     const recruited = await until(async () => {
