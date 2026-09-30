@@ -23,7 +23,7 @@ function setHealth(bar: Group, hp: number, max: number): void {
   const fill = bar.getObjectByName("fill") as Sprite;
   const width = bar.userData.width as number;
   const ratio = Math.max(0, hp / max); fill.scale.x = width * ratio; fill.position.x = (ratio - 1) * width / 2;
-  bar.visible = true;
+  bar.visible = hp < max;
 }
 function disposeGroup(group: Group): void {
   group.traverse((object) => {
@@ -38,7 +38,7 @@ export class SceneModel {
   private readonly resources = new Map<number, Group>();
   private readonly buildings = new Map<number, BuildingVisual>();
   private readonly villagers = new Map<number, VillagerVisual>();
-  constructor(snapshot: WorldSnapshot) { this.tick = snapshot.tick; this.root.add(createGround(snapshot.map_radius)); this.update(snapshot); }
+  constructor(snapshot: WorldSnapshot) { this.tick = snapshot.tick; this.root.add(createGround(snapshot.map_radius, snapshot.kc3?.map)); this.update(snapshot); }
   private actionFor(v: Villager, snapshot: WorldSnapshot): ActionTarget | null {
     const order = v.order;
     if (order?.kind === "gather" && v.cargo < 5) {
@@ -69,11 +69,11 @@ export class SceneModel {
       buildingIds.add(b.id);
       let visual = this.buildings.get(b.id);
       if (!visual) {
-        const group = b.owner === "enemy" ? createEnemyBase() : createTownCenter();
+        const group = b.art ? createTownCenter(b.art, b.owner === "enemy") : b.owner === "enemy" ? createEnemyBase() : createTownCenter();
         group.userData = { kind: "building", id: b.id };
         group.position.set(b.x, 0, b.z);
-        const health = healthBar(5, 11.4); group.add(health);
-        const selection = marker(4.8); group.add(selection);
+        const health = healthBar(3, 7.6); group.add(health);
+        const selection = marker(3.2); group.add(selection);
         visual = { group, health, marker: selection }; this.buildings.set(b.id, visual); this.root.add(group);
       }
       visual.group.scale.y = b.progress < 100 ? Math.max(.15, b.progress / 100) : 1;
@@ -89,13 +89,13 @@ export class SceneModel {
       const facing = visual ? facingFromMovement(v.x - visual.destination.x, v.z - visual.destination.z, visual.facing) : "right";
       if (visual && (visual.carrying !== carrying || visual.facing !== facing)) {
         const pos = visual.sprite.position.clone(); this.root.remove(visual.sprite); disposeSprite(visual.sprite);
-        visual.sprite = createVillagerSprite(v.id, carrying, snapshot.seed, facing); visual.sprite.position.copy(pos);
+        visual.sprite = createVillagerSprite(v.id, carrying, snapshot.seed, facing, v.art, v.owner === "enemy"); visual.sprite.position.copy(pos);
         visual.carrying = carrying; visual.facing = facing; this.root.add(visual.sprite);
       }
       if (!visual) {
-        const sprite = createVillagerSprite(v.id, carrying, snapshot.seed, facing); sprite.position.set(v.x, .04, v.z);
+        const sprite = createVillagerSprite(v.id, carrying, snapshot.seed, facing, v.art, v.owner === "enemy"); sprite.position.set(v.x, .04, v.z);
         const selection = marker(UNIT_HITBOX_RADIUS); this.root.add(selection);
-        const health = healthBar(.9, 1.85); this.root.add(health);
+        const health = healthBar(1.2, 2.9); this.root.add(health);
         visual = { sprite, carrying, facing, position: new Vector3(v.x, .04, v.z), destination: new Vector3(v.x, .04, v.z), walkDistance: 0, walkDirection: new Vector3(1, 0, 0), walkOffset: 0, walkLift: 0, action: null, marker: selection, health };
         this.villagers.set(v.id, visual); this.root.add(sprite);
       }
@@ -136,7 +136,7 @@ export class SceneModel {
         .04 + visual.walkLift + pose.lift,
         base.z + visual.walkDirection.z * visual.walkOffset + pose.z);
       visual.marker.position.set(base.x, .08, base.z);
-      visual.health.position.set(visual.sprite.position.x, 1.85 + visual.walkLift + pose.lift, visual.sprite.position.z);
+      visual.health.position.set(visual.sprite.position.x, 2.9 + visual.walkLift + pose.lift, visual.sprite.position.z);
     }
   }
   dispose(): void { disposeGroup(this.root); this.resources.clear(); this.buildings.clear(); this.villagers.clear(); }

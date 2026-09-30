@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CanvasTexture, Group, Mesh, Sprite } from "three";
+import { CanvasTexture, Group, Mesh, Sprite, NearestFilter } from "three";
 import { createEnemyBase, createGround, createResourceNode, createTownCenter, createVillagerSprite } from "./world_objects";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -33,10 +33,12 @@ describe("pixel art world objects", () => {
       expect(object.children[0]).toBeInstanceOf(Sprite);
       expect((object.children[0] as Sprite).material.map).toBeInstanceOf(CanvasTexture);
     }
-    expect((stone.children[0] as Sprite).scale.x).toBe(6.6);
-    expect((stone.children[0] as Sprite).scale.y).toBe(6.6);
-    expect((gold.children[0] as Sprite).scale.x).toBe(6.6);
-    expect((gold.children[0] as Sprite).scale.y).toBe(6.6);
+    for (const object of [center, enemy, wood, stone, gold]) {
+      const sprite = object.children[0] as Sprite;
+      expect(sprite.scale.x / (sprite.material.map!.image as HTMLCanvasElement).width).toBe(1 / 8);
+      expect(sprite.scale.y / (sprite.material.map!.image as HTMLCanvasElement).height).toBe(1 / 8);
+      expect(sprite.material.map!.magFilter).toBe(NearestFilter);
+    }
     expect(wood.position.x).toBe(8);
     expect(wood.position.z).toBe(3);
     expect(painted).toHaveBeenCalledTimes(6);
@@ -49,8 +51,8 @@ describe("pixel art world objects", () => {
     expect(sprite).toBeInstanceOf(Sprite);
     expect(sprite.material.map).toBeInstanceOf(CanvasTexture);
     expect(sprite.center.y).toBe(0);
-    expect(sprite.scale.x).toBe(1.3);
-    expect(sprite.scale.y).toBe(1.95);
+    expect(sprite.scale.x).toBe(3);
+    expect(sprite.scale.y).toBe(3);
     expect(sprite.userData.facing).toBe("right");
     expect(painted).toHaveBeenCalledOnce();
   });

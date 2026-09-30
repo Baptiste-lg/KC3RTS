@@ -1,54 +1,43 @@
+import { PALETTE, PixelArt, type Ink } from "./pixel_art";
 import type { UnitFacing } from "./unit_facing";
 
-export interface SpritePixels {
-  width: 4;
-  height: 6;
-  data: Uint8ClampedArray;
-}
-
-type Color = readonly [number, number, number, number];
-const SKINS: Color[] = [
-  [244, 193, 139, 255], [211, 151, 102, 255], [170, 111, 76, 255],
-  [231, 175, 127, 255],
+export interface SpritePixels { width: number; height: number; data: Uint8ClampedArray }
+// Kiln apron and lantern mantle silhouettes.
+const DWARF = [
+  "    oooooo    ", "   occcccco   ", "  ocCCCCccco  ", "  occcccccco  ",
+  "   osssssso   ", "   osSossso   ", "  otobBBbo    ", " ottobBBbot   ",
+  "oTttobBbotto  ", "oTtttooottoo  ", " ossotttooso  ", "  ooottttoo   ",
+  "   owwwwwo    ", "   otTttto    ", "   ottttto    ", "   ooooooo    ",
+  "   owwowwo    ", "  owwwowwwo   ",
 ];
-const HAIR: Color[] = [
-  [75, 49, 43, 255], [119, 73, 48, 255], [53, 54, 58, 255], [159, 116, 62, 255],
+const MAGE = [
+  "     ooo      ", "    oiiio     ", "   oiIIiio    ", "  oiiiiiiio   ",
+  "   osssso     ", "   osSoso     ", "    oLLoo     ", "   oiLLiio    ",
+  "  oiLIIiiio   ", " ooLiiiiiiio  ", "ossLiiiiooso  ", " ooLiIiiiooo  ",
+  "   oiIiiio    ", "  oiIiiiiio   ", "  oiIiiiiio   ", " oLLLLLLLLLo  ",
+  "  oooooooo    ", "   owwowwo    ",
 ];
-const TUNICS: Color[] = [
-  [62, 161, 204, 255], [98, 178, 91, 255], [213, 98, 87, 255],
-  [153, 114, 205, 255], [221, 150, 66, 255], [54, 180, 158, 255],
-  [208, 108, 158, 255], [102, 145, 218, 255], [185, 169, 65, 255],
-  [92, 184, 145, 255], [222, 117, 66, 255], [144, 123, 189, 255],
-];
-const BOOT: Color = [91, 68, 55, 255];
-const BAG: Color = [189, 133, 67, 255];
-
-function shade(color: Color, factor: number): Color {
-  return [Math.round(color[0] * factor), Math.round(color[1] * factor), Math.round(color[2] * factor), 255];
-}
-
-// Four painted rows, with transparent padding to keep the source pixels square on screen.
-export function generateVillagerPixels(id: number, carrying: boolean, seed = 1, facing: UnitFacing = "right"): SpritePixels {
-  const width = 4 as const;
-  const height = 6 as const;
-  const data = new Uint8ClampedArray(width * height * 4);
-  const tunic = TUNICS[((Math.abs(seed) % TUNICS.length) + Math.abs(id) * 5) % TUNICS.length];
-  const skin = SKINS[Math.abs(id + seed) % SKINS.length];
-  const hair = HAIR[Math.abs(id * 3 + seed) % HAIR.length];
-  const pixel = (x: number, y: number, color: Color): void => {
-    const px = facing === "left" ? width - 1 - x : x;
-    if (px >= 0 && px < width && y >= 0 && y < height) data.set(color, (y * width + px) * 4);
-  };
-  const rect = (left: number, top: number, right: number, bottom: number, color: Color): void => {
-    for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) pixel(x, y, color);
-  };
-
-  // From top to bottom: hair, bare head, tunic, and two separate boots.
-  rect(1, 1, 3, 2, hair);
-  pixel(0, 2, hair); rect(1, 2, 4, 3, skin);
-  rect(0, 3, 4, 4, tunic); pixel(0, 3, shade(tunic, .7));
-  pixel(1, 4, BOOT); pixel(3, 4, BOOT);
-  if (carrying) pixel(0, 3, BAG);
-
-  return { width, height, data };
+export function generateVillagerPixels(id: number, carrying: boolean, seed = 1, facing: UnitFacing = "right", artKey = "kiln.concord.worker", enemy = false): SpritePixels {
+  const art = new PixelArt(24, 24);
+  const mage = artKey.startsWith("lantern.");
+  const ink: Record<string, Ink> = { o: PALETTE.ink, c: PALETTE.copper, C: PALETTE.copperLight, s: (id + seed) % 2 ? PALETTE.skin : PALETTE.skinShade,
+    S: PALETTE.skinShade, b: PALETTE.beardShade, B: PALETTE.beard, t: PALETTE.teal, T: PALETTE.tealLight, w: PALETTE.wood,
+    i: PALETTE.indigo, I: PALETTE.indigoLight, L: PALETTE.ivory };
+  (mage ? MAGE : DWARF).forEach((row, y) => [...row].forEach((c, x) => { if (ink[c]) art.pixel(x + 5, y + 4, ink[c]); }));
+  // Team cloth uses an independent ramp; faction materials never encode allegiance.
+  art.rect(9, 13, 2, 3, enemy ? PALETTE.red : PALETTE.blue);
+  if (mage) {
+    art.rect(20, 10, 1, 11, PALETTE.wood); art.rect(19, 9, 3, 5, PALETTE.ink);
+    art.rect(20, 10, 1, 3, PALETTE.goldLight);
+  } else {
+    art.rect(3, 10, 1, 11, PALETTE.wood); art.rect(1, 9, 6, 2, PALETTE.stoneShade); art.rect(2, 9, 4, 1, PALETTE.stoneLight);
+  }
+  if (artKey.endsWith(".scout")) { art.rect(16, 4, 1, 8, PALETTE.wood); art.rect(17, 4, 3, 3, enemy ? PALETTE.red : PALETTE.blue); }
+  if (carrying) { art.rect(5, 13, 4, 5, PALETTE.wood); art.rect(6, 13, 3, 4, PALETTE.copper); }
+  if (facing === "left") {
+    const mirrored = new Uint8ClampedArray(art.data.length);
+    for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) mirrored.set(art.data.subarray((y * 24 + x) * 4, (y * 24 + x + 1) * 4), (y * 24 + 23 - x) * 4);
+    return { width: 24, height: 24, data: mirrored };
+  }
+  return { width: art.width, height: art.height, data: art.data };
 }

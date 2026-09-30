@@ -23,9 +23,10 @@ export class WorldView {
   private readonly lowQuality = new URLSearchParams(window.location.search).get("quality") === "low";
   constructor(private readonly mount: HTMLElement, snapshot: WorldSnapshot, private readonly actions: MapActions) {
     this.snapshot = snapshot; this.mapRadius = snapshot.map_radius; this.model = new SceneModel(snapshot);
-    this.camera = createIsometricCamera(1, snapshot.map_radius); this.cameraOrigin = this.camera.position.clone();
-    this.renderer = new WebGLRenderer({ antialias: !this.lowQuality, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(this.lowQuality ? .65 : Math.min(window.devicePixelRatio || 1, 1.5));
+    this.camera = createIsometricCamera(1, snapshot.map_radius, new URLSearchParams(location.search).get("angle") === "steep" ? 40 : 30);
+    this.camera.zoom = new URLSearchParams(location.search).get("zoom") === "tactical" ? .7 : 1; this.camera.updateProjectionMatrix(); this.cameraOrigin = this.camera.position.clone();
+    this.renderer = new WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(this.lowQuality ? .5 : 1);
     this.renderer.domElement.setAttribute("aria-label", "Interactive RTS map"); this.mount.appendChild(this.renderer.domElement);
     this.selectionBox.className = "selection-box"; this.selectionBox.hidden = true; this.mount.appendChild(this.selectionBox);
     this.scene.background = new Color(0x274d39); this.scene.add(this.model.root);
@@ -84,7 +85,7 @@ export class WorldView {
     if (hit?.kind !== "villager") return;
     const ids = this.snapshot.villagers.filter((v) => {
       const p = new Vector3(v.x, 1, v.z).project(this.camera);
-      return p.x >= -1 && p.x <= 1 && p.y >= -1 && p.y <= 1;
+      return v.owner !== "enemy" && p.x >= -1 && p.x <= 1 && p.y >= -1 && p.y <= 1;
     }).map((v) => v.id);
     this.actions.selectArea(ids, e.shiftKey);
   };
@@ -117,11 +118,11 @@ export class WorldView {
     if (preferVillager) {
       const villager = hits.find((hit) => hit.kind === "villager");
       if (villager) return villager;
-      // A four-pixel peon still needs a comfortable click target at normal zoom.
+      // A pixel sprite still needs a comfortable click target at normal zoom.
       const rect = this.renderer.domElement.getBoundingClientRect();
       let closest: { id: number; gap: number } | null = null;
       for (const unit of this.snapshot.villagers) {
-        if (unit.hp <= 0) continue;
+        if (unit.hp <= 0 || unit.owner === "enemy") continue;
         const projected = new Vector3(unit.x, 1, unit.z).project(this.camera);
         const px = rect.left + (projected.x + 1) * rect.width / 2;
         const py = rect.top + (1 - projected.y) * rect.height / 2;
@@ -200,7 +201,7 @@ export class WorldView {
       const ids = this.snapshot.villagers.filter((v) => {
         const p = new Vector3(v.x, 1, v.z).project(this.camera); const rect = this.renderer.domElement.getBoundingClientRect();
         const x = rect.left + (p.x + 1) * rect.width / 2, y = rect.top + (1 - p.y) * rect.height / 2;
-        return x >= left && x <= right && y >= top && y <= bottom;
+        return v.owner !== "enemy" && x >= left && x <= right && y >= top && y <= bottom;
       }).map((v) => v.id);
       this.actions.selectArea(ids, e.shiftKey); return;
     }

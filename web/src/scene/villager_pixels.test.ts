@@ -6,10 +6,10 @@ describe("generated villager art", () => {
     const sprite = generateVillagerPixels(1, false);
     const alpha = Array.from(sprite.data.filter((_, index) => index % 4 === 3));
 
-    expect(sprite.width).toBe(4);
-    expect(sprite.height).toBe(6);
+    expect(sprite.width).toBe(24);
+    expect(sprite.height).toBe(24);
     expect(alpha[0]).toBe(0);
-    expect(alpha.filter((value) => value > 0).length).toBe(12);
+    expect(alpha.filter((value) => value > 0).length).toBeGreaterThan(150);
   });
 
   it("is deterministic and shows cargo visually", () => {
@@ -20,7 +20,7 @@ describe("generated villager art", () => {
     expect(generateVillagerPixels(7, false, 2).data).toEqual(generateVillagerPixels(7, false, 2).data);
   });
 
-  it("mirrors the side view and leaves the face blank", () => {
+  it("mirrors the authored silhouette", () => {
     const right = generateVillagerPixels(2, false, 7, "right");
     const left = generateVillagerPixels(2, false, 7, "left");
     for (let y = 0; y < right.height; y += 1) {
@@ -29,9 +29,15 @@ describe("generated villager art", () => {
         expect(pixel(left, x)).toEqual(pixel(right, right.width - 1 - x));
       }
     }
-    // All three exposed head pixels are a flat skin tone, with no features.
-    const face = [1, 2, 3].map((x) => Array.from(right.data.slice((2 * right.width + x) * 4, (2 * right.width + x + 1) * 4)));
-    expect(face[1]).toEqual(face[0]);
-    expect(face[2]).toEqual(face[0]);
+
+  });
+  it("keeps faction silhouette separate from team colors", () => {
+    const dwarf = generateVillagerPixels(1, false, 1, "right", "kiln.concord.worker");
+    const mage = generateVillagerPixels(1, false, 1, "right", "lantern.synod.worker");
+    const enemyMage = generateVillagerPixels(1, false, 1, "right", "lantern.synod.worker", true);
+    const alpha = (p: typeof dwarf) => p.data.filter((_, i) => i % 4 === 3);
+    expect(alpha(dwarf)).not.toEqual(alpha(mage));
+    expect(alpha(mage)).toEqual(alpha(enemyMage));
+    expect(mage.data).not.toEqual(enemyMage.data);
   });
 });

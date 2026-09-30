@@ -5,10 +5,10 @@ interface CameraFraming {
   minimumWidth: number;
 }
 
-export function createIsometricCamera(aspect: number, mapRadius: number): OrthographicCamera {
+export function createIsometricCamera(aspect: number, mapRadius: number, elevation = 30): OrthographicCamera {
   const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, mapRadius * 12);
   const distance = mapRadius * 2.8;
-  camera.position.set(distance, distance, distance);
+  camera.position.set(distance, Math.SQRT2 * distance * Math.tan(elevation * Math.PI / 180), distance);
   camera.lookAt(0, 0, 0);
   camera.userData.framing = {
     baseHeight: Math.min(mapRadius * 1.2, 42),
