@@ -38,6 +38,21 @@ defmodule KC3RTS.Game.WorldServerTest do
     assert eventually(fn -> WorldServer.snapshot(server).tick >= 7 end)
   end
 
+  test "stops scheduling ticks after the match ends" do
+    game_id = "ended-#{System.unique_integer([:positive])}"
+
+    assert {:ok, server} =
+             start_supervised({WorldServer, game_id: game_id, tick_interval: 10, seed: 4})
+
+    :sys.replace_state(server, fn state ->
+      %{state | world: %{state.world | outcome: :victory}}
+    end)
+
+    %{world: %{tick: tick}, revision: revision} = WorldServer.view(server)
+    Process.sleep(50)
+    assert %{world: %{tick: ^tick}, revision: ^revision} = WorldServer.view(server)
+  end
+
   test "returns one versioned result for a retried command" do
     game_id = "revision-#{System.unique_integer([:positive])}"
 

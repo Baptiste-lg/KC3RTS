@@ -166,6 +166,14 @@ defmodule KC3RTS.Game.WorldServer do
   end
 
   @impl true
+  def handle_info(
+        {:tick, deadline},
+        %{next_deadline: deadline, world: %{outcome: outcome}} = state
+      )
+      when outcome != :playing do
+    {:noreply, %{state | next_deadline: nil}}
+  end
+
   def handle_info({:tick, deadline}, %{next_deadline: deadline} = state) do
     due =
       min(@max_catchup_ticks, max(1, div(max(0, now() - deadline), state.tick_interval) + 1))
