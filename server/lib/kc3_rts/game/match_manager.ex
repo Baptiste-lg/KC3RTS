@@ -87,7 +87,8 @@ defmodule KC3RTS.Game.MatchManager do
     with {:ok, {match_id, _nonce}} <-
            Phoenix.Token.verify(KC3RTSWeb.Endpoint, @token_salt, token, max_age: 86_400),
          %{token_hash: expected} <- Map.get(state.matches, match_id),
-         [{_pid, _}] <- Registry.lookup(KC3RTS.GameRegistry, match_id),
+         [{pid, _}] <- Registry.lookup(KC3RTS.GameRegistry, match_id),
+         true <- Process.alive?(pid),
          true <- Plug.Crypto.secure_compare(expected, hash(token)) do
       {:ok, match_id}
     else

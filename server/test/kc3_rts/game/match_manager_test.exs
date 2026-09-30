@@ -18,6 +18,28 @@ defmodule KC3RTS.Game.MatchManagerTest do
     assert replacement != match_id
   end
 
+  test "rejects a dead match even before Registry consumes its DOWN message" do
+    manager = start_supervised!({MatchManager, name: nil})
+    assert {:ok, %{match_id: id, token: token}} = MatchManager.create(manager)
+    [{pid, _}] = Registry.lookup(KC3RTS.GameRegistry, id)
+
+    partitions =
+      for {_, partition, _, _} <- Supervisor.which_children(KC3RTS.GameRegistry), do: partition
+
+    Enum.each(partitions, &:sys.suspend/1)
+
+    try do
+      monitor = Process.monitor(pid)
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}
+      assert Registry.lookup(KC3RTS.GameRegistry, id) != []
+      assert :error = MatchManager.authorize(token, manager)
+      refute MatchManager.member?(id, token, manager)
+    after
+      Enum.each(partitions, &:sys.resume/1)
+    end
+  end
+
   defp eventually(assertion, attempts \\ 20)
   defp eventually(assertion, 0), do: assertion.()
 
