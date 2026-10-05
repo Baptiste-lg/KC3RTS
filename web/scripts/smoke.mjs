@@ -377,6 +377,10 @@ try {
   }
 } catch (error) {
   console.error(error);
+  if (process.env.GITHUB_ACTIONS === "true") {
+    const message = String(error).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+    console.error(`::error title=Browser smoke failure::${message}`);
+  }
   if (devtools) {
     try { console.error("Browser state:", await devtools.evaluate(STATE)); } catch { /* tab closed */ }
   }
