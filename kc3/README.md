@@ -180,6 +180,30 @@ Development OpenBSD host, 5 October 2026, full integration run with coverage
 Both cases pass collision, arrival deadline and bandwidth checks, but **fail
 the timing targets**. These are development measurements, not supported capacity.
 
+The subsequent P04 optimization keeps orders/entities in shared storage and
+uses a derived KC3 Facts spatial index. Its single worker-local cache entry is
+consumed before mutation and reused only for an identical entity list/layout;
+it is never serialized. Six baseline scene hashes check every canonical tick,
+alongside footprint, collision, cache invalidation and restoration tests.
+
+Run `mix run scripts/benchmark_navigation.exs` from `server` with the same
+runtime environment for an isolated real-port measurement without coverage.
+`KC3RTS_BENCH_ROOT` and `KC3RTS_BENCH_LABEL` can identify a frozen source tree;
+the label should identify uncommitted changes when measuring a dirty checkout.
+`KC3RTS_BENCH_TIMEOUT_MS` optionally extends diagnostic headroom only, not the
+production timeout. Run without concurrent heavy tests.
+
+Isolated optimized working-tree measurement on the same OpenBSD host,
+5 October 2026 (not a controlled A/B comparison with the coverage run above):
+
+| Units | Arrival | Ticks | Ack | Tick p95 / p99 | Largest patch |
+| --- | --- | --- | --- | --- | --- |
+| 50 | 100% | 184 | 72 ms | 63 / 92 ms | 1365 bytes |
+| 100 | 100% | 192 | 189 ms | 128 / 170 ms | 2352 bytes |
+
+Both cases remain below the production two-second timeout, but **P04 remains
+in progress**: tail tick latency still exceeds its targets.
+
 `cd web && npm run smoke:kc3` exercises visible selection, group recall,
 move/stop, queueing, cancellation, food delivery, worker spawn and house
 completion through the browser→Phoenix→KC3 path. `KC3RTS_SMOKE_SCREENSHOT`

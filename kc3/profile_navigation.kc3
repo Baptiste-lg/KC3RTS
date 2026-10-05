@@ -5,39 +5,53 @@ RTS.Loader.world(__DIR__)
 load!(__DIR__ + "tests/army_scenario.kc3")
 defmodule RTS.NavigationProfile do
   def sample = fn (name, action) {
-    start = Time.uptime()
-    action()
-    finish = Time.uptime()
-    puts(RTS.Wire.encode(%{"phase" => name,
-      "us" => (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000}))
+    samples = []
+    List.do([1, 2, 3, 4, 5, 6, 7, 8, 9], iteration, do
+      start = Time.uptime()
+      action()
+      finish = Time.uptime()
+      samples = [(finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000 | samples]
+    end)
+    samples = List.sort(samples)
+    puts(RTS.Wire.encode(%{"phase" => name, "samples" => 9,
+      "min_us" => List.first(samples), "median_us" => access(samples, [4]), "max_us" => List.last(samples)}))
   }
 end
 content = RTS.Content.compile(RTS.Core.catalog())
 world = RTS.ArmyScenario.world(content, RTS.World.opening(content, "profile", 100, ["kiln.concord", "lantern.synod"]), 100)
+world = RTS.World.pack(world)
+command = %{"type" => "move", "entity_ids" => RTS.ArmyScenario.ids(world), "x" => 3072, "z" => 0}
+RTS.NavigationProfile.sample("command", fn () { RTS.World.command(content, world, 1, command) })
 world = RTS.ArmyScenario.move(content, world, RTS.ArmyScenario.ids(world), 3072, 0)
 world = RTS.World.pack(world)
-i = 0
-while i < 15 do
+List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], iteration, do
   world = RTS.World.tick(content, world)
-  i = i + 1
-end
+end)
 packed = RTS.World.pack(world)
 grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(world, "map")))
+layout = RTS.Map.layout(grid)
 RTS.NavigationProfile.sample("tick", fn () { RTS.World.tick(content, world) })
 RTS.NavigationProfile.sample("pack", fn () { RTS.World.pack(world) })
 RTS.NavigationProfile.sample("occupancy", fn () { RTS.Map.cache(content, packed) })
 RTS.NavigationProfile.sample("planner", fn () { RTS.Navigation.plan(content, packed, grid) })
-RTS.NavigationProfile.sample("spatial", fn () { RTS.Navigation.spatial(content, grid, RTS.Data.get(packed, "entities")) })
+RTS.NavigationProfile.sample("spatial", fn () { RTS.Spatial.prepare(content, layout, RTS.Data.get(packed, "entities")) })
 RTS.NavigationProfile.sample("navigation", fn () { RTS.Navigation.tick(content, packed) })
 RTS.NavigationProfile.sample("economy", fn () { RTS.Economy.tick(content, packed) })
 RTS.NavigationProfile.sample("production", fn () { RTS.Production.tick(content, packed) })
 RTS.NavigationProfile.sample("unpack", fn () { RTS.World.unpack(packed) })
 RTS.NavigationProfile.sample("encode", fn () { RTS.Wire.encode(world) })
-unit = List.first(RTS.Data.get(packed, "entities"))
-buckets = RTS.Navigation.spatial(content, grid, RTS.Data.get(packed, "entities"))
-body = RTS.Data.share(%{"id" => RTS.Data.get(unit, "id"), "x" => RTS.Data.get(unit, "x"), "z" => RTS.Data.get(unit, "z"), "size" => 128})
+{buckets, rows} = RTS.Spatial.prepare(content, layout, RTS.Data.get(packed, "entities"))
+{unit, speed, body, cells} = List.first(rows)
+{id, x, z, size} = ^ body
+cell = List.first(RTS.Data.get(RTS.Data.get(unit, "order"), "path"))
 mask = RTS.Data.get(RTS.Data.get(packed, "navigation"), "mask")
-RTS.NavigationProfile.sample("one_advance", fn () { RTS.Navigation.advance(content, grid, unit, true) })
-RTS.NavigationProfile.sample("one_footprint", fn () { RTS.Map.fits?(grid, mask, RTS.Data.get(unit, "x"), RTS.Data.get(unit, "z"), 128) })
-RTS.NavigationProfile.sample("one_collision", fn () { RTS.Navigation.clear?(grid, buckets, unit, 128) })
-RTS.NavigationProfile.sample("one_reserve", fn () { RTS.Navigation.reserve(grid, buckets, body, false) })
+RTS.NavigationProfile.sample("one_proposal", fn () { RTS.Navigation.propose(layout, body, speed, cell, true) })
+RTS.NavigationProfile.sample("one_footprint", fn () {
+  {body_id, body_x, body_z, body_size} = ^ body
+  RTS.Map.cover(layout, body_x, body_z, body_size)
+})
+RTS.NavigationProfile.sample("one_collision", fn () { RTS.Spatial.clear?(buckets, cells, body) })
+RTS.NavigationProfile.sample("one_reservation_pair", fn () {
+  RTS.Spatial.reserve(buckets, cells, body, false)
+  RTS.Spatial.reserve(buckets, cells, body, true)
+})

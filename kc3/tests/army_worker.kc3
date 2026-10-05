@@ -17,7 +17,9 @@ while line do
   state = RTS.Data.get(result, "state")
   if RTS.Data.get(request, "operation") == "new_match" do
     count = if RTS.Data.get(request, "seed") == 50 do 50 else 100 end
-    state = RTS.ArmyScenario.world(content, state, count)
+    # Match production's retained storage after fixture injection. Otherwise
+    # the first command benchmarks an artificial full decode/repack boundary.
+    state = RTS.World.pack(RTS.ArmyScenario.world(content, state, count))
     result = RTS.World.result(state, void)
   end
   puts(RTS.Wire.encode(RTS.Protocol.reply(content, request, result)))

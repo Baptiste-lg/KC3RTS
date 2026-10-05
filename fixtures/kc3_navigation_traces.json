@@ -1,0 +1,12 @@
+{
+  "source_commit": "5822cab1be4ad9a228df832549b0e07bf97ac64b",
+  "description": "SHA256 of canonical navigation_scenes.kc3 JSON lines per scene, including trailing newlines. Every tick is covered, not just final positions.",
+  "scenes": {
+    "hall": "2d0b5aeeaed2cde679209874ec8683c2b4d021d164af255221379cffadaee70b",
+    "corridor": "a1c70d9db9ae5ca49eeebb2f392b0588f2222bedc72bf9c011f85c12e9d4e3ed",
+    "opposing": "6d47eb60deb189f5382426cf295a22fcb9f1f880693cae48a10ec1ac048aa082",
+    "new_building": "11ea15643f8c9b086a5eff358a8c1292c97d0f7da36fc963350944ac3639e9ba",
+    "depletion": "f07a9a8fda7400f4f6890b36ce232ab3d2bd4154600932e1bd00c3c717573106",
+    "caravan": "f80e5c0bfa5a0d90058e06ad020208e4390d9dc65ab78c7d419953e07cc42716"
+  }
+}

@@ -249,7 +249,7 @@ defmodule RTS.Content do
       "content_hash" => RTS.Data.get(RTS.Content.public(catalog), "content_hash"),
       "resources" => List.filter(RTS.Data.get(catalog, "definitions"), fn (d) {
         if RTS.Data.get(d, "kind") == "resource" do RTS.Data.get(d, "id") else false end
-      }), "facts" => db, "rules" => RTS.Data.get(catalog, "rules")})
+      }), "facts" => db, "spatial_cache" => Facts.database(), "rules" => RTS.Data.get(catalog, "rules")})
   }
   def allowed? = fn (compiled, faction, recipe) {
     Facts.first_with_tags(RTS.Data.get(compiled, "facts"), faction, :allows_recipe, recipe,

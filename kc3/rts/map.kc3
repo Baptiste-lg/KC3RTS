@@ -124,6 +124,39 @@ defmodule RTS.Map do
     end
     valid
   }
+  # Tick-local scalar layout avoids repeatedly copying/looking up map fields.
+  def layout = fn (map) {
+    {RTS.Data.get(map, "width"), RTS.Data.get(map, "height"),
+      RTS.Data.get(map, "origin_x"), RTS.Data.get(map, "origin_z"), RTS.Data.get(map, "cell_size")}
+  }
+  # Unlike cells (which clips static obstacles), cover rejects out-of-map bodies.
+  # An in-bounds, positive footprint always covers at least one cell.
+  def cover = fn ({width, height, ox, oz, size}, x, z, footprint) {
+    half = footprint / 2
+    left = x - half - ox
+    top = z - half - oz
+    right = x + half - 1 - ox
+    bottom = z + half - 1 - oz
+    if left < 0 || top < 0 || right >= width * size || bottom >= height * size do [] else
+      left = left / size
+      right = right / size
+      top = top / size
+      bottom = bottom / size
+      if left == right && top == bottom do [top * width + left] else
+        result = []
+        row = ^ top
+        while row <= bottom do
+          col = ^ left
+          while col <= right do
+            result = [row * width + col | result]
+            col = col + 1
+          end
+          row = row + 1
+        end
+        List.reverse(result)
+      end
+    end
+  }
   def signature = fn (content, state) {
     obstacles = List.map_filter(RTS.Data.get(state, "nodes"), n, do
       if RTS.Data.get(n, "amount") > 0 do [RTS.Data.get(n, "x"), RTS.Data.get(n, "z"), RTS.Data.get(RTS.Data.get(state, "map"), "cell_size")] else void end

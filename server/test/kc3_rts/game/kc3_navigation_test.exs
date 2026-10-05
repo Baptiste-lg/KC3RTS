@@ -108,6 +108,21 @@ defmodule KC3RTS.Game.KC3NavigationTest do
     refute output =~ "FAIL:"
     refute output =~ "env_"
 
+    reference =
+      @root
+      |> Path.join("fixtures/kc3_navigation_traces.json")
+      |> File.read!()
+      |> Jason.decode!()
+
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.filter(&String.starts_with?(&1, "{"))
+    |> Enum.group_by(fn line -> Jason.decode!(line)["scene"] end)
+    |> Enum.each(fn {scene, lines} ->
+      hash = :crypto.hash(:sha256, Enum.map(lines, &[&1, "\n"]))
+      assert Base.encode16(hash, case: :lower) == reference["scenes"][scene], scene
+    end)
+
     frames =
       output
       |> String.split("\n", trim: true)

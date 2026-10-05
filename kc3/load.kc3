@@ -11,6 +11,7 @@ defmodule RTS.Loader do
     RTS.Loader.core(root)
     load!(root + "rts/map.kc3")
     load!(root + "rts/search.kc3")
+    load!(root + "rts/spatial.kc3")
     load!(root + "rts/navigation.kc3")
     load!(root + "rts/world.kc3")
     load!(root + "rts/economy.kc3")

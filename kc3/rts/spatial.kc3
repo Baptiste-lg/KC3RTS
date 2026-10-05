@@ -1,0 +1,70 @@
+# A derived Facts index. One worker-local cache entry can carry it to the next
+# tick only when the complete entity list and layout match. Mismatches rebuild.
+defmodule RTS.Spatial do
+  def prepare = fn (content, layout, entities) {
+    cache = RTS.Data.get(content, "spatial_cache")
+    saved = Facts.first_with_tags(cache, :latest, :spatial, ?, fn (fact) { fact.object })
+    restored = void
+    if saved != void do
+      # Consume before mutation: an aborted tick cannot leave a stale hit.
+      Facts.remove_tags(cache, :latest, :spatial, saved)
+      restored = RTS.Spatial.restore(saved, layout, entities)
+    end
+    if restored != void do restored else RTS.Spatial.build(content, layout, entities) end
+  }
+  def restore = fn ({previous, old_layout, index, rows}, layout, entities) {
+    if old_layout == layout && previous == entities do {index, rows} else void end
+  }
+  def remember = fn (content, layout, index, rows, entities) {
+    Facts.replace_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, {entities, layout, index, rows})
+  }
+  def build = fn (content, layout, entities) {
+    index = Facts.database()
+    rows = List.map_filter(entities, e, do
+      d = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+      if RTS.Data.get(d, "kind") == "unit" do
+        id = RTS.Data.get(e, "id")
+        x = RTS.Data.get(e, "x")
+        z = RTS.Data.get(e, "z")
+        size = RTS.Data.get(d, "footprint")
+        body = {id, x, z, size}
+        cells = RTS.Map.cover(layout, x, z, size)
+        RTS.Spatial.reserve(index, cells, body, true)
+        {e, RTS.Data.get(d, "speed"), body, cells}
+      else {e, 0, void, []} end
+    end)
+    {index, rows}
+  }
+  def reserve = fn (index, cells, body, add) {
+    List.do(cells, cell, do
+      if add do Facts.add_tags(index, cell, :body, body) else
+        Facts.remove_tags(index, cell, :body, body) end
+    end)
+    void
+  }
+  def clear? = fn (index, cells, {id, x, z, size}) {
+    valid = true
+    List.do(cells, cell, do
+      if valid do
+        neighbors = Facts.collect_with_tags(index, cell, :body, ?, fn (fact) { fact.object })
+        List.do(neighbors, {other_id, other_x, other_z, other_size}, do
+          if other_id != id do
+            distance = (size + other_size) / 2
+            dx = x - other_x
+            dz = z - other_z
+            if dx < distance && dx > (0 - distance) && dz < distance && dz > (0 - distance) do valid = false end
+          end
+        end)
+      end
+    end)
+    valid
+  }
+  # Return the already-checked cells for the subsequent reservation update.
+  def available = fn (layout, mask, index, {id, x, z, size}) {
+    body = {id, x, z, size}
+    cells = RTS.Map.cover(layout, x, z, size)
+    valid = cells != []
+    List.do(cells, cell, do if Str.byte(mask, cell) == 35 do valid = false end end)
+    if valid && RTS.Spatial.clear?(index, cells, body) do cells else [] end
+  }
+end

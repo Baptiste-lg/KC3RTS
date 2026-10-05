@@ -77,7 +77,7 @@ defmodule RTS.Production do
     construction = %{"recipe_id" => RTS.Data.get(recipe, "id"), "remaining_ticks" => RTS.Data.get(recipe, "ticks"), "paid" => RTS.Data.get(recipe, "cost")}
     building = RTS.World.entity(content, RTS.Data.get(player, "faction_id"), id, RTS.Data.get(recipe, "output"),
       RTS.Data.get(worker, "owner"), RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), construction)
-    state = RTS.Data.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), building))
+    state = RTS.Data.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), RTS.World.pack_entity(building)))
     state = RTS.Data.put(state, "next_entity_id", id + 1)
     RTS.World.put(state, RTS.Data.merge(worker, %{"order" => void, "status" => void, "task" => %{"kind" => "work", "target_id" => id, "progress" => 0}}))
   }
@@ -200,7 +200,7 @@ defmodule RTS.Production do
     slot = RTS.Data.get(building, "owner")
     player = RTS.World.player(state, slot)
     unit = RTS.World.entity(content, RTS.Data.get(player, "faction_id"), id, RTS.Data.get(output, "id"), slot, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), void)
-    state = RTS.Data.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), unit))
+    state = RTS.Data.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), RTS.World.pack_entity(unit)))
     state = RTS.Data.put(state, "next_entity_id", id + 1)
     state = RTS.World.put(state, RTS.Data.merge(building, %{"queue" => List.next(RTS.Data.get(building, "queue")), "status" => void}))
     state = RTS.World.refresh(content, state)

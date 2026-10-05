@@ -67,6 +67,13 @@ sealed_done = RTS.Scenario.ticks(content, RTS.Data.get(sealed_result, "state"), 
 RTS.Check.that("unreachable orders terminate with a reason", RTS.Data.get(RTS.World.find(sealed_done, 2), "order") == void && RTS.Data.get(RTS.World.find(sealed_done, 2), "status") == "unreachable")
 checkpoint = RTS.Scenario.ticks(content, RTS.Data.get(result, "state"), 5)
 packed_checkpoint = RTS.World.pack(checkpoint)
+RTS.Check.that("packing shares route maps without changing their canonical value",
+  type(RTS.Data.get(RTS.World.find(packed_checkpoint, 2), "order")) == RTS.Shared &&
+  RTS.Wire.encode(packed_checkpoint) == RTS.Wire.encode(checkpoint))
+shared_command = RTS.World.command(content, RTS.World.pack(world), 1, move)
+RTS.Check.that("commands retain shared storage at the worker boundary",
+  type(RTS.Data.get(shared_command, "state")) == RTS.Shared &&
+  RTS.Wire.encode(shared_command) == RTS.Wire.encode(result))
 RTS.Check.that("shared and decoded state advance with identical canonical values",
   RTS.Wire.encode(RTS.World.tick(content, packed_checkpoint)) == RTS.Wire.encode(RTS.World.tick(content, checkpoint)))
 RTS.Check.that("a shared tick retains its storage without changing its input",

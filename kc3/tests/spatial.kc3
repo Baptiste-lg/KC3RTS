@@ -1,0 +1,57 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+grid = %{"width" => 4, "height" => 4, "cell_size" => 256, "origin_x" => -512, "origin_z" => -512, "blocked" => []}
+layout = RTS.Map.layout(grid)
+mask = RTS.Map.repeat(".", 16)
+RTS.Check.that("cover includes each cell of a footprint spanning a corner", RTS.Map.cover(layout, 0, 0, 128) == [5, 6, 9, 10])
+RTS.Check.that("cover rejects footprints extending beyond map bounds", RTS.Map.cover(layout, -449, -384, 128) == [] && RTS.Map.cover(layout, -448, -384, 128) == [0])
+# Compare the optimized cover with the pre-existing clipped cell enumeration
+# and boundary check across varied positions and catalog-sized footprints.
+valid = true
+List.do([128, 256, 512, 768], size, do
+  List.do([-576, -448, -384, -192, -64, 0, 64, 192, 384, 448, 576], x, do
+    List.do([-576, -448, -384, -192, -64, 0, 64, 192, 384, 448, 576], z, do
+      cells = RTS.Map.cover(layout, x, z, size)
+      fits = RTS.Map.fits?(grid, mask, x, z, size)
+      valid = valid && ((cells != []) == fits)
+      if fits do valid = valid && cells == RTS.Map.cells(grid, x, z, size) end
+    end)
+  end)
+end)
+RTS.Check.that("484 footprint cases match the reference geometry", valid)
+index = Facts.database()
+body = {1, -128, -128, 128}
+cells = RTS.Map.cover(layout, -128, -128, 128)
+RTS.Spatial.reserve(index, cells, body, true)
+RTS.Check.that("an entity ignores its own reservation", RTS.Spatial.clear?(index, cells, body))
+RTS.Check.that("touching is allowed but one-unit overlap is rejected",
+  RTS.Spatial.available(layout, mask, index, {2, 0, -128, 128}) != [] &&
+  RTS.Spatial.available(layout, mask, index, {2, -1, -128, 128}) == [])
+RTS.Check.that("different footprints share the same collision rule",
+  RTS.Spatial.available(layout, mask, index, {2, 127, -128, 384}) == [] &&
+  RTS.Spatial.available(layout, mask, index, {2, 128, -128, 384}) != [])
+RTS.Spatial.reserve(index, cells, body, false)
+RTS.Check.that("removal immediately releases old cells",
+  RTS.Spatial.available(layout, mask, index, {2, -128, -128, 128}) != [])
+RTS.Check.that("static terrain still rejects movement through an empty index",
+  RTS.Spatial.available(layout, RTS.Map.mark(mask, 5), index, {2, -128, -128, 128}) == [])
+content = RTS.Content.compile(RTS.Core.catalog())
+unit = RTS.World.entity(content, "kiln.concord", 1, "core.worker", 1, -128, -128, void)
+entities = [unit]
+{index, rows} = RTS.Spatial.prepare(content, layout, entities)
+RTS.Spatial.remember(content, layout, index, rows, entities)
+{reused, reused_rows} = RTS.Spatial.prepare(content, layout, entities)
+RTS.Check.that("unchanged canonical input reuses the derived index", reused == index && reused_rows == rows)
+RTS.Check.that("the cache is consumed before any mutation",
+  Facts.first_with_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, ?, fn (fact) { true }) == void)
+RTS.Spatial.remember(content, layout, reused, reused_rows, entities)
+changed = [Map.put(unit, "x", 128)]
+{rebuilt, rebuilt_rows} = RTS.Spatial.prepare(content, layout, changed)
+RTS.Check.that("restored or changed coordinates invalidate the index",
+  RTS.Spatial.available(layout, mask, rebuilt, {2, -128, -128, 128}) != [] &&
+  RTS.Spatial.available(layout, mask, rebuilt, {2, 128, -128, 128}) == [])
+RTS.Spatial.remember(content, layout, rebuilt, rebuilt_rows, changed)
+{empty, empty_rows} = RTS.Spatial.prepare(content, layout, [])
+RTS.Check.that("removing the last unit invalidates all reservations", empty_rows == [] &&
+  RTS.Spatial.available(layout, mask, empty, {2, 128, -128, 128}) != [])

@@ -2,17 +2,26 @@
 # All mutations, resource accounting and production live in KC3.
 defmodule RTS.World do
   def definition = fn (content, id) { RTS.Data.get(RTS.Data.get(content, "index"), id) }
-  def result = fn (state, reason) { %{"state" => RTS.World.unpack(state), "accepted" => reason == void, "reason" => reason} }
+  def result = fn (state, reason) { %{"state" => state, "accepted" => reason == void, "reason" => reason} }
+  def pack_entity = fn (entity) {
+    order = RTS.Data.get(entity, "order")
+    if order != void && type(order) != RTS.Shared do
+      entity = RTS.Data.put(entity, "order", RTS.Data.share(order))
+    end
+    RTS.Data.share(entity)
+  }
   def pack = fn (state) {
     if type(state) == RTS.Shared do state else
     RTS.Data.share(RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
-      if type(e) == RTS.Shared do e else RTS.Data.share(e) end
+      RTS.World.pack_entity(e)
     end)))
     end
   }
   def unpack = fn (state) {
     if state == void do void else
-      Map.put(RTS.Data.unshare(state), "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do RTS.Data.unshare(e) end))
+      Map.put(RTS.Data.unshare(state), "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
+        Map.put(RTS.Data.unshare(e), "order", RTS.Data.unshare(RTS.Data.get(e, "order")))
+      end))
     end
   }
   def entity = fn (content, faction, id, type_id, owner, x, z, construction) {
@@ -72,6 +81,7 @@ defmodule RTS.World do
   def find = fn (state, id) { RTS.Data.find(RTS.Data.get(state, "entities"), "id", id) }
   def player = fn (state, slot) { RTS.Data.find(RTS.Data.get(state, "players"), "slot", slot) }
   def put = fn (state, entity) {
+    if type(state) == RTS.Shared do entity = RTS.World.pack_entity(entity) end
     RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
       if RTS.Data.get(e, "id") == RTS.Data.get(entity, "id") do entity else e end
     end))
@@ -158,6 +168,7 @@ defmodule RTS.World do
     total
   }
   def command = fn (content, state, slot, command) {
+    plain = type(state) != RTS.Shared
     state = RTS.World.pack(state)
     kind = RTS.Data.get(command, "type")
     result = if List.has?(["move", "stop"], kind) do RTS.Navigation.command(content, state, slot, command) else
@@ -174,8 +185,9 @@ defmodule RTS.World do
         updated = RTS.Data.put(updated, "navigation", RTS.Data.merge(navigation, %{"search" => void, "entity_id" => 0}))
       end
       updated = RTS.Map.cache(content, RTS.World.refresh(content, updated))
-      RTS.World.result(RTS.Data.put(updated, "revision", RTS.Data.get(state, "revision") + 1), void)
-    else result end
+      result = RTS.World.result(RTS.Data.put(updated, "revision", RTS.Data.get(state, "revision") + 1), void)
+    end
+    if plain do RTS.Data.put(result, "state", RTS.World.unpack(RTS.Data.get(result, "state"))) else result end
   }
   def tick = fn (content, state) {
     plain = type(state) != RTS.Shared
