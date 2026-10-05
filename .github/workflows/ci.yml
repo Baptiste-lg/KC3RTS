@@ -78,7 +78,19 @@ jobs:
       - name: Install KC3 build dependencies
         run: sudo apt-get update && sudo apt-get install -y build-essential clang libtool-bin libffi-dev libbsd-dev libevent-dev libgit2-dev libtls-dev pkg-config ruby
       - name: Build pinned KC3
-        run: sh scripts/setup-kc3.sh
+        run: |
+          setup_log=$(mktemp)
+          if sh scripts/setup-kc3.sh >"$setup_log" 2>&1; then
+            cat "$setup_log"
+          else
+            cat "$setup_log"
+            details=$(tail -n 40 "$setup_log")
+            details=${details//'%'/'%25'}
+            details=${details//$'\r'/'%0D'}
+            details=${details//$'\n'/'%0A'}
+            printf '::error title=KC3 setup failed::%s\n' "$details"
+            exit 1
+          fi
       - name: Check generated KC3 catalog
         run: sh scripts/export-content.sh --check
       - run: mix deps.get
