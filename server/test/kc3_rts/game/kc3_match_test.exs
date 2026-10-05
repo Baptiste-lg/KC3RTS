@@ -12,7 +12,7 @@ defmodule KC3RTS.Game.KC3MatchTest do
         {WorldServer, game_id: id, engine: :kc3, tick_interval: :disabled, seed: 1234}
       )
 
-    assert %{world: %{"protocol_version" => 5, "entities" => entities}, revision: 1} =
+    assert %{world: %{"protocol_version" => 6, "entities" => entities}, revision: 1} =
              WorldServer.view(server)
 
     assert length(entities) == 14
@@ -96,12 +96,13 @@ defmodule KC3RTS.Game.KC3MatchTest do
     Phoenix.PubSub.subscribe(KC3RTS.PubSub, "game:" <> id)
 
     assert_receive %Phoenix.Socket.Broadcast{
-                     event: "world_snapshot",
-                     payload: %{world: %{"tick" => tick}}
+                     event: "world_patch",
+                     payload: %{tick: tick, base_revision: base, revision: revision}
                    },
                    3000
 
     assert tick > 0
+    assert revision == base + 1
     worker = :sys.get_state(server).world.worker
     monitor = Process.monitor(server)
     port = :sys.get_state(worker).port

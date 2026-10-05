@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import fixture from "../../../fixtures/kc3_opening_v3.json";
+import fixture from "../../../fixtures/kc3_opening_v4.json";
 import { artFor, contentHash, parseKC3View, presentKC3 } from "./kc3_view";
-const opening = () => ({ ...structuredClone(fixture.state), protocol_version: 5, ruleset_version: 3, viewer_slot: 1 });
+const opening = () => ({ ...structuredClone(fixture.state), protocol_version: 6, ruleset_version: 4, viewer_slot: 1 });
 describe("KC3 presentation contract", () => {
   it("preserves canonical IDs and ownership while resolving faction art from the catalog", () => {
     const view = parseKC3View(opening())!;

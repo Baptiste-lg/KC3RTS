@@ -22,7 +22,7 @@ defmodule RTS.Core do
   }
   def resources = fn () { ["core.food", "core.wood", "core.stone", "core.gold"] }
   def catalog = fn () {
-    %{"schema_version" => 3, "ruleset_version" => 3,
+    %{"schema_version" => 3, "ruleset_version" => 4,
       "rules" => %{"population_cap" => 60, "building_cancel_percent" => 75, "started_cancel_percent" => 50, "repair_interval" => 10},
       "definitions" => [
       RTS.Core.resource("core.food", "Food", ["node", "farm", "market", "tribe"]),

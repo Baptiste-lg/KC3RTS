@@ -16,7 +16,7 @@ defmodule KC3RTS.Game.KC3WorkerTest do
              KC3Worker.request(worker, request(1, "new_match"))
 
     fixture =
-      Path.expand("../../../../fixtures/kc3_opening_v3.json", __DIR__)
+      Path.expand("../../../../fixtures/kc3_opening_v4.json", __DIR__)
       |> File.read!()
       |> Jason.decode!()
 

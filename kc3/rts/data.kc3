@@ -8,13 +8,11 @@ defmodule RTS.Shared do
 end
 
 defmodule RTS.Data do
-  def share = fn (value) { %RTS.Shared{value: value} }
+  def share = fn (value) { if type(value) == RTS.Shared do value else %RTS.Shared{value: value} end }
   def unshare = fn (value) { if type(value) == RTS.Shared do value.value else value end }
-  def get = fn (value, key) {
-    if type(value) == Map do access(value, [key]) else
-      if type(value) == RTS.Shared do access(value, [:value, key]) else void end
-    end
-  }
+  def get = cfn Tag "kc3rts_get" (Tag, Tag, Result)
+  def put = cfn Tag "kc3rts_put" (Tag, Tag, Tag, Result)
+  def merge = cfn Tag "kc3rts_merge" (Tag, Tag, Result)
   def integer? = fn (value, minimum, maximum) {
     if is_integer?(value) do value >= minimum && value <= maximum else false end
   }
@@ -49,10 +47,12 @@ defmodule RTS.Data do
   }
   # Native find_if returns the callback's value (false on a miss).
   def find = fn (values, key, expected) {
-    found = List.find_if(values, fn (item) {
-      if RTS.Data.get(item, key) == expected do item else false end
-    })
-    if found == false do void else found end
+    found = void
+    List.do(values, item, do
+      if found == void && RTS.Data.get(item, key) == expected do found = ^ item end
+    end)
+    found
   }
+
   def random_next = fn (seed) { seed * 48271 mod 2147483647 }
 end

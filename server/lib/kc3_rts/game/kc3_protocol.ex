@@ -7,8 +7,8 @@ defmodule KC3RTS.Game.KC3Protocol do
   @safe_integer 9_007_199_254_740_991
   @envelope ~w(protocol_version ruleset_version content_hash request_id match_id expected_revision operation)
   @reply ~w(protocol_version ruleset_version content_hash request_id match_id accepted reason revision state)
-  @state ~w(schema_version content_hash match_id seed rng_state tick revision next_entity_id next_job_id players entities nodes outcome map)
-  @reasons ~w(incompatible_version incompatible_content invalid_request match_exists unknown_match stale_revision invalid_command unknown_content invalid_producer prerequisite_required invalid_location entity_limit insufficient_resources invalid_selection unreachable invalid_target cargo_mismatch farm_busy empty_cargo storage_full invalid_queue population_full queue_full)
+  @state ~w(schema_version content_hash match_id seed rng_state tick revision next_entity_id next_job_id players entities nodes outcome map navigation)
+  @reasons ~w(incompatible_version incompatible_content invalid_request match_exists unknown_match stale_revision invalid_command unknown_content invalid_producer prerequisite_required invalid_location entity_limit insufficient_resources invalid_selection unreachable invalid_target cargo_mismatch farm_busy empty_cargo storage_full invalid_queue population_full queue_full no_space)
 
   def content_hash, do: @document["content_hash"]
 
@@ -33,7 +33,7 @@ defmodule KC3RTS.Game.KC3Protocol do
   end
 
   defp request?(p) when is_map(p) do
-    p["protocol_version"] === 2 and p["ruleset_version"] === 3 and hash?(p["content_hash"]) and
+    p["protocol_version"] === 2 and p["ruleset_version"] === 4 and hash?(p["content_hash"]) and
       integer?(p["request_id"], 1) and match_id?(p["match_id"]) and
       integer?(p["expected_revision"], 0) and operation?(p)
   end
@@ -70,7 +70,7 @@ defmodule KC3RTS.Game.KC3Protocol do
         _ -> []
       end
 
-    fields?(c, ~w(type entity_ids) ++ extra) and is_list(ids) and length(ids) in 1..16 and
+    fields?(c, ~w(type entity_ids) ++ extra) and is_list(ids) and length(ids) in 1..100 and
       Enum.all?(ids, &integer?(&1, 1)) and command_target?(c)
   end
 
@@ -99,7 +99,7 @@ defmodule KC3RTS.Game.KC3Protocol do
   defp point?(p), do: integer?(p["x"], -@safe_integer) and integer?(p["z"], -@safe_integer)
 
   defp reply?(r, q, previous) do
-    fields?(r, @reply) and r["protocol_version"] === 2 and r["ruleset_version"] === 3 and
+    fields?(r, @reply) and r["protocol_version"] === 2 and r["ruleset_version"] === 4 and
       reply_identity?(r, q) and integer?(r["revision"], 0) and
       result?(r) and state?(r["state"]) and revision?(r) and continuity?(r, q, previous)
   end
@@ -119,7 +119,7 @@ defmodule KC3RTS.Game.KC3Protocol do
   defp state?(nil), do: true
 
   defp state?(s) do
-    fields?(s, @state) and s["schema_version"] === 3 and s["content_hash"] == content_hash() and
+    fields?(s, @state) and s["schema_version"] === 4 and s["content_hash"] == content_hash() and
       match_id?(s["match_id"]) and counters?(s) and players?(s["players"]) and
       world_contents?(s) and
       outcome?(s["outcome"])
@@ -128,7 +128,7 @@ defmodule KC3RTS.Game.KC3Protocol do
   defp world_contents?(s),
     do:
       map?(s["map"]) and entities?(s["entities"], s["next_entity_id"], s["next_job_id"], s["map"]) and
-        nodes?(s["nodes"], s["map"])
+        nodes?(s["nodes"], s["map"]) and navigation?(s["navigation"], s["map"])
 
   defp counters?(s) do
     integer?(s["seed"], 1, 2_147_483_646) and integer?(s["rng_state"], 1, 2_147_483_646) and
@@ -192,6 +192,9 @@ defmodule KC3RTS.Game.KC3Protocol do
       rally?(e["rally"]) and
       e["status"] in [
         nil,
+        "planning",
+        "waiting",
+        "blocked",
         "unreachable",
         "no_depot",
         "depleted",
@@ -271,19 +274,80 @@ defmodule KC3RTS.Game.KC3Protocol do
   defp map?(m) do
     fields?(m, ~w(width height cell_size origin_x origin_z blocked)) and
       integer?(m["width"], 1, 32) and integer?(m["height"], 1, 32) and
-      integer?(m["cell_size"], 1, 4096) and integer?(m["origin_x"], -@safe_integer) and
+      grid_size?(m) and integer?(m["origin_x"], -@safe_integer) and
       integer?(m["origin_z"], -@safe_integer) and is_list(m["blocked"]) and
       Enum.all?(m["blocked"], &integer?(&1, 0, m["width"] * m["height"] - 1)) and
       Enum.uniq(m["blocked"]) == m["blocked"]
   end
 
+  defp grid_size?(m),
+    do:
+      integer?(m["cell_size"], 256, 4096) and rem(m["cell_size"], 256) == 0 and
+        grid_count(m) <= 9216
+
   defp order?(nil, _), do: true
 
   defp order?(o, map) do
-    fields?(o, ~w(kind path offset)) and o["kind"] == "move" and
-      fields?(o["offset"], ~w(x z)) and point?(o["offset"]) and is_list(o["path"]) and
-      length(o["path"]) in 1..1024 and
-      Enum.all?(o["path"], &integer?(&1, 0, map["width"] * map["height"] - 1))
+    fields?(o, ~w(kind path goal wait revision attempt priority)) and o["kind"] == "move" and
+      integer?(o["goal"], 0, grid_count(map) - 1) and integer?(o["wait"], 0, 69) and
+      integer?(o["revision"], 1) and integer?(o["priority"], 0, 100_000) and
+      o["attempt"] in [0, 1] and cells?(o["path"], map)
+  end
+
+  defp grid_count(map), do: map["width"] * map["height"] * div(map["cell_size"], 256) ** 2
+
+  defp cells?(list, map),
+    do:
+      is_list(list) and length(list) <= grid_count(map) and
+        Enum.all?(list, &integer?(&1, 0, grid_count(map) - 1))
+
+  defp mask?(mask, map),
+    do:
+      is_binary(mask) and byte_size(mask) == grid_count(map) and Regex.match?(~r/\A[.#]+\z/, mask)
+
+  defp navigation?(nav, map) do
+    fields?(nav, ~w(revision signature mask search entity_id)) and integer?(nav["revision"], 1) and
+      mask?(nav["mask"], map) and signature?(nav["signature"], map) and
+      integer?(nav["entity_id"], 0) and search?(nav["search"], map) and
+      is_nil(nav["search"]) == (nav["entity_id"] == 0)
+  end
+
+  defp signature?(signature, map) do
+    fields?(signature, ~w(map obstacles)) and signature["map"] == map and
+      is_list(signature["obstacles"]) and length(signature["obstacles"]) <= 1536 and
+      Enum.all?(signature["obstacles"], fn
+        [x, z, size] ->
+          integer?(x, -@safe_integer) and integer?(z, -@safe_integer) and integer?(size, 1, 4096)
+
+        _ ->
+          false
+      end)
+  end
+
+  defp search?(nil, _), do: true
+
+  defp search?(s, map) do
+    count = grid_count(map)
+
+    fields?(s, ~w(goal start astar open parents costs path status expanded mask)) and
+      integer?(s["goal"], 0, count - 1) and integer?(s["start"], 0, count - 1) and
+      search_status?(s, map) and
+      search_table?(s["parents"], count) and search_table?(s["costs"], count) and
+      is_list(s["open"]) and length(s["open"]) <= count * 4 and
+      Enum.all?(s["open"], &integer?(&1, 0, (count * 2 + 1) * (count + 1) * (count + 1)))
+  end
+
+  defp search_status?(s, map),
+    do:
+      s["astar"] == true and s["status"] == "planning" and s["path"] == [] and
+        integer?(s["expanded"], 0, grid_count(map) * 4) and mask?(s["mask"], map)
+
+  defp search_table?(table, count) do
+    is_binary(table) and byte_size(table) == count * 3 and
+      Enum.all?(for(<<a, b, c <- table>>, do: {a, b, c}), fn {a, b, c} ->
+        value = (a - 48) * 4096 + (b - 48) * 64 + c - 48
+        a in 48..111 and b in 48..111 and c in 48..111 and (value == 262_143 or value < count)
+      end)
   end
 
   defp construction?(nil, _), do: true

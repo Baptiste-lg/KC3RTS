@@ -59,7 +59,7 @@ defmodule RTS.Economy do
             "resource_id" => if kind == "deliver" do RTS.Data.get(RTS.Data.get(e, "cargo"), "resource_id") else RTS.Data.get(source, "resource_id") end,
             "phase" => if kind == "deliver" do "deliver" else "gather" end, "progress" => 0}
         end
-        state = RTS.World.put(state, Map.merge(e, %{"task" => task, "order" => void, "status" => void}))
+        state = RTS.World.put(state, RTS.Data.merge(e, %{"task" => task, "order" => void, "status" => void}))
         pending = List.next(pending)
       end
     end
@@ -73,12 +73,12 @@ defmodule RTS.Economy do
   }
   def walk = fn (content, state, e, target) {
     nearest = RTS.Navigation.nearest(content, state, e, [target])
-    RTS.World.put(state, Map.merge(e, %{"order" => RTS.Data.get(nearest, "order"), "status" => if nearest == void do "unreachable" else void end}))
+    RTS.World.put(state, RTS.Data.merge(e, %{"order" => RTS.Data.get(nearest, "order"), "status" => if nearest == void do "unreachable" else "planning" end}))
   }
   def tick = fn (content, state) {
-    pending = List.filter(RTS.Data.get(state, "entities"), fn (e) {
-      if RTS.Data.get(e, "task") != void do e else false end
-    })
+    pending = List.map_filter(RTS.Data.get(state, "entities"), e, do
+      if RTS.Data.get(e, "task") != void do e else void end
+    end)
     while pending != [] do
       e = RTS.World.find(state, RTS.Data.get(List.first(pending), "id"))
       task = RTS.Data.get(e, "task")
@@ -100,7 +100,7 @@ defmodule RTS.Economy do
       definition = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
       source = RTS.Economy.source(content, state, RTS.Data.get(e, "owner"), RTS.Data.get(task, "target_kind"), RTS.Data.get(task, "target_id"))
       if (cargo != void && RTS.Data.get(cargo, "amount") >= RTS.Data.get(definition, "cargo_capacity")) || (source == void && cargo != void) do
-        e = Map.put(e, "task", Map.merge(task, %{"phase" => "deliver", "progress" => 0}))
+        e = RTS.Data.put(e, "task", RTS.Data.merge(task, %{"phase" => "deliver", "progress" => 0}))
         RTS.Economy.deliver(content, state, e)
       else
         if source == void do RTS.Economy.reassign(content, state, e) else
@@ -124,12 +124,12 @@ defmodule RTS.Economy do
     if amount > 0 && RTS.Data.get(task, "target_kind") == "node" do
       node = RTS.Data.get(source, "target")
       if amount > RTS.Data.get(node, "amount") do amount = RTS.Data.get(node, "amount") end
-      state = Map.put(state, "nodes", List.map(RTS.Data.get(state, "nodes"), fn (n) {
-        if RTS.Data.get(n, "id") == RTS.Data.get(node, "id") do Map.put(n, "amount", RTS.Data.get(n, "amount") - amount) else n end
+      state = RTS.Data.put(state, "nodes", List.map(RTS.Data.get(state, "nodes"), fn (n) {
+        if RTS.Data.get(n, "id") == RTS.Data.get(node, "id") do RTS.Data.put(n, "amount", RTS.Data.get(n, "amount") - amount) else n end
       }))
     end
     if amount > 0 do cargo = %{"resource_id" => RTS.Data.get(source, "resource_id"), "amount" => carried + amount} end
-    RTS.World.put(state, Map.merge(e, %{"cargo" => cargo, "task" => Map.put(task, "progress", progress mod 100), "status" => void}))
+    RTS.World.put(state, RTS.Data.merge(e, %{"cargo" => cargo, "task" => RTS.Data.put(task, "progress", progress mod 100), "status" => void}))
   }
   def depots = fn (content, state, slot, resource) {
     List.filter(RTS.Data.get(state, "entities"), fn (e) {
@@ -146,7 +146,7 @@ defmodule RTS.Economy do
       nearby = List.find_if(depots, fn (d) { RTS.Navigation.near?(RTS.Data.get(state, "map"), e, d) })
       if nearby == true do RTS.Economy.deposit(content, state, e) else
         nearest = RTS.Navigation.nearest(content, state, e, depots)
-        RTS.World.put(state, Map.merge(e, %{"order" => RTS.Data.get(nearest, "order"), "status" => if nearest == void do "no_depot" else void end}))
+        RTS.World.put(state, RTS.Data.merge(e, %{"order" => RTS.Data.get(nearest, "order"), "status" => if nearest == void do "no_depot" else "planning" end}))
       end
     end
   }
@@ -157,10 +157,10 @@ defmodule RTS.Economy do
     room = RTS.Data.get(RTS.World.definition(content, resource), "cap") - RTS.Data.get(RTS.Data.get(RTS.World.player(state, slot), "stocks"), resource)
     amount = RTS.Data.get(cargo, "amount")
     if room < amount do amount = ^ room end
-    state = RTS.World.balance(state, slot, Map.put(%{}, resource, amount), 1)
+    state = RTS.World.balance(state, slot, RTS.Data.put(%{}, resource, amount), 1)
     remaining = RTS.Data.get(cargo, "amount") - amount
-    if remaining > 0 do RTS.World.put(state, Map.merge(e, %{"cargo" => Map.put(cargo, "amount", remaining), "status" => "storage_full"})) else
-      e = Map.merge(e, %{"cargo" => void, "task" => Map.merge(RTS.Data.get(e, "task"), %{"phase" => "gather", "progress" => 0}), "status" => void})
+    if remaining > 0 do RTS.World.put(state, RTS.Data.merge(e, %{"cargo" => RTS.Data.put(cargo, "amount", remaining), "status" => "storage_full"})) else
+      e = RTS.Data.merge(e, %{"cargo" => void, "task" => RTS.Data.merge(RTS.Data.get(e, "task"), %{"phase" => "gather", "progress" => 0}), "status" => void})
       RTS.Economy.reassign(content, state, e)
     end
   }
@@ -173,9 +173,9 @@ defmodule RTS.Economy do
       })
       if RTS.Data.get(task, "target_id") == 0 do candidates = [] end
       next = RTS.Navigation.nearest(content, state, e, candidates)
-      if next == void do RTS.World.put(state, Map.merge(e, %{"task" => void, "order" => void, "status" => "depleted"})) else
-        RTS.World.put(state, Map.merge(e, %{"task" => Map.merge(task, %{"target_kind" => "node", "target_id" => RTS.Data.get(RTS.Data.get(next, "target"), "id"), "phase" => "gather", "progress" => 0}),
-          "order" => RTS.Data.get(next, "order"), "status" => void}))
+      if next == void do RTS.World.put(state, RTS.Data.merge(e, %{"task" => void, "order" => void, "status" => "depleted"})) else
+        RTS.World.put(state, RTS.Data.merge(e, %{"task" => RTS.Data.merge(task, %{"target_kind" => "node", "target_id" => RTS.Data.get(RTS.Data.get(next, "target"), "id"), "phase" => "gather", "progress" => 0}),
+          "order" => RTS.Data.get(next, "order"), "status" => "planning"}))
       end
     end
   }
@@ -186,7 +186,7 @@ defmodule RTS.Economy do
     if RTS.Data.get(target, "owner") != RTS.Data.get(e, "owner") ||
        (RTS.Data.get(task, "kind") == "work" && construction == void) ||
        (RTS.Data.get(task, "kind") == "repair" && RTS.Data.get(target, "hp") >= RTS.Data.get(target, "max_hp")) do
-      RTS.World.put(state, Map.merge(e, %{"task" => void, "order" => void, "status" => void}))
+      RTS.World.put(state, RTS.Data.merge(e, %{"task" => void, "order" => void, "status" => void}))
     else
       if (! RTS.Navigation.near?(RTS.Data.get(state, "map"), e, target)) do RTS.Economy.walk(content, state, e, target) else
         if construction != void do RTS.Production.build_tick(content, state, e, target) else RTS.Economy.repair(content, state, e, target) end
@@ -205,13 +205,13 @@ defmodule RTS.Economy do
         state = RTS.World.balance(state, RTS.Data.get(e, "owner"), cost, -1)
         hp = RTS.Data.get(target, "hp") + RTS.Data.get(d, "repair_hp")
         if hp > RTS.Data.get(target, "max_hp") do hp = RTS.Data.get(target, "max_hp") end
-        state = RTS.World.put(state, Map.put(target, "hp", hp))
+        state = RTS.World.put(state, RTS.Data.put(target, "hp", hp))
         progress = 0
       else
         progress = ^ interval
         status = "insufficient_resources"
       end
     end
-    RTS.World.put(state, Map.merge(e, %{"task" => Map.put(task, "progress", progress), "status" => status}))
+    RTS.World.put(state, RTS.Data.merge(e, %{"task" => RTS.Data.put(task, "progress", progress), "status" => status}))
   }
 end

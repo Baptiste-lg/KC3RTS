@@ -11,13 +11,13 @@ export type Task = { kind: "gather"; target_kind: "node" | "farm"; target_id: nu
 export interface Entity extends Point {
   id: number; type_id: string; owner: number; hp: number; max_hp: number;
   construction: { recipe_id: string; remaining_ticks: number; paid: Record<string, number> } | null;
-  order: { kind: "move"; path: number[]; offset: Point } | null;
+  order: { kind: "move"; goal: number } | null;
   task: Task | null; cargo: { resource_id: string; amount: number } | null;
   queue: QueueItem[]; rally: Point | null; status: string | null;
 }
 export interface ResourceNode extends Point { id: number; resource_id: string; amount: number }
 export interface KC3View {
-  protocol_version: 5; ruleset_version: 3; schema_version: 3; content_hash: string; viewer_slot: number;
+  protocol_version: 6; ruleset_version: 4; schema_version: 4; content_hash: string; viewer_slot: number;
   seed: number; tick: number; revision: number; next_job_id: number; next_entity_id: number;
   map: GridMap; entities: Entity[]; nodes: ResourceNode[];
   players: { slot: number; faction_id: string; stocks: Record<string, number>; population: { used: number; reserved: number; cap: number } }[];
@@ -38,7 +38,7 @@ const point = (x: unknown): x is Point => record(x) && integer(x.x, -Number.MAX_
 const unique = (ids: number[]) => new Set(ids).size === ids.length;
 const amounts = (x: unknown): x is Record<string, number> => record(x) && Object.entries(x).every(([id, amount]) => definitions.get(id)?.kind === "resource" && integer(amount, 0, definitions.get(id)!.cap));
 const resourceIds = [...definitions.values()].filter((d) => d.kind === "resource").map((d) => d.id);
-const statuses = new Set([null, "unreachable", "no_depot", "depleted", "storage_full", "insufficient_resources", "population_blocked", "exit_blocked"]);
+const statuses = new Set([null, "planning", "waiting", "blocked", "unreachable", "no_depot", "depleted", "storage_full", "insufficient_resources", "population_blocked", "exit_blocked"]);
 function grid(v: unknown): v is GridMap {
   return record(v) && integer(v.width, 1, 32) && integer(v.height, 1, 32) && integer(v.cell_size, 1, 4096) && point({ x: v.origin_x, z: v.origin_z }) &&
     Array.isArray(v.blocked) && v.blocked.every((c) => integer(c) && c < (v.width as number) * (v.height as number)) && unique(v.blocked);
@@ -55,14 +55,14 @@ function entity(v: unknown, map: GridMap, nextJob: number): v is Entity {
     !integer(v.owner, 1, 2) || !integer(v.max_hp, 1, 1_000_000) || !integer(v.hp, 1, v.max_hp) || !point(v) || !task(v.task) || !statuses.has(v.status as string | null)) return false;
   const c = v.construction, o = v.order, cargo = v.cargo, definition = definitions.get(v.type_id)!;
   if (c !== null && (!record(c) || typeof c.recipe_id !== "string" || definitions.get(c.recipe_id)?.output !== v.type_id || !integer(c.remaining_ticks, 1, definitions.get(c.recipe_id)?.ticks) || !amounts(c.paid))) return false;
-  if (o !== null && (!record(o) || o.kind !== "move" || !point(o.offset) || !Array.isArray(o.path) || o.path.length < 1 || o.path.length > 1024 || !o.path.every((n) => integer(n, 0, map.width * map.height - 1)))) return false;
+  if (o !== null && (!record(o) || o.kind !== "move" || !integer(o.goal, 0, map.width * map.height * (map.cell_size / 256) ** 2 - 1))) return false;
   if (cargo !== null && (!record(cargo) || typeof cargo.resource_id !== "string" || definitions.get(cargo.resource_id)?.kind !== "resource" || !integer(cargo.amount, 1, definition.cargo_capacity))) return false;
   return (v.rally === null || point(v.rally)) && Array.isArray(v.queue) && v.queue.length <= (definition.queue_capacity ?? 0) && v.queue.every((q) => record(q) &&
     integer(q.id, 1, nextJob - 1) && typeof q.recipe_id === "string" && definitions.get(q.recipe_id)?.producer === v.type_id &&
     integer(q.remaining_ticks, 0, definitions.get(q.recipe_id)?.ticks) && typeof q.started === "boolean" && amounts(q.paid));
 }
 export function parseKC3View(v: unknown): KC3View | null {
-  if (!record(v) || v.protocol_version !== 5 || v.ruleset_version !== 3 || v.schema_version !== 3 || v.content_hash !== contentHash || v.viewer_slot !== 1 ||
+  if (!record(v) || v.protocol_version !== 6 || v.ruleset_version !== 4 || v.schema_version !== 4 || v.content_hash !== contentHash || v.viewer_slot !== 1 ||
     !integer(v.seed, 1, 2147483646) || !integer(v.tick) || !integer(v.revision, 1) || !integer(v.next_job_id, 1) || !integer(v.next_entity_id, 1) || !grid(v.map)) return null;
   const map = v.map, nextJob = v.next_job_id;
   if (!Array.isArray(v.entities) || v.entities.length > 512 || !v.entities.every((e) => entity(e, map, nextJob)) || !unique(v.entities.map((e) => e.id)) || !v.entities.every((e) => e.id < (v.next_entity_id as number))) return null;
@@ -86,7 +86,7 @@ export function cellPoint(map: GridMap, cell: number): Point {
 }
 const visualKind = (id: string): "wood" | "stone" | "gold" => id === "core.wood" ? "wood" : id === "core.gold" ? "gold" : "stone";
 function orderFor(e: Entity, view: KC3View): VillagerOrder {
-  if (e.order) return { kind: "move", ...cellPoint(view.map, e.order.path.at(-1)!) };
+  if (e.order) return { kind: "move", ...cellPoint({ ...view.map, width: view.map.width * view.map.cell_size / 256, cell_size: 256 }, e.order.goal) };
   if (e.task?.kind === "gather") return { kind: "gather", id: e.task.target_id };
   return e.task ? { kind: "build", id: e.task.target_id } : null;
 }

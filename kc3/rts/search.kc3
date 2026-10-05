@@ -1,0 +1,109 @@
+# Bounded, deterministic A*. Breadth-first mode is retained for comparison tests.
+# Packed integer priorities sort by f, then descending g, then cell.
+# Searches never consume RNG. The encoding is bounded by the grid size.
+defmodule RTS.Search do
+  def distance = fn (map, a, b) {
+    width = RTS.Data.get(map, "width")
+    dx = a mod width - b mod width
+    dz = a / width - b / width
+    (if dx < 0 do 0 - dx else dx end) + (if dz < 0 do 0 - dz else dz end)
+  }
+  # Three printable base-64 digits per cell avoid copying a tree of Map entries
+  # on every expansion. 262143 is the unseen sentinel; map cells stay below 9216.
+  def read = fn (table, cell) {
+    offset = cell * 3
+    (Str.byte(table, offset) - 48) * 4096 + (Str.byte(table, offset + 1) - 48) * 64 + Str.byte(table, offset + 2) - 48
+  }
+  def write = fn (table, cell, value) {
+    offset = cell * 3
+    digits = (Str) (Character) (48 + value / 4096) + (Str) (Character) (48 + value / 64 mod 64) + (Str) (Character) (48 + value mod 64)
+    Str.slice_cfn(table, (Sw) 0, (Sw) offset) + digits + Str.slice_cfn(table, (Sw) (offset + 3), (Sw) Str.size(table))
+  }
+  # Check the two shortest axis-aligned corridors before allocating A* state.
+  def direct = fn (map, mask, start, goal, horizontal_first) {
+    width = RTS.Data.get(map, "width")
+    dx = goal mod width - start mod width
+    dz = goal / width - start / width
+    horizontal = [if dx < 0 do -1 else 1 end, if dx < 0 do 0 - dx else dx end]
+    vertical = [if dz < 0 do 0 - width else width end, if dz < 0 do 0 - dz else dz end]
+    steps = if horizontal_first do [horizontal, vertical] else [vertical, horizontal] end
+    path = [start]
+    cell = ^ start
+    valid = true
+    List.do(steps, step, do
+      remaining = access(step, [1])
+      while remaining > 0 && valid do
+        cell = cell + access(step, [0])
+        if Str.byte(mask, cell) == 35 do valid = false else path = [cell | path] end
+        remaining = remaining - 1
+      end
+    end)
+    if valid do List.reverse(path) else [] end
+  }
+  def reverse_ties? = fn (map, start, goal) {
+    width = RTS.Data.get(map, "width")
+    goal mod width < start mod width || (goal mod width == start mod width && goal > start)
+  }
+  def priority = fn (map, cell, cost, heuristic, reverse) {
+    stride = RTS.Data.get(map, "width") * RTS.Data.get(map, "height") + 1
+    (cost + heuristic) * stride * stride + (stride - 1 - cost) * stride + if reverse do stride - 1 - cell else cell end
+  }
+  def start = fn (map, start, goal, astar) {
+    table = RTS.Map.repeat("ooo", RTS.Data.get(map, "width") * RTS.Data.get(map, "height"))
+    %{"goal" => goal, "start" => start, "astar" => astar,
+      "open" => [RTS.Search.priority(map, start, 0, if astar do RTS.Search.distance(map, start, goal) else 0 end, RTS.Search.reverse_ties?(map, start, goal))],
+      "parents" => RTS.Search.write(table, start, start), "costs" => RTS.Search.write(table, start, 0),
+      "path" => [], "status" => "planning", "expanded" => 0}
+  }
+  def run = fn (map, mask, search, budget) {
+    search = RTS.Data.share(search)
+    stride = RTS.Data.get(map, "width") * RTS.Data.get(map, "height") + 1
+    goal = RTS.Data.get(search, "goal")
+    start = RTS.Data.get(search, "start")
+    reverse = RTS.Search.reverse_ties?(map, start, goal)
+    astar = RTS.Data.get(search, "astar")
+    open = RTS.Data.get(search, "open")
+    parents = RTS.Data.get(search, "parents")
+    costs = RTS.Data.get(search, "costs")
+    expanded = RTS.Data.get(search, "expanded")
+    path = []
+    status = RTS.Data.get(search, "status")
+    if Str.byte(mask, goal) == 35 do status = "unreachable" end
+    while budget > 0 && status == "planning" do
+      if open == [] do status = "unreachable" else
+        entry = List.first(open)
+        open = List.next(open)
+        cost = stride - 1 - (entry / stride mod stride)
+        cell = entry mod stride
+        if reverse do cell = stride - 1 - cell end
+        if cost == RTS.Search.read(costs, cell) do
+          if cell == goal do
+            path = [cell]
+            while cell != start do
+              cell = RTS.Search.read(parents, cell)
+              path = [cell | path]
+            end
+            status = "ready"
+          else
+            List.do(RTS.Map.neighbors(map, cell), neighbor, do
+              if Str.byte(mask, neighbor) != 35 do
+                old = RTS.Search.read(costs, neighbor)
+                if cost + 1 < old do
+                  costs = RTS.Search.write(costs, neighbor, cost + 1)
+                  parents = RTS.Search.write(parents, neighbor, cell)
+                  h = if astar do RTS.Search.distance(map, neighbor, goal) else 0 end
+                  open = [RTS.Search.priority(map, neighbor, cost + 1, h, reverse) | open]
+                end
+              end
+            end)
+            open = List.sort(open)
+          end
+          expanded = expanded + 1
+        end
+        budget = budget - 1
+      end
+    end
+    Map.merge(RTS.Data.unshare(search), %{"goal" => goal, "start" => start, "astar" => astar, "open" => open,
+      "parents" => parents, "costs" => costs, "path" => path, "status" => status, "expanded" => expanded})
+  }
+end

@@ -56,4 +56,7 @@ cd "$runtime_dir"
 make kc3s json lib_links
 test -x kc3s/kc3s
 test -e lib/kc3/0.1/json.so
+sh "$repo_root/scripts/build-native.sh"
+LD_LIBRARY_PATH="$runtime_dir/libkc3:$runtime_dir/lib/kc3/0.1${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+  "$runtime_dir/kc3s/kc3s" --load "$repo_root/kc3/preload.kc3" --quit
 printf 'KC3RTS_KC3S=%s/kc3s/kc3s\n' "$runtime_dir"

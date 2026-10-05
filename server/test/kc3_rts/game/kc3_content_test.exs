@@ -6,7 +6,7 @@ defmodule KC3RTS.Game.KC3ContentTest do
   @moduletag skip: is_nil(System.get_env("KC3RTS_KC3S"))
   @root Path.expand("../../../..", __DIR__)
 
-  for suite <- ~w(primitives content world navigation economy production construction) do
+  for suite <- ~w(primitives content world navigation search economy production construction) do
     @tag timeout: 120_000
     test "KC3 #{suite} contracts" do
       binary = System.fetch_env!("KC3RTS_KC3S") |> Path.expand()

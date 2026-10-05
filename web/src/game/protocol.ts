@@ -67,7 +67,7 @@ export function parseSnapshot(value: unknown): WorldSnapshot | null {
 }
 
 export function parseGameSnapshot(value: unknown): WorldSnapshot | null {
-  if (record(value) && value.protocol_version === 5) {
+  if (record(value) && value.protocol_version === 6) {
     const view = parseKC3View(value); return view ? presentKC3(view) : null;
   }
   return parseSnapshot(value);

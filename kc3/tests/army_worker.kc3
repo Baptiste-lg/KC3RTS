@@ -1,0 +1,25 @@
+# Test-only fixture injection. All subsequent requests use the production protocol.
+require Buf
+require File
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "army_scenario.kc3")
+defmodule RTS.ArmyPort do
+  def open_fd = cfn Buf* "buf_fd_open_r" (Buf, S32)
+end
+content = RTS.Content.compile(RTS.Core.catalog())
+input = RTS.ArmyPort.open_fd(Buf.new_alloc((Uw) 8192), (S32) File.open_r("/dev/stdin"))
+state = void
+line = Buf.read_line(input)
+while line do
+  request = JSON.from_str(line)
+  result = RTS.Protocol.handle(content, state, request)
+  state = RTS.Data.get(result, "state")
+  if RTS.Data.get(request, "operation") == "new_match" do
+    count = if RTS.Data.get(request, "seed") == 50 do 50 else 100 end
+    state = RTS.ArmyScenario.world(content, state, count)
+    result = RTS.World.result(state, void)
+  end
+  puts(RTS.Wire.encode(RTS.Protocol.reply(content, request, result)))
+  line = Buf.read_line(input)
+end

@@ -236,8 +236,9 @@ defmodule KC3RTS.Game.WorldServer do
   defp world_step(%KC3Match{} = world, ticks), do: KC3Match.step(world, ticks)
   defp world_step(world, ticks), do: World.step(world, ticks)
 
-  defp broadcast_patch(_previous, %{world: %KC3Match{}} = state) do
-    KC3RTSWeb.Endpoint.broadcast(topic(state.game_id), "world_snapshot", view_payload(state))
+  defp broadcast_patch(previous, %{world: %KC3Match{}} = state) do
+    patch = Snapshot.patch(Snapshot.from_world(previous.world), Snapshot.from_world(state.world))
+    KC3RTSWeb.Endpoint.broadcast(topic(state.game_id), "world_patch", patch)
   end
 
   defp broadcast_patch(previous, state) do

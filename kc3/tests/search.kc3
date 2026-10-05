@@ -1,0 +1,37 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+map = %{"width" => 8, "height" => 8, "cell_size" => 256, "origin_x" => 0, "origin_z" => 0, "blocked" => []}
+mask = RTS.Map.repeat(".", 64)
+astar = RTS.Search.run(map, mask, RTS.Search.start(map, 0, 63, true), 128)
+bfs = RTS.Search.run(map, mask, RTS.Search.start(map, 0, 63, false), 128)
+RTS.Check.that("A* returns the same shortest distance as breadth first", List.length(RTS.Data.get(astar, "path")) == List.length(RTS.Data.get(bfs, "path")))
+RTS.Check.that("stable A* tie order expands fewer open-ground cells", RTS.Data.get(astar, "expanded") < RTS.Data.get(bfs, "expanded"))
+partial = RTS.Search.run(map, mask, RTS.Search.start(map, 0, 63, true), 3)
+RTS.Check.that("planner obeys its expansion budget", RTS.Data.get(partial, "expanded") == 3 && RTS.Data.get(partial, "status") == "planning")
+resumed = RTS.Search.run(map, mask, JSON.from_str(RTS.Wire.encode(partial)), 128)
+RTS.Check.that("mid-search serialization preserves the exact result", resumed == astar)
+blocked = RTS.Map.mark(RTS.Map.mark(mask, 1), 8)
+sealed = RTS.Search.run(map, blocked, RTS.Search.start(map, 0, 63, true), 128)
+RTS.Check.that("sealed route terminates with a reason", RTS.Data.get(sealed, "status") == "unreachable")
+seed = 9173
+i = 0
+valid = true
+while i < 30 do
+  seed = RTS.Data.random_next(seed)
+  blocked = ^ mask
+  j = 0
+  while j < 10 do
+    seed = RTS.Data.random_next(seed)
+    cell = 1 + seed mod 62
+    blocked = RTS.Map.mark(blocked, cell)
+    j = j + 1
+  end
+  a = RTS.Search.run(map, blocked, RTS.Search.start(map, 0, 63, true), 256)
+  b = RTS.Search.run(map, blocked, RTS.Search.start(map, 0, 63, false), 256)
+  valid = valid && RTS.Data.get(a, "status") == RTS.Data.get(b, "status") && List.length(RTS.Data.get(a, "path")) == List.length(RTS.Data.get(b, "path"))
+  i = i + 1
+end
+RTS.Check.that("30 seeded obstacles match BFS reachability and shortest distance", valid)
+RTS.Check.that("footprints cannot extend beyond map edges", (! RTS.Map.fits?(map, mask, 63, 128, 128)) && RTS.Map.fits?(map, mask, 64, 128, 128))
+RTS.Check.that("footprint checks include every covered cell", (! RTS.Map.fits?(map, RTS.Map.mark(mask, 1), 256, 128, 256)))

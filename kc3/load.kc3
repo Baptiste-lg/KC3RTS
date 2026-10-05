@@ -1,6 +1,7 @@
 # Module caches must contain no caller-relative paths: pass the entrypoint root.
 defmodule RTS.Loader do
   def core = fn (root) {
+    dlopen("kc3rts.so")
     load!(root + "rts/data.kc3")
     load!(root + "rts/wire.kc3")
     load!(root + "rts/content.kc3")
@@ -9,6 +10,7 @@ defmodule RTS.Loader do
   def world = fn (root) {
     RTS.Loader.core(root)
     load!(root + "rts/map.kc3")
+    load!(root + "rts/search.kc3")
     load!(root + "rts/navigation.kc3")
     load!(root + "rts/world.kc3")
     load!(root + "rts/economy.kc3")

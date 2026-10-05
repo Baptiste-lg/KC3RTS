@@ -3,7 +3,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
   alias KC3RTS.Game.KC3Protocol
   import KC3RTS.KC3Boundary
 
-  @fixture Path.expand("../../../../fixtures/kc3_opening_v3.json", __DIR__)
+  @fixture Path.expand("../../../../fixtures/kc3_opening_v4.json", __DIR__)
            |> File.read!()
            |> Jason.decode!()
 
@@ -30,7 +30,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       %{},
       Map.put(request(1, "tick"), "padding", self()),
       Map.put(request(1, "tick"), "protocol_version", 1),
-      Map.put(request(1, "tick"), "ruleset_version", 4),
+      Map.put(request(1, "tick"), "ruleset_version", 3),
       Map.put(request(1, "tick"), "match_id", "bad/id"),
       Map.put(request(1, "tick"), "match_id", <<255>>),
       Map.put(request(1, "tick"), "request_id", 9_007_199_254_740_992),
@@ -59,13 +59,66 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
              )
   end
 
+  test "navigation snapshots bound grids, footprints and incremental search tables" do
+    count = 1920
+    table = "000" <> String.duplicate("ooo", count - 1)
+
+    search = %{
+      "goal" => 1,
+      "start" => 0,
+      "astar" => true,
+      "open" => [1],
+      "parents" => table,
+      "costs" => table,
+      "path" => [],
+      "status" => "planning",
+      "expanded" => 1,
+      "mask" => String.duplicate(".", count)
+    }
+
+    navigation =
+      Map.merge(@fixture["state"]["navigation"], %{"search" => search, "entity_id" => 2})
+
+    valid = put_in(@fixture, ["state", "navigation"], navigation)
+    assert {:ok, ^valid} = decode(valid)
+
+    for {path, value} <- [
+          {["revision"], 0},
+          {["entity_id"], 0},
+          {["mask"], "."},
+          {["mask"], String.duplicate("?", count)},
+          {["signature", "map"], %{}},
+          {["signature", "obstacles"], [[0, 0, 0]]},
+          {["signature", "obstacles"], [[0]]},
+          {["search", "start"], count},
+          {["search", "goal"], -1},
+          {["search", "astar"], false},
+          {["search", "status"], "ready"},
+          {["search", "path"], [0]},
+          {["search", "expanded"], count * 4 + 1},
+          {["search", "open"], [-1]},
+          {["search", "open"], List.duplicate(0, count * 4 + 1)},
+          {["search", "parents"], "000"},
+          {["search", "costs"], String.duplicate("///", count)},
+          {["search", "costs"], "0NN" <> String.duplicate("ooo", count - 1)}
+        ] do
+      bad = put_in(valid, ["state", "navigation"] ++ path, value)
+      assert {:error, :invalid_worker_reply} = decode(bad), inspect({path, value}, limit: 5)
+    end
+
+    for size <- [0, 255, 257, 4096] do
+      assert {:error, :invalid_worker_reply} =
+               decode(put_in(@fixture, ["state", "map", "cell_size"], size))
+    end
+  end
+
   test "every state domain is validated, including references and duplicate IDs" do
     changes = [
       {["protocol_version"], 1},
       {["protocol_version"], 2.0},
       {["request_id"], 1.0},
       {["state", "schema_version"], 1.0},
-      {["ruleset_version"], 4},
+      {["ruleset_version"], 3},
       {["request_id"], 99},
       {["match_id"], "other"},
       {["content_hash"], String.duplicate("0", 64)},
@@ -73,7 +126,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
       {["reason"], "unknown"},
       {["revision"], 2},
       {["state"], nil},
-      {["state", "schema_version"], 4},
+      {["state", "schema_version"], 3},
       {["state", "seed"], 0},
       {["state", "rng_state"], 0},
       {["state", "tick"], 1.1},
@@ -194,7 +247,7 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
 
     refute KC3Protocol.command_payload?(%{
              "type" => "deliver",
-             "entity_ids" => Enum.to_list(1..17)
+             "entity_ids" => Enum.to_list(1..101)
            })
   end
 

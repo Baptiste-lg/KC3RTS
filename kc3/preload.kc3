@@ -1,0 +1,3 @@
+# Prepare project module caches during setup, before a match is requested.
+load!(__DIR__ + "load.kc3")
+RTS.Loader.world(__DIR__)

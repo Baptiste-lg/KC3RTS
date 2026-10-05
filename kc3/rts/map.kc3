@@ -10,7 +10,7 @@ defmodule RTS.Map do
       resource = if List.has?([38, 93], cell) do "core.food" else
         if List.has?([45, 86], cell) do "core.gold" else
           if cell mod 3 == 0 do "core.stone" else "core.wood" end end end
-      Map.merge(RTS.Map.point(RTS.Map.opening(), cell), %{"id" => cell + 1, "resource_id" => resource, "amount" => 200})
+      RTS.Data.merge(RTS.Map.point(RTS.Map.opening(), cell), %{"id" => cell + 1, "resource_id" => resource, "amount" => 200})
     })
   }
   def cell = fn (map, x, z) {
@@ -42,14 +42,14 @@ defmodule RTS.Map do
     occupied = %{}
     cells = RTS.Data.get(map, "blocked")
     while cells != [] do
-      occupied = Map.put(occupied, (Str) List.first(cells), true)
+      occupied = RTS.Data.put(occupied, (Str) List.first(cells), true)
       cells = List.next(cells)
     end
     nodes = RTS.Data.get(state, "nodes")
     while nodes != [] do
       node = List.first(nodes)
       if RTS.Data.get(node, "amount") > 0 do
-        occupied = Map.put(occupied, (Str) RTS.Map.cell(map, RTS.Data.get(node, "x"), RTS.Data.get(node, "z")), true)
+        occupied = RTS.Data.put(occupied, (Str) RTS.Map.cell(map, RTS.Data.get(node, "x"), RTS.Data.get(node, "z")), true)
       end
       nodes = List.next(nodes)
     end
@@ -58,10 +58,100 @@ defmodule RTS.Map do
       entity = List.first(entities)
       definition = RTS.World.definition(content, RTS.Data.get(entity, "type_id"))
       if RTS.Data.get(definition, "kind") == "building" do
-        occupied = Map.put(occupied, (Str) RTS.Map.cell(map, RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z")), true)
+        occupied = RTS.Data.put(occupied, (Str) RTS.Map.cell(map, RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z")), true)
       end
       entities = List.next(entities)
     end
     occupied
+  }
+  # Navigation uses one-world-unit cells. Rendering/build placement retain the
+  # coarser authoring grid; both derive coordinates from the same map metadata.
+  def grid = fn (map) {
+    scale = RTS.Data.get(map, "cell_size") / 256
+    RTS.Data.merge(map, %{"width" => RTS.Data.get(map, "width") * scale,
+      "height" => RTS.Data.get(map, "height") * scale, "cell_size" => 256})
+  }
+  def repeat = fn (value, count) {
+    result = ""
+    while count > 0 do
+      if count mod 2 == 1 do result = result + value end
+      count = count / 2
+      if count > 0 do value = value + value end
+    end
+    result
+  }
+  def mark = fn (mask, cell) {
+    if cell < 0 || cell >= Str.size(mask) do mask else
+      Str.slice_cfn(mask, (Sw) 0, (Sw) cell) + "#" + Str.slice_cfn(mask, (Sw) (cell + 1), (Sw) Str.size(mask))
+    end
+  }
+  def cells = fn (map, x, z, footprint) {
+    size = RTS.Data.get(map, "cell_size")
+    ox = RTS.Data.get(map, "origin_x")
+    oz = RTS.Data.get(map, "origin_z")
+    width = RTS.Data.get(map, "width")
+    height = RTS.Data.get(map, "height")
+    left = x - footprint / 2 - ox
+    top = z - footprint / 2 - oz
+    right = x + footprint / 2 - 1 - ox
+    bottom = z + footprint / 2 - 1 - oz
+    if left < 0 do left = 0 end
+    if top < 0 do top = 0 end
+    result = []
+    row = top / size
+    while row <= bottom / size && row < height do
+      col = left / size
+      while col <= right / size && col < width do
+        result = [row * width + col | result]
+        col = col + 1
+      end
+      row = row + 1
+    end
+    List.reverse(result)
+  }
+  def fits? = fn (map, mask, x, z, footprint) {
+    half = footprint / 2
+    ox = RTS.Data.get(map, "origin_x")
+    oz = RTS.Data.get(map, "origin_z")
+    size = RTS.Data.get(map, "cell_size")
+    valid = x - half >= ox && z - half >= oz &&
+      x + half <= ox + RTS.Data.get(map, "width") * size &&
+      z + half <= oz + RTS.Data.get(map, "height") * size
+    if valid do
+      List.do(RTS.Map.cells(map, x, z, footprint), cell, do
+        if Str.byte(mask, cell) == 35 do valid = false end
+      end)
+    end
+    valid
+  }
+  def signature = fn (content, state) {
+    obstacles = List.map_filter(RTS.Data.get(state, "nodes"), n, do
+      if RTS.Data.get(n, "amount") > 0 do [RTS.Data.get(n, "x"), RTS.Data.get(n, "z"), RTS.Data.get(RTS.Data.get(state, "map"), "cell_size")] else void end
+    end)
+    List.do(RTS.Data.get(state, "entities"), e, do
+      d = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+      if RTS.Data.get(d, "kind") == "building" && RTS.Data.get(e, "hp") > 0 do
+        obstacles = [[RTS.Data.get(e, "x"), RTS.Data.get(e, "z"), RTS.Data.get(d, "footprint")] | obstacles]
+      end
+    end)
+    %{"map" => RTS.Data.get(state, "map"), "obstacles" => List.sort(obstacles)}
+  }
+  def cache = fn (content, state) {
+    nav = RTS.Data.get(state, "navigation")
+    signature = RTS.Map.signature(content, state)
+    if RTS.Data.get(nav, "signature") == signature do state else
+      map = RTS.Data.get(state, "map")
+      grid = RTS.Map.grid(map)
+      mask = RTS.Map.repeat(".", RTS.Data.get(grid, "width") * RTS.Data.get(grid, "height"))
+      List.do(RTS.Data.get(map, "blocked"), cell, do
+        point = RTS.Map.point(map, cell)
+        List.do(RTS.Map.cells(grid, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), RTS.Data.get(map, "cell_size")), blocked, do mask = RTS.Map.mark(mask, blocked) end)
+      end)
+      List.do(RTS.Data.get(signature, "obstacles"), obstacle, do
+        List.do(RTS.Map.cells(grid, access(obstacle, [0]), access(obstacle, [1]), access(obstacle, [2])), blocked, do mask = RTS.Map.mark(mask, blocked) end)
+      end)
+      RTS.Data.put(state, "navigation", %{"revision" => if nav == void do 1 else RTS.Data.get(nav, "revision") + 1 end,
+        "signature" => signature, "mask" => mask, "search" => void, "entity_id" => 0})
+    end
   }
 end

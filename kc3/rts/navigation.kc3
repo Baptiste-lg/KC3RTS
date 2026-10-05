@@ -1,9 +1,364 @@
-
 defmodule RTS.Navigation do
-  # One reverse BFS per group command, shared by all selected units.
-  # Cells and neighbor iteration have stable order; no PRNG is consumed.
+  def order = fn (goal, revision) {
+    %{"kind" => "move", "goal" => goal, "path" => [], "wait" => 0,
+      "revision" => revision, "attempt" => 0, "priority" => 0}
+  }
+  def command = fn (content, state, slot, command) {
+    ids = RTS.Data.get(command, "entity_ids")
+    if (! RTS.World.selection?(content, state, slot, ids, "move")) do RTS.World.result(state, "invalid_selection") else
+      if RTS.Data.get(command, "type") == "stop" do
+        RTS.World.result(RTS.Navigation.apply(state, ids, %{}), void)
+      else RTS.Navigation.move(content, state, List.sort(ids), command) end
+    end
+  }
+  def move = fn (content, state, ids, command) {
+    x = RTS.Data.get(command, "x")
+    z = RTS.Data.get(command, "z")
+    if (! RTS.Data.integer?(x, -9007199254740991, 9007199254740991)) ||
+       (! RTS.Data.integer?(z, -9007199254740991, 9007199254740991)) do RTS.World.result(state, "invalid_location") else
+      state = RTS.Map.cache(content, state)
+      grid = RTS.Map.grid(RTS.Data.get(state, "map"))
+      nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
+      goal = RTS.Map.cell(grid, x, z)
+      mask = RTS.Data.get(nav, "mask")
+      if goal < 0 || Str.byte(mask, goal) == 35 do RTS.World.result(state, "invalid_location") else
+        footprint = 0
+        center_x = 0
+        center_z = 0
+        units = RTS.Data.share(%{})
+        others = []
+        List.do(RTS.Data.get(state, "entities"), e, do
+          d = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+          size = RTS.Data.get(d, "footprint")
+          id = RTS.Data.get(e, "id")
+          if List.has?(ids, id) do
+            units = RTS.Data.put(units, (Str) id, RTS.Data.share(e))
+            center_x = center_x + RTS.Data.get(e, "x")
+            center_z = center_z + RTS.Data.get(e, "z")
+            if size > footprint do footprint = ^ size end
+          else
+            if RTS.Data.get(d, "kind") == "unit" do
+              others = [[RTS.Data.get(e, "x"), RTS.Data.get(e, "z"), size] | others]
+            end
+          end
+        end)
+        slots = RTS.Navigation.slots(grid, mask, goal, footprint, others, List.length(ids))
+        if List.length(slots) < List.length(ids) do RTS.World.result(state, "no_space") else
+          orders = RTS.Data.share(%{})
+          # Match spatial ordering, with IDs breaking ties, so formations retain
+          # their lanes instead of all crossing toward the first free slot.
+          ranked = List.sort(List.map_filter(ids, id, do
+            e = RTS.Data.get(units, (Str) id)
+            [RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")), id]
+          end))
+          slots = List.sort(slots)
+          width = RTS.Data.get(grid, "width")
+          height = RTS.Data.get(grid, "height")
+          direction_x = if x >= center_x / List.length(ids) do 1 else -1 end
+          direction_z = if z >= center_z / List.length(ids) do 1 else -1 end
+          List.do(ranked, entry, do
+            id = access(entry, [1])
+            cell = List.first(slots)
+            order = RTS.Navigation.order(cell, RTS.Data.get(nav, "revision"))
+            priority = width + height + direction_x * (cell mod width) + direction_z * (cell / width)
+            orders = RTS.Data.put(orders, (Str) id, RTS.Data.put(order, "priority", priority))
+            slots = List.next(slots)
+          end)
+          RTS.World.result(RTS.Navigation.apply(state, ids, orders), void)
+        end
+      end
+    end
+  }
+  def slots = fn (grid, mask, goal, footprint, others, count) {
+    width = RTS.Data.get(grid, "width")
+    height = RTS.Data.get(grid, "height")
+    stride = (footprint * 2 + 255) / 256 + 1
+    result = []
+    side = 1
+    while side * side < count do side = side + 1 end
+    radius = side / 2
+    maximum = goal mod width / stride
+    if (width - 1 - goal mod width) / stride > maximum do maximum = (width - 1 - goal mod width) / stride end
+    if (goal / width) / stride > maximum do maximum = (goal / width) / stride end
+    if (height - 1 - goal / width) / stride > maximum do maximum = (height - 1 - goal / width) / stride end
+    # Fill a compact rectangle first; later rings compensate for obstacles.
+    first = true
+    while List.length(result) < count && radius <= maximum do
+      dz = 0 - radius
+      while dz <= radius do
+        dx = 0 - radius
+        while dx <= radius do
+          included = if first do dx < side - radius && dz < side - radius else
+            dx == (0 - radius) || dx == radius || dz == (0 - radius) || dz == radius end
+          if included do
+            col = goal mod width + dx * stride
+            row = goal / width + dz * stride
+            if col >= 0 && row >= 0 && col < width && row < height && List.length(result) < count do
+              cell = row * width + col
+              p = RTS.Map.point(grid, cell)
+              x = RTS.Data.get(p, "x")
+              z = RTS.Data.get(p, "z")
+              valid = RTS.Map.fits?(grid, mask, x, z, footprint)
+              List.do(others, other, do
+                distance = (footprint + access(other, [2])) / 2
+                dx_other = x - access(other, [0])
+                dz_other = z - access(other, [1])
+                if dx_other < distance && dx_other > (0 - distance) && dz_other < distance && dz_other > (0 - distance) do valid = false end
+              end)
+              if valid do result = [cell | result] end
+            end
+          end
+          dx = dx + 1
+        end
+        dz = dz + 1
+      end
+      radius = radius + 1
+      first = false
+    end
+    List.reverse(result)
+  }
+  def apply = fn (state, ids, orders) {
+    RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
+      id = RTS.Data.get(e, "id")
+      if List.has?(ids, id) do
+        order = RTS.Data.get(orders, (Str) id)
+        RTS.Data.merge(e, %{"order" => order, "task" => void, "status" => if order == void do void else "planning" end})
+      else e end
+    end))
+  }
+  def step = fn (delta, speed) {
+    if delta > speed do speed else if delta < (0 - speed) do 0 - speed else delta end end
+  }
+  def advance = fn (content, grid, entity, horizontal_first) {
+    order = RTS.Data.get(entity, "order")
+    path = RTS.Data.get(order, "path")
+    if order == void || path == [] do entity else
+      target = RTS.Map.point(grid, List.first(path))
+      dx = RTS.Data.get(target, "x") - RTS.Data.get(entity, "x")
+      dz = RTS.Data.get(target, "z") - RTS.Data.get(entity, "z")
+      speed = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(entity, "type_id")), "speed")
+      if dx != 0 && (horizontal_first || dz == 0) do entity = RTS.Data.put(entity, "x", RTS.Data.get(entity, "x") + RTS.Navigation.step(dx, speed)) else
+        entity = RTS.Data.put(entity, "z", RTS.Data.get(entity, "z") + RTS.Navigation.step(dz, speed))
+      end
+      if RTS.Data.get(entity, "x") == RTS.Data.get(target, "x") && RTS.Data.get(entity, "z") == RTS.Data.get(target, "z") do
+        path = List.next(path)
+        # Reaching a waypoint ends this obstruction episode. A later collision
+        # must be allowed its own alternate route, rather than inheriting a
+        # spent retry from an obstacle already passed.
+        entity = RTS.Data.put(entity, "order", if path == [] do void else RTS.Data.merge(order, %{"path" => path, "wait" => 0, "attempt" => 0}) end)
+      end
+      entity
+    end
+  }
+  def near? = fn (map, entity, target) {
+    cell = RTS.Map.cell(map, RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z"))
+    target_cell = RTS.Map.cell(map, RTS.Data.get(target, "x"), RTS.Data.get(target, "z"))
+    cell == target_cell || List.has?(RTS.Map.neighbors(map, target_cell), cell)
+  }
+  def spatial = fn (content, grid, entities) {
+    buckets = RTS.Data.share(%{})
+    List.do(entities, e, do
+      d = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+      if RTS.Data.get(d, "kind") == "unit" do
+        body = RTS.Data.share(%{"id" => RTS.Data.get(e, "id"), "x" => RTS.Data.get(e, "x"), "z" => RTS.Data.get(e, "z"), "size" => RTS.Data.get(d, "footprint")})
+        buckets = RTS.Navigation.reserve(grid, buckets, body, true)
+      end
+    end)
+    buckets
+  }
+  def reserve = fn (grid, buckets, body, add) {
+    List.do(RTS.Map.cells(grid, RTS.Data.get(body, "x"), RTS.Data.get(body, "z"), RTS.Data.get(body, "size")), cell, do
+      key = (Str) cell
+      previous = RTS.Data.get(buckets, key)
+      if previous == void do previous = [] end
+      if add do previous = [body | previous] else
+        previous = List.map_filter(previous, item, do if RTS.Data.get(item, "id") != RTS.Data.get(body, "id") do item else void end end)
+      end
+      buckets = RTS.Data.put(buckets, key, previous)
+    end)
+    buckets
+  }
+  def clear? = fn (grid, buckets, e, size) {
+    valid = true
+    x = RTS.Data.get(e, "x")
+    z = RTS.Data.get(e, "z")
+    id = RTS.Data.get(e, "id")
+    List.do(RTS.Map.cells(grid, x, z, size), cell, do
+      neighbors = RTS.Data.get(buckets, (Str) cell)
+      if neighbors != void do
+        List.do(neighbors, other, do
+          distance = (size + RTS.Data.get(other, "size")) / 2
+          dx = x - RTS.Data.get(other, "x")
+          dz = z - RTS.Data.get(other, "z")
+          if RTS.Data.get(other, "id") != id && dx < distance && dx > (0 - distance) && dz < distance && dz > (0 - distance) do valid = false end
+        end)
+      end
+    end)
+    valid
+  }
+  def planner_mask = fn (content, state, grid, mask, e) {
+    size = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "footprint")
+    # Large units need clearance from both terrain and map edges.
+    if size > 256 do
+      original = ^ mask
+      cell = 0
+      while cell < Str.size(mask) do
+        point = RTS.Map.point(grid, cell)
+        if (! RTS.Map.fits?(grid, original, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), size)) do mask = RTS.Map.mark(mask, cell) end
+        cell = cell + 1
+      end
+    end
+    if RTS.Data.get(RTS.Data.get(e, "order"), "attempt") > 0 do
+      List.do(RTS.Data.get(state, "entities"), other, do
+        if RTS.Data.get(other, "id") != RTS.Data.get(e, "id") do
+          d = RTS.World.definition(content, RTS.Data.get(other, "type_id"))
+          if RTS.Data.get(d, "kind") == "unit" do
+            clearance = RTS.Data.get(d, "footprint") + size
+            ox = RTS.Data.get(other, "x")
+            oz = RTS.Data.get(other, "z")
+            List.do(RTS.Map.cells(grid, ox, oz, clearance), cell, do
+              point = RTS.Map.point(grid, cell)
+              dx = RTS.Data.get(point, "x") - ox
+              dz = RTS.Data.get(point, "z") - oz
+              if dx * 2 < clearance && dx * 2 > (0 - clearance) && dz * 2 < clearance && dz * 2 > (0 - clearance) do
+                mask = RTS.Map.mark(mask, cell)
+              end
+            end)
+          end
+        end
+      end)
+    end
+    mask
+  }
+  def entry = fn (grid, mask, e) {
+    current = RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))
+    best = ^ current
+    distance = 9007199254740991
+    List.do([current | RTS.Map.neighbors(grid, current)], cell, do
+      if Str.byte(mask, cell) != 35 do
+        point = RTS.Map.point(grid, cell)
+        dx = RTS.Data.get(point, "x") - RTS.Data.get(e, "x")
+        dz = RTS.Data.get(point, "z") - RTS.Data.get(e, "z")
+        candidate = (if dx < 0 do 0 - dx else dx end) + (if dz < 0 do 0 - dz else dz end)
+        if candidate < distance do
+          best = ^ cell
+          distance = ^ candidate
+        end
+      end
+    end)
+    best
+  }
+  def plan = fn (content, state, grid) {
+    nav = RTS.Data.get(state, "navigation")
+    budget = 128
+    jobs = 8
+    pending = List.sort(List.map_filter(RTS.Data.get(state, "entities"), e, do
+      order = RTS.Data.get(e, "order")
+      if RTS.Data.get(e, "status") == "planning" && order != void do
+        id = RTS.Data.get(e, "id")
+        [if RTS.Data.get(nav, "entity_id") == id do -100000 else 0 - RTS.Data.get(order, "priority") end, id]
+      else void end
+    end))
+    List.do(pending, entry, do
+      if budget > 0 && jobs > 0 do
+        jobs = jobs - 1
+        id = access(entry, [1])
+        e = RTS.World.find(state, id)
+        order = RTS.Data.get(e, "order")
+        search = RTS.Data.get(nav, "search")
+        before = 0
+        if RTS.Data.get(nav, "entity_id") != id || search == void do
+          mask = RTS.Navigation.planner_mask(content, state, grid, RTS.Data.get(nav, "mask"), e)
+          start = RTS.Navigation.entry(grid, mask, e)
+          goal = RTS.Data.get(order, "goal")
+          path = RTS.Search.direct(grid, mask, start, goal, true)
+          if path == [] do path = RTS.Search.direct(grid, mask, start, goal, false) end
+          search = if path != [] do %{"expanded" => 0, "status" => "ready", "path" => path} else
+            RTS.Data.put(RTS.Search.start(grid, start, goal, true), "mask", mask) end
+        else before = RTS.Data.get(search, "expanded") end
+        if RTS.Data.get(search, "status") == "planning" do
+          search = RTS.Search.run(grid, RTS.Data.get(search, "mask"), search, budget)
+        end
+        used = RTS.Data.get(search, "expanded") - before
+        budget = budget - used - 1
+        status = RTS.Data.get(search, "status")
+        if status == "planning" do
+          nav = RTS.Data.merge(nav, %{"search" => search, "entity_id" => id})
+          budget = 0
+        else
+          nav = RTS.Data.merge(nav, %{"search" => void, "entity_id" => 0})
+          if status == "ready" do
+            path = RTS.Data.get(search, "path")
+            # The unit may be between centers after a collision. Moving back to
+            # its start center would trap it against the unit following behind.
+            if List.length(path) > 1 && List.first(path) == RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")) do path = List.next(path) end
+            e = RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "path", path), "status" => void})
+          else
+            if RTS.Data.get(order, "attempt") > 0 do
+              e = RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "path", []), "status" => "waiting"})
+            else e = RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "unreachable"}) end
+          end
+          state = RTS.World.put(state, e)
+        end
+      end
+    end)
+    RTS.Data.put(state, "navigation", nav)
+  }
+  def tick = fn (content, state) {
+    state = RTS.Map.cache(content, state)
+    active = false
+    List.do(RTS.Data.get(state, "entities"), e, do
+      if RTS.Data.get(e, "order") != void do active = true end
+    end)
+    if (! active) do state else
+    nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
+    revision = RTS.Data.get(nav, "revision")
+    grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(state, "map")))
+    state = RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
+      order = RTS.Data.get(e, "order")
+      if order != void && RTS.Data.get(order, "revision") != revision do
+        RTS.Data.merge(e, %{"order" => RTS.Data.put(RTS.Navigation.order(RTS.Data.get(order, "goal"), revision), "priority", RTS.Data.get(order, "priority")), "status" => "planning"})
+      else e end
+    end))
+    state = RTS.Navigation.plan(content, state, grid)
+    buckets = RTS.Navigation.spatial(content, grid, RTS.Data.get(state, "entities"))
+    mask = RTS.Data.get(nav, "mask")
+    entities = List.map_filter(RTS.Data.get(state, "entities"), e, do
+      order = RTS.Data.get(e, "order")
+      if RTS.Data.get(e, "status") == "waiting" && order != void do
+        waited = RTS.Data.get(order, "wait") + 1
+        if waited >= 70 do RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "blocked"}) else
+          RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "wait", waited), "status" => if waited mod 10 == 0 do "planning" else "waiting" end}) end
+      else if order == void || RTS.Data.get(order, "path") == [] do e else
+        next = RTS.Navigation.advance(content, grid, e, true)
+        size = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "footprint")
+        clear = RTS.Map.fits?(grid, mask, RTS.Data.get(next, "x"), RTS.Data.get(next, "z"), size) && RTS.Navigation.clear?(grid, buckets, next, size)
+        if (! clear) do
+          next = RTS.Navigation.advance(content, grid, e, false)
+          clear = RTS.Map.fits?(grid, mask, RTS.Data.get(next, "x"), RTS.Data.get(next, "z"), size) && RTS.Navigation.clear?(grid, buckets, next, size)
+        end
+        if clear do
+          body = RTS.Data.share(%{"id" => RTS.Data.get(e, "id"), "x" => RTS.Data.get(e, "x"), "z" => RTS.Data.get(e, "z"), "size" => size})
+          buckets = RTS.Navigation.reserve(grid, buckets, body, false)
+          body = RTS.Data.share(%{"id" => RTS.Data.get(e, "id"), "x" => RTS.Data.get(next, "x"), "z" => RTS.Data.get(next, "z"), "size" => size})
+          buckets = RTS.Navigation.reserve(grid, buckets, body, true)
+          next
+        else
+          waited = RTS.Data.get(order, "wait") + 1
+          if waited >= 70 do RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "blocked"}) else
+            if waited >= 20 && RTS.Data.get(order, "attempt") == 0 do
+              RTS.Data.merge(e, %{"order" => RTS.Data.merge(order, %{"path" => [], "wait" => waited, "attempt" => 1}), "status" => "planning"})
+            else RTS.Data.put(e, "order", RTS.Data.put(order, "wait", waited)) end
+          end
+        end
+      end
+      end
+    end)
+    RTS.Data.put(state, "entities", entities)
+    end
+  }
   def field = fn (map, occupied, goal) {
-    parents = Map.put(%{}, (Str) goal, goal)
+    parents = RTS.Data.put(%{}, (Str) goal, goal)
     frontier = [goal]
     while frontier != [] do
       next = []
@@ -14,7 +369,7 @@ defmodule RTS.Navigation do
           neighbor = List.first(neighbors)
           key = (Str) neighbor
           if RTS.Data.get(occupied, key) != true && RTS.Data.get(parents, key) == void do
-            parents = Map.put(parents, key, cell)
+            parents = RTS.Data.put(parents, key, cell)
             next = [neighbor | next]
           end
           neighbors = List.next(neighbors)
@@ -25,96 +380,6 @@ defmodule RTS.Navigation do
     end
     parents
   }
-  def selection? = fn (content, state, slot, ids) {
-    RTS.World.selection?(content, state, slot, ids, "move")
-  }
-  def command = fn (content, state, slot, command) {
-    ids = RTS.Data.get(command, "entity_ids")
-    if (! RTS.Navigation.selection?(content, state, slot, ids)) do RTS.World.result(state, "invalid_selection") else
-      if RTS.Data.get(command, "type") == "stop" do
-        RTS.World.result(RTS.Navigation.apply(state, ids, %{}), void)
-      else RTS.Navigation.move(content, state, List.sort(ids), command) end
-    end
-  }
-  def move = fn (content, state, ids, command) {
-    map = RTS.Data.get(state, "map")
-    x = RTS.Data.get(command, "x")
-    z = RTS.Data.get(command, "z")
-    if (! RTS.Data.integer?(x, -9007199254740991, 9007199254740991)) ||
-       (! RTS.Data.integer?(z, -9007199254740991, 9007199254740991)) do RTS.World.result(state, "invalid_location") else
-      goal = RTS.Map.cell(map, x, z)
-      occupied = RTS.Map.occupied(content, state)
-      if goal < 0 || RTS.Data.get(occupied, (Str) goal) == true do RTS.World.result(state, "invalid_location") else
-        field = RTS.Navigation.field(map, occupied, goal)
-        reachable = List.all?(ids, fn (id) {
-          e = RTS.Data.find(RTS.Data.get(state, "entities"), "id", id)
-          RTS.Data.get(field, (Str) RTS.Map.cell(map, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))) != void
-        })
-        if reachable do
-          orders = RTS.Navigation.orders(state, ids, field, goal)
-          RTS.World.result(RTS.Navigation.apply(state, ids, orders), void)
-        else RTS.World.result(state, "unreachable") end
-      end
-    end
-  }
-  def orders = fn (state, ids, field, goal) {
-    map = RTS.Data.get(state, "map")
-    result = %{}
-    position = 0
-    while ids != [] do
-      id = List.first(ids)
-      e = RTS.Data.find(RTS.Data.get(state, "entities"), "id", id)
-      cell = RTS.Map.cell(map, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))
-      path = [cell]
-      while cell != goal do
-        cell = RTS.Data.get(field, (Str) cell)
-        path = [cell | path]
-      end
-      # Keep each member in its own lane within traversed cells. P04 adds local avoidance.
-      offset = %{"x" => (position mod 4) * 256 - 384, "z" => (position / 4) * 256 - 384}
-      result = Map.put(result, (Str) id, %{"kind" => "move", "path" => List.reverse(path), "offset" => offset})
-      position = position + 1
-      ids = List.next(ids)
-    end
-    result
-  }
-  def apply = fn (state, ids, orders) {
-    state = Map.put(state, "entities", List.map(RTS.Data.get(state, "entities"), fn (e) {
-      if List.has?(ids, RTS.Data.get(e, "id")) do Map.merge(e, %{"order" => RTS.Data.get(orders, (Str) RTS.Data.get(e, "id")), "task" => void, "status" => void}) else e end
-    }))
-    state
-  }
-  def advance = fn (content, map, entity) {
-    order = RTS.Data.get(entity, "order")
-    if order == void do entity else
-      path = RTS.Data.get(order, "path")
-      target = RTS.Map.point(map, List.first(path))
-      offset = RTS.Data.get(order, "offset")
-      dx = RTS.Data.get(target, "x") + RTS.Data.get(offset, "x") - RTS.Data.get(entity, "x")
-      dz = RTS.Data.get(target, "z") + RTS.Data.get(offset, "z") - RTS.Data.get(entity, "z")
-      speed = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(entity, "type_id")), "speed")
-      # Axis-aligned waypoints and integer steps prevent rounding drift.
-      if dx != 0 do entity = Map.put(entity, "x", RTS.Data.get(entity, "x") + RTS.Navigation.step(dx, speed)) else
-        entity = Map.put(entity, "z", RTS.Data.get(entity, "z") + RTS.Navigation.step(dz, speed))
-      end
-      if RTS.Data.get(entity, "x") == RTS.Data.get(target, "x") + RTS.Data.get(offset, "x") &&
-         RTS.Data.get(entity, "z") == RTS.Data.get(target, "z") + RTS.Data.get(offset, "z") do
-        path = List.next(path)
-        entity = Map.put(entity, "order", if path == [] do void else Map.put(order, "path", path) end)
-      end
-      entity
-    end
-  }
-  def step = fn (delta, speed) {
-    if delta > speed do speed else if delta < (0 - speed) do 0 - speed else delta end end
-  }
-  def near? = fn (map, entity, target) {
-    cell = RTS.Map.cell(map, RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z"))
-    target_cell = RTS.Map.cell(map, RTS.Data.get(target, "x"), RTS.Data.get(target, "z"))
-    cell == target_cell || List.has?(RTS.Map.neighbors(map, target_cell), cell)
-  }
-  # A forward field can choose the nearest reachable delivery point, not merely
-  # the closest building in a straight line. Ties retain stable candidate order.
   def target_route = fn (map, field, start, target) {
     cell = RTS.Map.cell(map, RTS.Data.get(target, "x"), RTS.Data.get(target, "z"))
     candidates = RTS.Map.neighbors(map, cell)
@@ -148,7 +413,13 @@ defmodule RTS.Navigation do
         candidates = List.next(candidates)
       end
     end
+    if result != void do
+      grid = RTS.Map.grid(RTS.Data.get(state, "map"))
+      last = List.last(RTS.Data.get(RTS.Data.get(result, "order"), "path"))
+      point = RTS.Map.point(RTS.Data.get(state, "map"), last)
+      goal = RTS.Map.cell(grid, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"))
+      result = RTS.Data.put(result, "order", RTS.Navigation.order(goal, RTS.Data.get(RTS.Data.get(state, "navigation"), "revision")))
+    end
     result
   }
-
 end

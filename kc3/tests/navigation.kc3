@@ -1,8 +1,19 @@
 load!(__DIR__ + "check.kc3")
 load!(__DIR__ + "../load.kc3")
 RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "scenario.kc3")
 content = RTS.Content.compile(RTS.Core.catalog())
 world = RTS.World.opening(content, "navigation", 1234, ["kiln.concord", "lantern.synod"])
+grid = RTS.Map.grid(RTS.Data.get(world, "map"))
+centered = RTS.World.entity(content, "kiln.concord", 99, "core.worker", 1, -3712, -3968, void)
+RTS.Check.that("route entry retains the nearest cell rather than its distance",
+  RTS.Navigation.entry(grid, RTS.Map.repeat(".", 1920), centered) == 201)
+retrying = Map.merge(centered, %{"x" => -3776, "order" => Map.merge(RTS.Navigation.order(202, 0),
+  %{"path" => [201, 202], "wait" => 25, "attempt" => 1})})
+progressed = RTS.Navigation.advance(content, grid, retrying, true)
+RTS.Check.that("reaching a detour waypoint restores the retry for a later obstruction",
+  RTS.Data.get(RTS.Data.get(progressed, "order"), "attempt") == 0 &&
+  RTS.Data.get(RTS.Data.get(progressed, "order"), "wait") == 0)
 move = %{"type" => "move", "entity_ids" => [2, 3], "x" => 1536, "z" => 512}
 result = RTS.World.command(content, world, 1, move)
 RTS.Check.that("owned move accepted", RTS.Data.get(result, "accepted"))
@@ -38,4 +49,37 @@ RTS.Check.that("route completes", RTS.Data.get(RTS.Data.find(RTS.Data.get(rerout
 RTS.Check.that("selection order does not affect simulation", result == RTS.World.command(content, world, 1,
   Map.put(move, "entity_ids", [3, 2])))
 sealed = Map.put(world, "map", Map.put(RTS.Data.get(world, "map"), "blocked", [55, 66, 68, 79]))
-RTS.Check.that("unreachable group rejects without mutation", RTS.World.command(content, sealed, 1, move) == RTS.World.result(sealed, "unreachable"))
+sealed_result = RTS.World.command(content, sealed, 1, move)
+RTS.Check.that("unreachable orders enter bounded planning", RTS.Data.get(sealed_result, "accepted"))
+planning = RTS.World.tick(content, RTS.Data.get(sealed_result, "state"))
+RTS.Check.that("sealed target leaves an incremental search in progress",
+  RTS.Data.get(RTS.Data.get(planning, "navigation"), "entity_id") > 0)
+planner_id = RTS.Data.get(RTS.Data.get(planning, "navigation"), "entity_id")
+replaced = RTS.Data.get(RTS.World.command(content, planning, 1,
+  %{"type" => "move", "entity_ids" => [planner_id], "x" => -1536, "z" => -1536}), "state")
+RTS.Check.that("a replacement order discards the old incremental search",
+  RTS.Data.get(RTS.Data.get(replaced, "navigation"), "search") == void)
+cancelled = RTS.Data.get(RTS.World.command(content, planning, 1,
+  %{"type" => "stop", "entity_ids" => [planner_id]}), "state")
+RTS.Check.that("stop discards the cancelled incremental search",
+  RTS.Data.get(RTS.Data.get(cancelled, "navigation"), "search") == void)
+sealed_done = RTS.Scenario.ticks(content, RTS.Data.get(sealed_result, "state"), 30)
+RTS.Check.that("unreachable orders terminate with a reason", RTS.Data.get(RTS.World.find(sealed_done, 2), "order") == void && RTS.Data.get(RTS.World.find(sealed_done, 2), "status") == "unreachable")
+checkpoint = RTS.Scenario.ticks(content, RTS.Data.get(result, "state"), 5)
+packed_checkpoint = RTS.World.pack(checkpoint)
+RTS.Check.that("shared and decoded state advance with identical canonical values",
+  RTS.Wire.encode(RTS.World.tick(content, packed_checkpoint)) == RTS.Wire.encode(RTS.World.tick(content, checkpoint)))
+RTS.Check.that("a shared tick retains its storage without changing its input",
+  type(RTS.World.tick(content, packed_checkpoint)) == RTS.Shared && RTS.World.unpack(packed_checkpoint) == checkpoint)
+restored = JSON.from_str(RTS.Wire.encode(checkpoint))
+RTS.Check.that("mid-route restoration preserves exact subsequent state", RTS.Scenario.ticks(content, checkpoint, 20) == RTS.Scenario.ticks(content, restored, 20))
+RTS.Check.that("navigation leaves the PRNG untouched", RTS.Data.get(rerouted, "rng_state") == RTS.Data.get(world, "rng_state"))
+nav_revision = RTS.Data.get(RTS.Data.get(world, "navigation"), "revision")
+RTS.Check.that("unchanged walkability reuses its cache", RTS.Map.cache(content, world) == world)
+nodes = RTS.Data.get(world, "nodes")
+changed = Map.put(world, "nodes", [Map.put(List.first(nodes), "amount", 1) | List.next(nodes)])
+RTS.Check.that("partial depletion preserves walkability revision", RTS.Data.get(RTS.Data.get(RTS.Map.cache(content, changed), "navigation"), "revision") == nav_revision)
+changed = Map.put(world, "nodes", [Map.put(List.first(nodes), "amount", 0) | List.next(nodes)])
+RTS.Check.that("depletion invalidates cached walkability", RTS.Data.get(RTS.Data.get(RTS.Map.cache(content, changed), "navigation"), "revision") == nav_revision + 1)
+changed = RTS.World.remove(world, 1)
+RTS.Check.that("demolition invalidates cached walkability", RTS.Data.get(RTS.Data.get(RTS.Map.cache(content, changed), "navigation"), "revision") == nav_revision + 1)

@@ -64,7 +64,7 @@ defmodule KC3RTS.Game.KC3Match do
       Map.merge(
         %{
           "protocol_version" => 2,
-          "ruleset_version" => 3,
+          "ruleset_version" => 4,
           "content_hash" => KC3Protocol.content_hash(),
           "request_id" => System.unique_integer([:positive, :monotonic]),
           "match_id" => match.match_id,

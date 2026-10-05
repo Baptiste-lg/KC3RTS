@@ -204,7 +204,7 @@ defmodule RTS.Content do
     error = void
     if (! RTS.Content.fields?(catalog, ["schema_version", "ruleset_version", "rules", "definitions"])) ||
        (! RTS.Data.integer?(RTS.Data.get(catalog, "schema_version"), 3, 3)) ||
-       (! RTS.Data.integer?(RTS.Data.get(catalog, "ruleset_version"), 3, 3)) ||
+       (! RTS.Data.integer?(RTS.Data.get(catalog, "ruleset_version"), 4, 4)) ||
        (! RTS.Content.rules?(RTS.Data.get(catalog, "rules"))) ||
        (! RTS.Data.list?(RTS.Data.get(catalog, "definitions"), 2048)) || RTS.Data.get(catalog, "definitions") == [] do
       error = "invalid_catalog"
@@ -245,7 +245,7 @@ defmodule RTS.Content do
     List.do(RTS.Data.get(catalog, "definitions"), d, do
       index = Map.put(index, RTS.Data.get(d, "id"), RTS.Data.share(d))
     end)
-    RTS.Data.share(%{"index" => index,
+    RTS.Data.share(%{"index" => RTS.Data.share(index),
       "content_hash" => RTS.Data.get(RTS.Content.public(catalog), "content_hash"),
       "resources" => List.filter(RTS.Data.get(catalog, "definitions"), fn (d) {
         if RTS.Data.get(d, "kind") == "resource" do RTS.Data.get(d, "id") else false end

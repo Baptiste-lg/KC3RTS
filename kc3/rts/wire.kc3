@@ -27,14 +27,18 @@ defmodule RTS.Wire do
     end
     "\"" + List.join(List.reverse(parts), "") + "\""
   }
+  def entry = fn (key, value) { RTS.Wire.string(key) + ":" + RTS.Wire.reference_encode(value) }
+  def native_encode = cfn Tag "kc3rts_encode" (Tag, Result)
   def encode = fn (value) {
+    encoded = RTS.Wire.native_encode(value)
+    if encoded == void do exit(2) else encoded end
+  }
+  def reference_encode = fn (value) {
     if type(value) == Map do
-      "{" + List.map_join(Map.keys(value), key, ",", do
-        RTS.Wire.string(key) + ":" + RTS.Wire.encode(RTS.Data.get(value, key))
-      end) + "}"
+      "{" + List.join(Map.map_to_list(value, RTS.Wire.entry), ",") + "}"
     else
       if type(value) == List do
-        "[" + List.map_join(value, item, ",", do RTS.Wire.encode(item) end) + "]"
+        "[" + List.map_join(value, item, ",", do RTS.Wire.reference_encode(item) end) + "]"
       else
         if type(value) == Str do
           RTS.Wire.string(value)

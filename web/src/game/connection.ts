@@ -1,3 +1,5 @@
+import { applyKC3Patch } from "./kc3_patch";
+import { presentKC3 } from "./kc3_view";
 import type { KC3Command } from "./kc3_view";
 import { Socket, type Channel } from "phoenix";
 import { parseGameSnapshot as parseSnapshot, type GameCommand, type WorldSnapshot } from "./protocol";
@@ -13,7 +15,7 @@ export type ClientCommand = GameCommand | KC3Command;
 export interface GameClient { connect(): void; command(command: ClientCommand): void; disconnect(): void }
 interface GuestMatch { match_id: string; token: string }
 const kc3Mode = (): boolean => typeof location !== "undefined" && new URLSearchParams(location.search).get("mode") === "kc3";
-const sessionKey = (): string => kc3Mode() ? "kc3rts-kc3-match-v3" : "kc3rts-guest-match-v1";
+const sessionKey = (): string => kc3Mode() ? "kc3rts-kc3-match-v4" : "kc3rts-guest-match-v1";
 function storedMatch(): string | null {
   try { return typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(sessionKey()); }
   catch { return null; }
@@ -146,6 +148,12 @@ export class GameConnection implements GameClient {
   }
   private acceptPatch(channel: Channel, payload: unknown): void {
     if (this.channel !== channel || !this.currentWorld || typeof payload !== "object" || payload === null) return;
+    if (this.currentWorld.kc3) {
+      if ("revision" in payload && Number.isSafeInteger(payload.revision) && (payload.revision as number) <= this.revision) return;
+      const view = applyKC3Patch(this.currentWorld.kc3, payload);
+      if (!view) { this.requestResync(channel); return; }
+      this.revision = view.revision; this.currentWorld = presentKC3(view); this.handlers.onSnapshot(this.currentWorld); return;
+    }
     if (!("protocol_version" in payload) || payload.protocol_version !== 3 ||
       !("ruleset_version" in payload) || payload.ruleset_version !== 2 ||
       !("base_revision" in payload) || !Number.isSafeInteger(payload.base_revision) ||

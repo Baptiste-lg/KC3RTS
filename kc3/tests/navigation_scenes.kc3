@@ -1,0 +1,42 @@
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "scenario.kc3")
+load!(__DIR__ + "army_scenario.kc3")
+content = RTS.Content.compile(RTS.Core.catalog())
+base = RTS.ArmyScenario.world(content, RTS.Scenario.world(content), 9)
+# A hall forces both direct corridors to use a detour.
+hall = RTS.Scenario.add(content, base, "core.hall", -3456, -3712)
+world = RTS.ArmyScenario.move(content, hall, RTS.ArmyScenario.ids(base), 3072, -3712)
+RTS.ArmyScenario.run(content, world, "hall", 400)
+# One four-unit-wide opening through a solid wall.
+blocked = [6, 18, 30, 42, 54, 78, 90, 102, 114]
+corridor = Map.put(base, "map", Map.put(RTS.Data.get(base, "map"), "blocked", blocked))
+world = RTS.ArmyScenario.move(content, corridor, RTS.ArmyScenario.ids(base), 3072, 512)
+RTS.ArmyScenario.run(content, world, "corridor", 500)
+# Two groups cross in open terrain, with separate formations at opposite ends.
+world = RTS.ArmyScenario.world(content, RTS.Scenario.world(content), 8)
+world = Map.put(world, "entities", List.map_filter(RTS.Data.get(world, "entities"), e, do
+  if RTS.Data.get(e, "id") > 4 do Map.merge(e, %{"x" => 3968 + ((RTS.Data.get(e, "id") - 5) mod 2) * 256, "z" => -3968 + ((RTS.Data.get(e, "id") - 5) / 2) * 256}) else e end
+end))
+world = RTS.ArmyScenario.move(content, world, [1, 2, 3, 4], 4096, -3840)
+world = RTS.ArmyScenario.move(content, world, [5, 6, 7, 8], -5376, -3840)
+RTS.ArmyScenario.run(content, world, "opposing", 500)
+# A new footprint invalidates a route while units are moving.
+world = RTS.ArmyScenario.move(content, base, RTS.ArmyScenario.ids(base), 3072, -3712)
+world = RTS.Scenario.ticks(content, world, 5)
+world = RTS.Map.cache(content, RTS.Scenario.add(content, world, "core.house", -3456, -3712))
+RTS.ArmyScenario.run(content, world, "new_building", 400)
+# A resource disappears while a detour is being planned.
+world = Map.put(base, "nodes", [%{"id" => 1, "resource_id" => "core.wood", "x" => -3456, "z" => -3712, "amount" => 1}])
+world = RTS.ArmyScenario.move(content, world, RTS.ArmyScenario.ids(base), 3072, -3712)
+world = RTS.Scenario.ticks(content, world, 5)
+world = RTS.Map.cache(content, Map.put(world, "nodes", []))
+RTS.ArmyScenario.run(content, world, "depletion", 400)
+# A catalog-only larger, slower unit travels with an escort.
+cart = Map.merge(RTS.Data.unshare(RTS.World.definition(content, "core.worker")), %{"id" => "test.cart", "footprint" => 512, "speed" => 32, "capabilities" => ["move"]})
+catalog = RTS.Core.catalog()
+large = RTS.Content.compile(Map.put(catalog, "definitions", [cart | RTS.Data.get(catalog, "definitions")]))
+world = RTS.ArmyScenario.world(large, RTS.Scenario.world(large), 4)
+world = RTS.Scenario.add(large, world, "test.cart", -4736, -3200)
+world = RTS.ArmyScenario.move(large, world, [1, 2, 3, 4, 5], 3072, 0)
+RTS.ArmyScenario.run(large, world, "caravan", 600)

@@ -18,6 +18,8 @@ while line do
   request = JSON.from_str(line)
   result = RTS.Protocol.handle(content, state, request)
   state = RTS.Data.get(result, "state")
-  puts(RTS.Wire.encode(RTS.Protocol.reply(content, request, result)))
+  encoded = RTS.Wire.encode(RTS.Protocol.reply(content, request, result))
+  if Str.size(encoded) > 262144 do exit(2) end
+  puts(encoded)
   line = Buf.read_line(input)
 end

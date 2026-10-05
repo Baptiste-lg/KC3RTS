@@ -7,7 +7,7 @@ defmodule KC3RTS.KC3Boundary do
   def request(id, operation, revision \\ 0) do
     %{
       "protocol_version" => 2,
-      "ruleset_version" => 3,
+      "ruleset_version" => 4,
       "request_id" => id,
       "content_hash" => @document["content_hash"],
       "match_id" => "port-test",

@@ -1,5 +1,5 @@
 import { Color, DoubleSide, MathUtils, Mesh, MeshBasicMaterial, Plane, PlaneGeometry, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from "three";
-import { definitions } from "../game/kc3_view";
+import { buildingAt, validBuildSite } from "../game/placement";
 import type { GroundPoint, WorldSnapshot } from "../game/protocol";
 import { createIsometricCamera, resizeIsometricCamera } from "./camera";
 import { SceneModel } from "./scene_model";
@@ -99,13 +99,7 @@ export class WorldView {
   private validBuildSite(point: GroundPoint): boolean {
     const view = this.snapshot.kc3;
     if (view) {
-      const map = view.map, x = point.x * 256, z = point.z * 256;
-      const col = Math.floor((x - map.origin_x) / map.cell_size), row = Math.floor((z - map.origin_z) / map.cell_size);
-      return col >= 0 && row >= 0 && col < map.width && row < map.height && !map.blocked.includes(row * map.width + col) &&
-        !view.nodes.some((n) => n.amount > 0 && n.x === x && n.z === z) && view.entities.every((e) => {
-          const distance = (this.placementFootprint * 256 + (definitions.get(e.type_id)?.footprint ?? 0)) / 2;
-          return Math.abs(e.x - x) >= distance || Math.abs(e.z - z) >= distance;
-        });
+      return validBuildSite(view, { x: point.x * 256, z: point.z * 256 }, this.placementFootprint * 256);
     }
     if (Math.abs(point.x) > this.mapRadius - 3 || Math.abs(point.z) > this.mapRadius - 3) return false;
     const distance = (target: GroundPoint): number => Math.hypot(target.x - point.x, target.z - point.z);
@@ -147,6 +141,11 @@ export class WorldView {
         if (gap < 13 && (!closest || gap < closest.gap)) closest = { id: unit.id, gap };
       }
       if (closest) return { kind: "villager", id: closest.id };
+    }
+    const groundPoint = this.ground(x, y);
+    if (this.snapshot.kc3 && groundPoint) {
+      const building = buildingAt(this.snapshot.kc3, { x: groundPoint.x * 256, z: groundPoint.z * 256 });
+      if (building !== null) return { kind: "building", id: building };
     }
     if (hits.length) return hits[0];
     const rect = this.renderer.domElement.getBoundingClientRect();

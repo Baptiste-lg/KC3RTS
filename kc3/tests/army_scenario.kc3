@@ -1,0 +1,48 @@
+# Deterministic fixture construction, shared by native scenes and real-port tests.
+defmodule RTS.ArmyScenario do
+  def world = fn (content, world, count) {
+    entities = []
+    side = 1
+    while side * side < count do side = side + 1 end
+    i = 1
+    while i <= count do
+      entities = [RTS.World.entity(content, "kiln.concord", i, "core.worker", 1,
+        -5504 + ((i - 1) mod side) * 256, -3968 + ((i - 1) / side) * 256, void) | entities]
+      i = i + 1
+    end
+    RTS.Map.cache(content, Map.merge(RTS.World.unpack(world), %{"entities" => List.reverse(entities), "nodes" => [], "next_entity_id" => count + 1}))
+  }
+  def move = fn (content, world, ids, x, z) {
+    result = RTS.World.command(content, world, 1, %{"type" => "move", "entity_ids" => ids, "x" => x, "z" => z})
+    if (! RTS.Data.get(result, "accepted")) do puts("FAIL: fixture order rejected"); exit(1) end
+    RTS.Data.get(result, "state")
+  }
+  def ids = fn (world) {
+    List.map_filter(RTS.Data.get(world, "entities"), e, do
+      if RTS.Data.get(e, "type_id") == "core.worker" do RTS.Data.get(e, "id") else void end
+    end)
+  }
+  def frame = fn (content, world, scene) {
+    units = List.map_filter(RTS.Data.get(world, "entities"), e, do
+      definition = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+      if RTS.Data.get(definition, "kind") == "unit" do
+        [RTS.Data.get(e, "id"), RTS.Data.get(e, "x"), RTS.Data.get(e, "z"), RTS.Data.get(definition, "footprint"), RTS.Data.get(e, "order") != void, RTS.Data.get(e, "status")]
+      else void end
+    end)
+    puts(RTS.Wire.encode(%{"scene" => scene, "tick" => RTS.Data.get(world, "tick"), "units" => units,
+      "obstacles" => RTS.Data.get(RTS.Data.get(RTS.Data.get(world, "navigation"), "signature"), "obstacles"), "map" => RTS.Data.get(world, "map")}))
+  }
+  def run = fn (content, world, scene, limit) {
+    rng = RTS.Data.get(world, "rng_state")
+    active = true
+    RTS.ArmyScenario.frame(content, world, scene)
+    while active && RTS.Data.get(world, "tick") < limit do
+      world = RTS.World.tick(content, world)
+      RTS.ArmyScenario.frame(content, world, scene)
+      active = false
+      List.do(RTS.Data.get(world, "entities"), e, do if RTS.Data.get(e, "order") != void do active = true end end)
+    end
+    if RTS.Data.get(world, "rng_state") != rng do puts("FAIL: navigation changed RNG"); exit(1) end
+    world
+  }
+end

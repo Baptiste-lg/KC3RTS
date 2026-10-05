@@ -1,4 +1,4 @@
-# KC3 economy field trial
+# KC3 economy and navigation field trial
 
 Install the pinned runtime with `sh scripts/setup-kc3.sh`, start Phoenix with
 `cd server && mix run --no-halt`, and start Vite with `cd web && npm run dev`
@@ -7,7 +7,7 @@ in another terminal. Open `http://127.0.0.1:5173/?mode=kc3`.
 KC3 owns movement, gathering, delivery, construction, repair, production,
 population and refunds. Phoenix owns guest identity, transport, sequencing
 and process lifetime. The default network game and static Pages build still
-use the legacy simulation. Combat, larger armies and the default KC3 cutover
+use the legacy simulation. Combat, army-scale performance and the default KC3 cutover
 remain subsequent packages. A failed worker makes the trial unavailable.
 
 ## Playing the economy slice
@@ -66,9 +66,12 @@ are test-only. Tribe trade, technologies and treaty effects are validated data;
 their gameplay handlers are future work. The two playable factions currently
 share economy mechanics and have distinct visual motifs.
 
-## Worker protocol 2 / KC3 ruleset 3 / state schema 3
+## Worker protocol 2 / KC3 ruleset 4 / state schema 4
 
-Cold source parsing has a 90-second initialization budget; active match requests
+Setup builds the small native storage/JSON bridge and preloads project modules.
+After editing KC3 sources, run `kc3/preload.kc3` with the pinned interpreter
+before starting matches: cold parsing can exceed the initialization budget on
+the development host. Worker initialization has a 90-second budget; active match requests
 retain their two-second limit. One persistent worker owns one match. Input and output are UTF-8 JSON lines.
 Every request contains `protocol_version`, `ruleset_version`, `content_hash`,
 `request_id`, `match_id`, `expected_revision` and `operation`.
@@ -95,8 +98,10 @@ state unchanged. Accepted mutations advance the revision once. Coordinates
 use 256 integer units per world unit. PRNG is Park–Miller, multiplier 48271.
 Outcome remains `ongoing` until combat and victory rules are implemented.
 
-Browser protocol 5 snapshots retain canonical entities, tasks, paid queues,
-cargo, nodes and population. `web/src/game/kc3_view.ts` validates them and
+Browser protocol 6 snapshots retain canonical entities, tasks, paid queues,
+cargo, nodes and population, but omit private planner state and route steps.
+Revision-linked patches transmit changed fields, additions and removals;
+a missing base revision triggers resynchronization. `web/src/game/kc3_view.ts` validates them and
 provides a temporary one-way bridge into the existing scene. Context buttons
 are generated from faction recipes; the browser does not advance game rules.
 
@@ -110,10 +115,19 @@ the worker; transport retries retain their original command result.
 ## Map, timing and pixel scale
 
 The current scenario is a fixed 12×10 field with four-unit cells and finite
-resource nodes. One reverse BFS serves a 1–16-unit move selection. Economy
-routing chooses reachable approach cells; construction, depletion and destruction
-change occupied cells. Group lanes are deterministic. Local avoidance, route
-caching, terrain generation and army-scale measurements belong to P04.
+resource nodes. Navigation subdivides it into 48×40 one-unit cells and assigns
+unique formation destinations to selections of up to 100 units. Two direct
+corridors are checked before bounded deterministic A* (128 expansions and at
+most eight planning jobs per tick). A BFS comparator remains in the tests.
+Cached static occupancy is invalidated by construction, destruction and depletion.
+Local footprint reservations prevent overlap. A stalled unit tries another route
+after 20 ticks and terminates after 70 ticks without reaching a waypoint;
+reaching a waypoint renews that obstruction budget. Stop or replacement discards
+an obsolete incremental search. Economy routing chooses reachable approach cells.
+
+P04 remains in progress: collision/arrival checks and the timing budget are
+separate acceptance criteria. Supporting 100 selected IDs is not a claim that
+100 units currently run at ten ticks per second.
 
 Idle ticks skip occupancy work. Population is refreshed on mutations that
 change its ledger: commands, deaths, completed buildings and spawned units.
@@ -144,6 +158,28 @@ cargo, farms, construction interruption, repair, queue limits, blocked exits,
 population loss and exact refunds. Phoenix tests additionally exercise real
 ports, malformed messages, retries, channel identity and worker failure.
 
+For the army-scale scenarios, run the same environment with
+`mix test test/kc3_rts/game/kc3_navigation_test.exs --seed 0` without other
+heavy work. The 50/100-unit cases measure command acknowledgement, p95/p99
+tick round trips (including worker transport and validation), maximum browser
+patch size, exact final destinations and collision at every tick. Six additional
+scenes cover a hall, corridor, opposing groups, a new building, depletion and
+a larger convoy unit. Timing is reported, not silently treated as a passing
+performance gate: the targets remain p95 <20 ms, p99 <50 ms and ack <200 ms.
+`kc3/profile_navigation.kc3` provides phase samples to locate costs; it is not
+a substitute for the real-port benchmark.
+
+Development OpenBSD host, 5 October 2026, full integration run with coverage
+(`--seed 0`, pinned runtime, no concurrent heavy tests):
+
+| Units | Arrival | Ticks | Ack | Tick p95 / p99 | Largest patch |
+| --- | --- | --- | --- | --- | --- |
+| 50 | 100% | 184 | 432 ms | 118 / 136 ms | 1365 bytes |
+| 100 | 100% | 192 | 1857 ms | 347 / 454 ms | 2352 bytes |
+
+Both cases pass collision, arrival deadline and bandwidth checks, but **fail
+the timing targets**. These are development measurements, not supported capacity.
+
 `cd web && npm run smoke:kc3` exercises visible selection, group recall,
 move/stop, queueing, cancellation, food delivery, worker spawn and house
 completion through the browser→Phoenix→KC3 path. `KC3RTS_SMOKE_SCREENSHOT`
@@ -171,6 +207,9 @@ Runtime regressions cover integer promotion, boolean grouping, callback-valued
 `List.find_if`, canonical hashing, UTF-8/control escaping, list serialization
 and loading from another working directory. Loaders receive the entrypoint
 root explicitly so parse caches cannot retain a caller's path. The pinned
-native JSON writer lacks List support; `rts/wire.kc3` supplies the integer-only
-encoder. Generated `.kc3c` parse caches are ignored. The pin logs long-string
+native JSON writer lacks List support; `native/data.c` supplies the bounded,
+integer-only encoder and immutable Map/`RTS.Shared` access primitives through
+`rts/data.kc3` and `rts/wire.kc3`. Shared storage is internal: serialized and
+restored worlds keep identical canonical values. Gameplay decisions remain in
+KC3. Generated `.kc3c` parse caches are ignored. The pin logs long-string
 diagnostics to stderr; stdout is reserved for replies.

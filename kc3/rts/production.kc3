@@ -8,16 +8,20 @@ defmodule RTS.Production do
     end
   }
   def site? = fn (content, state, definition, point) {
-    map = RTS.Data.get(state, "map")
-    cell = RTS.Map.cell(map, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"))
-    cell >= 0 && RTS.Data.get(RTS.Map.occupied(content, state), (Str) cell) != true &&
-      List.all?(RTS.Data.get(state, "entities"), fn (e) {
-        distance = (RTS.Data.get(definition, "footprint") + RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "footprint")) / 2
-        dx = RTS.Data.get(point, "x") - RTS.Data.get(e, "x")
-        dz = RTS.Data.get(point, "z") - RTS.Data.get(e, "z")
-        dx >= distance || dx <= (0 - distance) || dz >= distance || dz <= (0 - distance)
-      })
+    cached = RTS.Map.cache(content, state)
+    grid = RTS.Map.grid(RTS.Data.get(state, "map"))
+    mask = RTS.Data.get(RTS.Data.get(cached, "navigation"), "mask")
+    footprint = RTS.Data.get(definition, "footprint")
+    valid = RTS.Map.fits?(grid, mask, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), footprint)
+    List.do(RTS.Data.get(state, "entities"), e, do
+      distance = (footprint + RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "footprint")) / 2
+      dx = RTS.Data.get(point, "x") - RTS.Data.get(e, "x")
+      dz = RTS.Data.get(point, "z") - RTS.Data.get(e, "z")
+      if RTS.Data.get(e, "hp") > 0 && dx < distance && dx > (0 - distance) && dz < distance && dz > (0 - distance) do valid = false end
+    end)
+    valid
   }
+
   def produce = fn (content, state, slot, command) {
     recipe = RTS.World.definition(content, RTS.Data.get(command, "recipe_id"))
     producer = RTS.World.find(state, RTS.Data.get(command, "entity_id"))
@@ -61,8 +65,8 @@ defmodule RTS.Production do
       if building do state = RTS.Production.foundation(content, state, producer, recipe, point) else
         id = RTS.Data.get(state, "next_job_id")
         job = %{"id" => id, "recipe_id" => RTS.Data.get(recipe, "id"), "remaining_ticks" => RTS.Data.get(recipe, "ticks"), "started" => false, "paid" => RTS.Data.get(recipe, "cost")}
-        state = RTS.World.put(state, Map.put(producer, "queue", List.append_one(RTS.Data.get(producer, "queue"), job)))
-        state = Map.put(state, "next_job_id", id + 1)
+        state = RTS.World.put(state, RTS.Data.put(producer, "queue", List.append_one(RTS.Data.get(producer, "queue"), job)))
+        state = RTS.Data.put(state, "next_job_id", id + 1)
       end
     end
     RTS.World.result(state, reason)
@@ -73,9 +77,9 @@ defmodule RTS.Production do
     construction = %{"recipe_id" => RTS.Data.get(recipe, "id"), "remaining_ticks" => RTS.Data.get(recipe, "ticks"), "paid" => RTS.Data.get(recipe, "cost")}
     building = RTS.World.entity(content, RTS.Data.get(player, "faction_id"), id, RTS.Data.get(recipe, "output"),
       RTS.Data.get(worker, "owner"), RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), construction)
-    state = Map.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), building))
-    state = Map.put(state, "next_entity_id", id + 1)
-    RTS.World.put(state, Map.merge(worker, %{"order" => void, "status" => void, "task" => %{"kind" => "work", "target_id" => id, "progress" => 0}}))
+    state = RTS.Data.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), building))
+    state = RTS.Data.put(state, "next_entity_id", id + 1)
+    RTS.World.put(state, RTS.Data.merge(worker, %{"order" => void, "status" => void, "task" => %{"kind" => "work", "target_id" => id, "progress" => 0}}))
   }
   def build_tick = fn (content, state, worker, building) {
     construction = RTS.Data.get(building, "construction")
@@ -85,10 +89,10 @@ defmodule RTS.Production do
     gain = maximum * (total - remaining + 1) / total - maximum * (total - remaining) / total
     hp = RTS.Data.get(building, "hp") + gain
     if hp > maximum do hp = ^ maximum end
-    building = Map.merge(building, %{"hp" => hp, "construction" => if remaining == 1 do void else Map.put(construction, "remaining_ticks", remaining - 1) end})
+    building = RTS.Data.merge(building, %{"hp" => hp, "construction" => if remaining == 1 do void else RTS.Data.put(construction, "remaining_ticks", remaining - 1) end})
     state = RTS.World.put(state, building)
     if remaining == 1 do
-      worker = Map.merge(worker, %{"task" => void, "status" => void})
+      worker = RTS.Data.merge(worker, %{"task" => void, "status" => void})
       state = RTS.World.refresh(content, RTS.World.put(state, worker))
     end
     state
@@ -98,7 +102,7 @@ defmodule RTS.Production do
     keys = Map.keys(paid)
     while keys != [] do
       key = List.first(keys)
-      result = Map.put(result, key, RTS.Data.get(paid, key) * numerator / denominator)
+      result = RTS.Data.put(result, key, RTS.Data.get(paid, key) * numerator / denominator)
       keys = List.next(keys)
     end
     result
@@ -130,7 +134,7 @@ defmodule RTS.Production do
         queue = List.filter(RTS.Data.get(e, "queue"), fn (entry) {
           if RTS.Data.get(entry, "id") != RTS.Data.get(job, "id") do entry else false end
         })
-        state = RTS.World.put(state, Map.merge(e, %{"queue" => queue, "status" => void}))
+        state = RTS.World.put(state, RTS.Data.merge(e, %{"queue" => queue, "status" => void}))
       end
     end
     RTS.World.result(state, reason)
@@ -144,16 +148,16 @@ defmodule RTS.Production do
       if (! RTS.Data.integer?(x, -9007199254740991, 9007199254740991)) || (! RTS.Data.integer?(z, -9007199254740991, 9007199254740991)) do reason = "invalid_location" else
         cell = RTS.Map.cell(RTS.Data.get(state, "map"), x, z)
         if cell < 0 || RTS.Data.get(RTS.Map.occupied(content, state), (Str) cell) == true do reason = "invalid_location" else
-          state = RTS.World.put(state, Map.put(e, "rally", %{"x" => x, "z" => z}))
+          state = RTS.World.put(state, RTS.Data.put(e, "rally", %{"x" => x, "z" => z}))
         end
       end
     end
     RTS.World.result(state, reason)
   }
   def tick = fn (content, state) {
-    pending = List.filter(RTS.Data.get(state, "entities"), fn (e) {
-      if RTS.Data.get(e, "queue") != [] do e else false end
-    })
+    pending = List.map_filter(RTS.Data.get(state, "entities"), e, do
+      if RTS.Data.get(e, "queue") != [] do e else void end
+    end)
     while pending != [] do
       e = RTS.World.find(state, RTS.Data.get(List.first(pending), "id"))
       if RTS.Data.get(e, "queue") != [] && RTS.Data.get(e, "construction") == void do
@@ -168,15 +172,15 @@ defmodule RTS.Production do
     job = List.first(queue)
     remaining = RTS.Data.get(job, "remaining_ticks")
     if remaining > 0 do remaining = remaining - 1 end
-    job = Map.merge(job, %{"remaining_ticks" => remaining, "started" => true})
-    e = Map.merge(e, %{"queue" => [job | List.next(queue)], "status" => void})
+    job = RTS.Data.merge(job, %{"remaining_ticks" => remaining, "started" => true})
+    e = RTS.Data.merge(e, %{"queue" => [job | List.next(queue)], "status" => void})
     state = RTS.World.put(state, e)
     if remaining == 0 do
       recipe = RTS.World.definition(content, RTS.Data.get(job, "recipe_id"))
       output = RTS.World.definition(content, RTS.Data.get(recipe, "output"))
       pop = RTS.World.population(content, state, RTS.Data.get(e, "owner"))
       if RTS.Data.get(pop, "used") + RTS.Data.get(output, "population") > RTS.Data.get(pop, "cap") do
-        state = RTS.World.put(state, Map.put(e, "status", "population_blocked"))
+        state = RTS.World.put(state, RTS.Data.put(e, "status", "population_blocked"))
       else
         map = RTS.Data.get(state, "map")
         exits = RTS.Map.neighbors(map, RTS.Map.cell(map, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")))
@@ -184,7 +188,7 @@ defmodule RTS.Production do
           candidate = RTS.Map.point(map, cell)
           if RTS.Production.site?(content, state, output, candidate) do candidate else false end
         })
-        if point == false do state = RTS.World.put(state, Map.put(e, "status", "exit_blocked")) else
+        if point == false do state = RTS.World.put(state, RTS.Data.put(e, "status", "exit_blocked")) else
           state = RTS.Production.spawn(content, state, e, output, point)
         end
       end
@@ -196,13 +200,13 @@ defmodule RTS.Production do
     slot = RTS.Data.get(building, "owner")
     player = RTS.World.player(state, slot)
     unit = RTS.World.entity(content, RTS.Data.get(player, "faction_id"), id, RTS.Data.get(output, "id"), slot, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), void)
-    state = Map.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), unit))
-    state = Map.put(state, "next_entity_id", id + 1)
-    state = RTS.World.put(state, Map.merge(building, %{"queue" => List.next(RTS.Data.get(building, "queue")), "status" => void}))
+    state = RTS.Data.put(state, "entities", List.append_one(RTS.Data.get(state, "entities"), unit))
+    state = RTS.Data.put(state, "next_entity_id", id + 1)
+    state = RTS.World.put(state, RTS.Data.merge(building, %{"queue" => List.next(RTS.Data.get(building, "queue")), "status" => void}))
     state = RTS.World.refresh(content, state)
     rally = RTS.Data.get(building, "rally")
     if rally != void do
-      result = RTS.Navigation.command(content, state, slot, Map.merge(rally, %{"type" => "move", "entity_ids" => [id]}))
+      result = RTS.Navigation.command(content, state, slot, RTS.Data.merge(rally, %{"type" => "move", "entity_ids" => [id]}))
       if RTS.Data.get(result, "accepted") do state = RTS.Data.get(result, "state") end
     end
     state

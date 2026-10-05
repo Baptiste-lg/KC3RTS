@@ -130,7 +130,7 @@ defmodule KC3RTSWeb.GameChannelTest do
 
     %{"match_id" => id, "token" => token} = Phoenix.ConnTest.json_response(conn, 201)
 
-    assert {:ok, %{world: %{"entities" => entities, "protocol_version" => 5}}, socket} =
+    assert {:ok, %{world: %{"entities" => entities, "protocol_version" => 6}}, socket} =
              socket(KC3RTSWeb.UserSocket, nil, %{match_id: id, token: token})
              |> subscribe_and_join(KC3RTSWeb.GameChannel, "game:" <> id)
 
@@ -143,7 +143,7 @@ defmodule KC3RTSWeb.GameChannelTest do
 
     assert_reply(reference, :error, %{reason: "invalid_selection"}, 5000)
     reference = command(socket, %{"type" => "move", "entity_ids" => [2], "x" => 1536, "z" => 512})
-    assert_reply(reference, :ok, %{world: %{"protocol_version" => 5}}, 5000)
+    assert_reply(reference, :ok, %{world: %{"protocol_version" => 6}}, 5000)
     [{pid, _}] = Registry.lookup(KC3RTS.GameRegistry, id)
     worker = :sys.get_state(pid).world.worker
     Port.close(:sys.get_state(worker).port)

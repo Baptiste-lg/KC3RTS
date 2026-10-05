@@ -1,3 +1,4 @@
+dlopen("kc3rts.so")
 load!(__DIR__ + "check.kc3")
 load!(__DIR__ + "../rts/data.kc3")
 load!(__DIR__ + "../rts/wire.kc3")
@@ -33,3 +34,25 @@ RTS.Check.that("plain Unicode string fast path", RTS.Wire.encode("Éclat") == "\
 shared = RTS.Data.share(%{"id" => "test.unit", "hp" => 40})
 RTS.Check.that("shared definitions keep map lookup semantics", RTS.Data.get(shared, "hp") == 40 && RTS.Data.get(shared, "missing") == void)
 RTS.Check.that("shared values retain exact maps", RTS.Data.unshare(shared) == %{"id" => "test.unit", "hp" => 40})
+RTS.Check.that("shared wrapping is idempotent", RTS.Data.share(shared) == shared)
+RTS.Check.that("missing and non-map reads are void", RTS.Data.get(%{}, "absent") == void && RTS.Data.get(void, "x") == void && RTS.Data.get(42, "x") == void)
+nested = RTS.Data.share(%{"array" => [1, %{"x" => 2}], "empty" => void})
+RTS.Check.that("native accessor copies nested values with canonical semantics", RTS.Data.get(nested, "array") == [1, %{"x" => 2}] && RTS.Data.get(nested, "empty") == void)
+samples = [void, false, true, 0, -9007199254740991, 9007199254740991, "Échoppe\n\u0000", [1, %{"z" => [], "a" => [false, void]}]]
+List.do(samples, sample, do RTS.Check.that("native codec matches reference bytes", RTS.Wire.native_encode(sample) == RTS.Wire.reference_encode(sample)) end)
+RTS.Check.that("native codec rejects unsupported or unsafe types", RTS.Wire.native_encode(1.5) == void && RTS.Wire.native_encode(9007199254740992) == void && RTS.Wire.native_encode(-9007199254740992) == void && RTS.Wire.native_encode(:symbol) == void && RTS.Wire.native_encode(%{symbol: 1}) == void)
+large = "x"
+i = 0
+while i < 22 do large = large + large; i = i + 1 end
+RTS.Check.that("native codec bounds allocation while supporting large catalogs", RTS.Wire.native_encode(large) == void && Str.size(RTS.Wire.native_encode(Str.slice(large, 0, 4194302))) == 4194304)
+deep = []
+i = 0
+while i < 66 do deep = [deep]; i = i + 1 end
+RTS.Check.that("native codec bounds recursion", RTS.Wire.native_encode(deep) == void)
+changed = RTS.Data.put(shared, "hp", 70)
+merged = RTS.Data.merge(shared, %{"hp" => 80, "new" => [1, 2]})
+RTS.Check.that("shared updates preserve previous values and ownership", RTS.Data.get(shared, "hp") == 40 && RTS.Data.get(changed, "hp") == 70 && RTS.Data.get(merged, "hp") == 80 && RTS.Data.get(merged, "new") == [1, 2])
+RTS.Check.that("shared and plain updates have identical values", RTS.Data.unshare(merged) == Map.merge(RTS.Data.unshare(shared), %{"hp" => 80, "new" => [1, 2]}))
+RTS.Check.that("shared storage has the same canonical wire representation",
+  RTS.Wire.native_encode(%{"nested" => [shared, nested]}) ==
+  RTS.Wire.reference_encode(%{"nested" => [RTS.Data.unshare(shared), RTS.Data.unshare(nested)]}))

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import fixture from "../../../fixtures/kc3_opening_v3.json";
+import fixture from "../../../fixtures/kc3_opening_v4.json";
 import { parseKC3View, type Entity } from "../game/kc3_view";
 import { contextActions, contextOrder, describeEntity, EconomyPanel } from "./economy_panel";
-const opening = () => parseKC3View({ ...structuredClone(fixture.state), protocol_version: 5, ruleset_version: 3, viewer_slot: 1 })!;
+const opening = () => parseKC3View({ ...structuredClone(fixture.state), protocol_version: 6, ruleset_version: 4, viewer_slot: 1 })!;
 describe("catalog-driven economy commands", () => {
   it("offers a paid worker queue at the hall and every allowed building at a worker", () => {
     const view = opening();
