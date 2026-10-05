@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, audit-gameplay]
     tags: ["v*"]
   pull_request:
     branches: [main]
