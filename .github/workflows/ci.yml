@@ -83,12 +83,12 @@ jobs:
           if sh scripts/setup-kc3.sh >"$setup_log" 2>&1; then
             cat "$setup_log"
           else
-            cat "$setup_log"
             details=$(tail -n 40 "$setup_log")
             details=${details//'%'/'%25'}
             details=${details//$'\r'/'%0D'}
             details=${details//$'\n'/'%0A'}
             printf '::error title=KC3 setup failed::%s\n' "$details"
+            cat "$setup_log"
             exit 1
           fi
       - name: Check generated KC3 catalog
