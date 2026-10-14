@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { smokeFailureAnnotation } from "./smoke_report.mjs";
 
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
@@ -141,6 +142,8 @@ const STATE = `(() => ({
   enemyHp: Number(document.getElementById("enemy-hp")?.textContent),
   tick: document.getElementById("tick")?.textContent,
   notice: document.getElementById("notice")?.textContent,
+  selection: document.getElementById("selection")?.textContent,
+  selectionDetail: document.getElementById("selection-detail")?.textContent,
   mapSeed: Number(document.getElementById("map-seed")?.textContent),
   recruitEnabled: !document.getElementById("recruit")?.disabled
 }))()`;
@@ -377,13 +380,14 @@ try {
   }
 } catch (error) {
   console.error(error);
-  if (process.env.GITHUB_ACTIONS === "true") {
-    const message = String(error).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
-    console.error(`::error title=Browser smoke failure::${message}`);
-  }
+  let failedState = null;
   if (devtools) {
-    try { console.error("Browser state:", await devtools.evaluate(STATE)); } catch { /* tab closed */ }
+    try {
+      failedState = await devtools.evaluate(STATE);
+      console.error("Browser state:", failedState);
+    } catch { /* tab closed */ }
   }
+  if (process.env.GITHUB_ACTIONS === "true") console.error(smokeFailureAnnotation(error, failedState));
   for (const process of processes) console.error(`${process.name} log:\n${process.logs()}`);
   process.exitCode = 1;
 } finally {
