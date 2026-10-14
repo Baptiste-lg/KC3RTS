@@ -287,7 +287,7 @@ defmodule RTS.Navigation do
     end))
     state = RTS.Navigation.plan(content, state, grid)
     layout = RTS.Map.layout(grid)
-    spatial = RTS.Spatial.prepare(content, layout, RTS.Data.get(state, "entities"))
+    spatial = RTS.Spatial.prepare(content, layout, state)
     buckets = RTS.Data.get(spatial, "index")
     rows = RTS.Data.get(spatial, "rows")
     mask = RTS.Data.get(nav, "mask")

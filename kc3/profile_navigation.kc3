@@ -4,6 +4,20 @@ load!(__DIR__ + "load.kc3")
 RTS.Loader.world(__DIR__)
 load!(__DIR__ + "tests/army_scenario.kc3")
 defmodule RTS.NavigationProfile do
+  # Previous cache API, retained for paired measurements on identical input.
+  def restore_copy = fn (saved, layout, entities) {
+    if RTS.Data.get(saved, "layout") == layout && RTS.Data.get(saved, "entities") == entities do saved else void end
+  }
+  def prepare_copy = fn (content, layout, entities) {
+    cache = RTS.Data.get(content, "spatial_cache")
+    saved = Facts.first_with_tags(cache, :latest, :spatial, ?, fn (fact) { fact.object })
+    restored = void
+    if saved != void do
+      Facts.remove_tags(cache, :latest, :spatial, saved)
+      restored = RTS.NavigationProfile.restore_copy(saved, layout, entities)
+    end
+    if restored != void do restored else RTS.Spatial.build(content, layout, entities) end
+  }
   # Pre-fast-path implementation, retained only for paired diagnostics.
   def cover_scan = fn ({width, height, ox, oz, size}, x, z, footprint) {
     half = footprint / 2
@@ -61,13 +75,13 @@ RTS.NavigationProfile.sample("tick", fn () { RTS.World.tick(content, world) })
 RTS.NavigationProfile.sample("pack", fn () { RTS.World.pack(world) })
 RTS.NavigationProfile.sample("occupancy", fn () { RTS.Map.cache(content, packed) })
 RTS.NavigationProfile.sample("planner", fn () { RTS.Navigation.plan(content, packed, grid) })
-RTS.NavigationProfile.sample("spatial", fn () { RTS.Spatial.prepare(content, layout, RTS.Data.get(packed, "entities")) })
+RTS.NavigationProfile.sample("spatial", fn () { RTS.Spatial.prepare(content, layout, packed) })
 RTS.NavigationProfile.sample("navigation", fn () { RTS.Navigation.tick(content, packed) })
 RTS.NavigationProfile.sample("economy", fn () { RTS.Economy.tick(content, packed) })
 RTS.NavigationProfile.sample("production", fn () { RTS.Production.tick(content, packed) })
 RTS.NavigationProfile.sample("unpack", fn () { RTS.World.unpack(packed) })
 RTS.NavigationProfile.sample("encode", fn () { RTS.Wire.encode(world) })
-spatial = RTS.Spatial.prepare(content, layout, RTS.Data.get(packed, "entities"))
+spatial = RTS.Spatial.prepare(content, layout, packed)
 buckets = RTS.Data.get(spatial, "index")
 rows = RTS.Data.get(spatial, "rows")
 {unit, speed, body, cells} = List.first(rows)
@@ -114,7 +128,26 @@ RTS.NavigationProfile.sample("spatial_build", fn () {
   RTS.Spatial.build(content, layout, RTS.Data.get(packed, "entities"))
 })
 RTS.NavigationProfile.sample("spatial_cache_roundtrip", fn () {
-  entities = RTS.Data.get(packed, "entities")
   RTS.Spatial.remember(content, spatial)
-  RTS.Spatial.prepare(content, layout, entities)
+  RTS.Spatial.prepare(content, layout, packed)
+})
+copy_content = RTS.Data.put(content, "spatial_cache", Facts.database())
+RTS.NavigationProfile.sample("spatial_cache_roundtrip_copy", fn () {
+  Facts.replace_tags(RTS.Data.get(copy_content, "spatial_cache"), :latest, :spatial, spatial)
+  RTS.NavigationProfile.prepare_copy(copy_content, layout, RTS.Data.get(packed, "entities"))
+})
+RTS.NavigationProfile.sample("entity_field_equality_copy", fn () {
+  RTS.Data.get(spatial, "entities") == RTS.Data.get(packed, "entities")
+})
+RTS.NavigationProfile.sample("entity_field_equality_direct", fn () {
+  RTS.Data.field_equal?(spatial, packed, "entities")
+})
+RTS.NavigationProfile.sample("spatial_slot_write", fn () {
+  RTS.Spatial.remember(content, spatial)
+})
+RTS.NavigationProfile.sample("spatial_facts_write", fn () {
+  Facts.replace_tags(RTS.Data.get(copy_content, "spatial_cache"), :latest, :spatial, spatial)
+})
+RTS.NavigationProfile.sample("spatial_facts_read", fn () {
+  Facts.first_with_tags(RTS.Data.get(copy_content, "spatial_cache"), :latest, :spatial, ?, fn (fact) { fact.object })
 })

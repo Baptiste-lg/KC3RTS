@@ -1,26 +1,28 @@
 # A derived Facts index. One worker-local cache entry can carry it to the next
 # tick only when the complete entity list and layout match. Mismatches rebuild.
 defmodule RTS.Spatial do
-  def prepare = fn (content, layout, entities) {
+  def prepare = fn (content, layout, state) {
     cache = RTS.Data.get(content, "spatial_cache")
-    saved = Facts.first_with_tags(cache, :latest, :spatial, ?, fn (fact) { fact.object })
+    # Taking consumes the single entry before the index can be mutated.
+    saved = RTS.Data.slot_take(cache)
     restored = void
     if saved != void do
-      # Consume before mutation: an aborted tick cannot leave a stale hit.
-      Facts.remove_tags(cache, :latest, :spatial, saved)
-      restored = RTS.Spatial.restore(saved, layout, entities)
+      restored = RTS.Spatial.restore(saved, layout, state)
     end
-    if restored != void do restored else RTS.Spatial.build(content, layout, entities) end
+    if restored != void do restored else
+      RTS.Spatial.build(content, layout, RTS.Data.get(state, "entities")) end
   }
-  def restore = fn (saved, layout, entities) {
-    if RTS.Data.get(saved, "layout") == layout && RTS.Data.get(saved, "entities") == entities do
+  def restore = fn (saved, layout, state) {
+    # Compare complete values in-place; the shared state envelope avoids
+    # copying entity lists through prepare/restore on every cache hit.
+    if RTS.Data.get(saved, "layout") == layout && RTS.Data.field_equal?(saved, state, "entities") do
       saved
     else void end
   }
   def remember = fn (content, saved) {
-    # Keep the envelope shared across function calls and Facts queries;
-    # copying it must not duplicate the full row/entity lists.
-    Facts.replace_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, saved)
+    # Only the latest snapshot is needed: no graph indexing of its full payload.
+    # The index inside it remains a Facts database used for collision queries.
+    RTS.Data.slot_put(RTS.Data.get(content, "spatial_cache"), saved)
   }
   def build = fn (content, layout, entities) {
     index = Facts.database()

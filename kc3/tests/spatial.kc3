@@ -46,34 +46,48 @@ RTS.Check.that("static terrain still rejects movement through an empty index",
 content = RTS.Content.compile(RTS.Core.catalog())
 unit = RTS.World.entity(content, "kiln.concord", 1, "core.worker", 1, -128, -128, void)
 entities = [unit]
-spatial = RTS.Spatial.prepare(content, layout, entities)
+state = RTS.Data.share(%{"entities" => entities})
+spatial = RTS.Spatial.prepare(content, layout, state)
 RTS.Spatial.remember(content, spatial)
-saved = Facts.first_with_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, ?, fn (fact) { fact.object })
-RTS.Check.that("the cache shares its snapshot instead of copying rows through Facts",
+saved = RTS.Data.slot_take(RTS.Data.get(content, "spatial_cache"))
+RTS.Spatial.remember(content, saved)
+RTS.Check.that("the cache shares its snapshot instead of copying rows through storage",
   type(spatial) == RTS.Shared && type(saved) == RTS.Shared)
-reused = RTS.Spatial.prepare(content, layout, entities)
+reused = RTS.Spatial.prepare(content, layout, state)
 RTS.Check.that("unchanged canonical input reuses the derived snapshot", reused == spatial)
 RTS.Check.that("the cache is consumed before any mutation",
-  Facts.first_with_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, ?, fn (fact) { true }) == void)
+  RTS.Data.slot_take(RTS.Data.get(content, "spatial_cache")) == void)
 RTS.Spatial.remember(content, reused)
 changed = [Map.put(unit, "x", 128)]
-rebuilt = RTS.Spatial.prepare(content, layout, changed)
+rebuilt = RTS.Spatial.prepare(content, layout, RTS.Data.put(state, "entities", changed))
 rebuilt_index = RTS.Data.get(rebuilt, "index")
 RTS.Check.that("restored or changed coordinates invalidate the index",
   RTS.Spatial.available(layout, mask, rebuilt_index, {2, -128, -128, 128}) != [] &&
   RTS.Spatial.available(layout, mask, rebuilt_index, {2, 128, -128, 128}) == [])
 RTS.Spatial.remember(content, rebuilt)
-empty = RTS.Spatial.prepare(content, layout, [])
+empty = RTS.Spatial.prepare(content, layout, RTS.Data.put(state, "entities", []))
 RTS.Check.that("removing the last unit invalidates all reservations", RTS.Data.get(empty, "rows") == [] &&
   RTS.Spatial.available(layout, mask, RTS.Data.get(empty, "index"), {2, 128, -128, 128}) != [])
 RTS.Spatial.remember(content, spatial)
 other_layout = RTS.Map.layout(Map.put(grid, "origin_x", -768))
-shifted = RTS.Spatial.prepare(content, other_layout, entities)
+shifted = RTS.Spatial.prepare(content, other_layout, state)
 RTS.Check.that("changing the grid layout rebuilds cell reservations",
   RTS.Spatial.available(other_layout, mask, RTS.Data.get(shifted, "index"), {2, -128, -128, 128}) == [])
 RTS.Spatial.remember(content, spatial)
 ordered = [Map.put(unit, "status", "planning")]
-updated_spatial = RTS.Spatial.prepare(content, layout, ordered)
+updated_spatial = RTS.Spatial.prepare(content, layout, RTS.Data.put(state, "entities", ordered))
 updated_rows = RTS.Data.get(updated_spatial, "rows")
 {updated, speed, body, covered} = List.first(updated_rows)
 RTS.Check.that("non-geometric changes cannot restore stale entity rows", RTS.Data.get(updated, "status") == "planning")
+RTS.Check.that("an equal independently packed entity list restores by value",
+  RTS.Spatial.restore(spatial, layout, RTS.Data.share(%{"entities" => [RTS.World.entity(content, "kiln.concord", 1, "core.worker", 1, -128, -128, void)]})) == spatial)
+RTS.Check.that("unrelated state fields do not invalidate the spatial cache",
+  RTS.Spatial.restore(spatial, layout, RTS.Data.put(state, "tick", 42)) == spatial)
+second = Map.put(unit, "id", 2)
+pair = RTS.Spatial.build(content, layout, [unit, second])
+RTS.Check.that("entity order and complete payload still participate in cache validation",
+  RTS.Spatial.restore(pair, layout, RTS.Data.share(%{"entities" => [second, unit]})) == void &&
+  RTS.Spatial.restore(spatial, layout, RTS.Data.put(state, "entities", [Map.put(unit, "hp", 1)])) == void &&
+  RTS.Spatial.restore(spatial, layout, RTS.Data.put(state, "entities", [unit, second])) == void)
+RTS.Check.that("plain state maps keep the same cache semantics",
+  RTS.Spatial.restore(spatial, layout, %{"entities" => entities}) == spatial)

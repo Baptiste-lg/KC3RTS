@@ -183,7 +183,10 @@ the timing targets**. These are development measurements, not supported capacity
 The subsequent P04 optimization keeps orders/entities in shared storage and
 uses a derived KC3 Facts spatial index. Its single worker-local cache entry is
 consumed before mutation and reused only for an identical entity list/layout;
-its snapshot stays shared across cache calls and is never serialized.
+its snapshot stays shared across cache calls and is never serialized. The
+single-entry cache uses an owned mutable slot in the game's storage bridge,
+avoiding graph indexing of an entire snapshot on every tick. The collision
+index itself and content permission queries still use KC3 Facts.
 `profile_navigation.kc3` reports cache round trips separately from index builds
 and per-unit movement updates. These diagnostics do not replace real-port
 latency measurements. Six baseline scene hashes check every canonical tick,
@@ -249,5 +252,16 @@ fields return `void`, and an empty list's tail is `[]`. Navigation keeps the
 route untouched between waypoints and copies its tail only on arrival.
 These are project storage helpers, not modifications to the KC3 runtime.
 The phase profiler compares them with the ordinary list access operations.
+`RTS.Data.field_equal?` compares a field in two plain/shared maps with the
+same semantics as two `get` calls followed by equality, without copying the
+field values. Missing fields still compare as `void`. Spatial cache validation
+passes shared state envelopes and uses this primitive; KC3 still requires an
+exact match of the complete entity list and layout before reusing reservations.
+`RTS.Data.slot` / `slot_put` / `slot_take` provide one explicitly mutable,
+worker-local entry, shared by its aliases. Replacement releases the previous
+value; taking transfers ownership and empties the slot before index mutation.
+The struct's Tag field releases retained data with its final alias. Slots are
+not canonical data, cannot be JSON-encoded, must not contain themselves, and
+must not be used as graph keys or shared between concurrently executing workers.
 Generated `.kc3c` parse caches are ignored. The pin logs long-string
 diagnostics to stderr; stdout is reserved for replies.
