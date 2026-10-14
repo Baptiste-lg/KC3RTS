@@ -129,11 +129,11 @@ defmodule RTS.Navigation do
   }
   def advance = fn (content, grid, entity, horizontal_first) {
     order = RTS.Data.get(entity, "order")
-    path = RTS.Data.get(order, "path")
-    if order == void || path == [] do entity else
+    cell = RTS.Data.first(order, "path")
+    if cell == void do entity else
       speed = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(entity, "type_id")), "speed")
       body = {RTS.Data.get(entity, "id"), RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z"), 0}
-      {next, reached} = RTS.Navigation.propose(RTS.Map.layout(grid), body, speed, List.first(path), horizontal_first)
+      {next, reached} = RTS.Navigation.propose(RTS.Map.layout(grid), body, speed, cell, horizontal_first)
       RTS.Navigation.finish(entity, order, next, reached)
     end
   }
@@ -150,7 +150,7 @@ defmodule RTS.Navigation do
     if reached do
       # Only reaching a waypoint needs a new path. Passing the entire list
       # into every partial step copied its unused tail through function calls.
-      path = List.next(RTS.Data.get(order, "path"))
+      path = RTS.Data.rest(order, "path")
       # Reaching a waypoint renews the budget for a later, distinct obstruction.
       order = if path == [] do void else RTS.Data.merge(order, %{"path" => path, "wait" => 0, "attempt" => 0}) end
     end
@@ -293,13 +293,12 @@ defmodule RTS.Navigation do
     mask = RTS.Data.get(nav, "mask")
     rows = List.map_filter(rows, {e, speed, body, occupied_cells}, do
       order = RTS.Data.get(e, "order")
-      path = if order == void do [] else RTS.Data.get(order, "path") end
+      cell = RTS.Data.first(order, "path")
       updated = if RTS.Data.get(e, "status") == "waiting" && order != void do
         waited = RTS.Data.get(order, "wait") + 1
         if waited >= 70 do RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "blocked"}) else
           RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "wait", waited), "status" => if waited mod 10 == 0 do "planning" else "waiting" end}) end
-      else if path == [] do e else
-        cell = List.first(path)
+      else if cell == void do e else
         {next, reached} = RTS.Navigation.propose(layout, body, speed, cell, true)
         cells = RTS.Spatial.available(layout, mask, buckets, next)
         if cells == [] do

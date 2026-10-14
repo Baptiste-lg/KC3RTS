@@ -38,6 +38,36 @@ RTS.Check.that("shared wrapping is idempotent", RTS.Data.share(shared) == shared
 RTS.Check.that("missing and non-map reads are void", RTS.Data.get(%{}, "absent") == void && RTS.Data.get(void, "x") == void && RTS.Data.get(42, "x") == void)
 nested = RTS.Data.share(%{"array" => [1, %{"x" => 2}], "empty" => void})
 RTS.Check.that("native accessor copies nested values with canonical semantics", RTS.Data.get(nested, "array") == [1, %{"x" => 2}] && RTS.Data.get(nested, "empty") == void)
+List.do([%{"items" => [0, 1, 2]}, RTS.Data.share(%{"items" => [0, 1, 2]})], source, do
+  RTS.Check.that("list-field head agrees with the reference without changing its source",
+    RTS.Data.first(source, "items") == List.first(RTS.Data.get(source, "items")) &&
+    RTS.Data.rest(source, "items") == List.next(RTS.Data.get(source, "items")) &&
+    RTS.Data.get(source, "items") == [0, 1, 2])
+end)
+List.do([void, 42, %{}, %{"items" => []}, %{"items" => "not a list"}, RTS.Data.share(%{"items" => []})], source, do
+  RTS.Check.that("missing empty and non-list field heads are void", RTS.Data.first(source, "items") == void)
+end)
+source = RTS.Data.share(%{"items" => [%{"value" => 1}, 2]})
+head = RTS.Data.first(source, "items")
+source = void
+RTS.Check.that("list-field heads own their nested result after the source is released",
+  RTS.Data.put(head, "value", 3) == %{"value" => 3} && head == %{"value" => 1})
+RTS.Check.that("list-field heads preserve false and null values",
+  RTS.Data.first(%{"items" => [false, true]}, "items") == false &&
+  RTS.Data.first(%{"items" => [void, 1]}, "items") == void)
+RTS.Check.that("list-field tails handle empty singleton missing and non-list values",
+  RTS.Data.rest(%{"items" => []}, "items") == [] &&
+  RTS.Data.rest(RTS.Data.share(%{"items" => [1]}), "items") == [] &&
+  RTS.Data.rest(void, "items") == void && RTS.Data.rest(%{}, "items") == void &&
+  RTS.Data.rest(%{"items" => 42}, "items") == void)
+source = RTS.Data.share(%{"items" => [0, %{"value" => 1}, 2]})
+rest = RTS.Data.rest(source, "items")
+source = void
+RTS.Check.that("list-field tails own nested results after the source is released",
+  rest == [%{"value" => 1}, 2] && RTS.Data.put(List.first(rest), "value", 3) == %{"value" => 3})
+RTS.Check.that("list-field access preserves shared nested values and dotted tails",
+  RTS.Data.first(%{"items" => [shared]}, "items") == shared &&
+  RTS.Data.rest(%{"items" => [1 | 42]}, "items") == 42)
 samples = [void, false, true, 0, -9007199254740991, 9007199254740991, "Échoppe\n\u0000", [1, %{"z" => [], "a" => [false, void]}]]
 List.do(samples, sample, do RTS.Check.that("native codec matches reference bytes", RTS.Wire.native_encode(sample) == RTS.Wire.reference_encode(sample)) end)
 RTS.Check.that("native codec rejects unsupported or unsafe types", RTS.Wire.native_encode(1.5) == void && RTS.Wire.native_encode(9007199254740992) == void && RTS.Wire.native_encode(-9007199254740992) == void && RTS.Wire.native_encode(:symbol) == void && RTS.Wire.native_encode(%{symbol: 1}) == void)

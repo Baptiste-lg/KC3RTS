@@ -11,6 +11,9 @@ defmodule RTS.Data do
   def share = fn (value) { if type(value) == RTS.Shared do value else %RTS.Shared{value: value} end }
   def unshare = fn (value) { if type(value) == RTS.Shared do value.value else value end }
   def get = cfn Tag "kc3rts_get" (Tag, Tag, Result)
+  # Read a list field's head without copying its unused tail. Empty => void.
+  def first = cfn Tag "kc3rts_first" (Tag, Tag, Result)
+  def rest = cfn Tag "kc3rts_rest" (Tag, Tag, Result)
   def put = cfn Tag "kc3rts_put" (Tag, Tag, Tag, Result)
   def merge = cfn Tag "kc3rts_merge" (Tag, Tag, Result)
   def integer? = fn (value, minimum, maximum) {

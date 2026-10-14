@@ -25,6 +25,14 @@ RTS.Check.that("partial movement preserves the complete shared route and retry b
 last_waypoint = Map.put(centered, "order", Map.put(RTS.Navigation.order(201, 0), "path", [201]))
 RTS.Check.that("the final waypoint removes the order exactly once",
   RTS.Data.get(RTS.Navigation.advance(content, grid, last_waypoint, true), "order") == void)
+zero_cell = Map.merge(centered, %{"x" => -6080, "z" => -4992,
+  "order" => Map.put(RTS.Navigation.order(0, 0), "path", [0])})
+zero_done = RTS.Navigation.advance(content, grid, zero_cell, true)
+RTS.Check.that("cell zero is a waypoint rather than an empty path",
+  RTS.Data.get(zero_done, "x") == -6016 && RTS.Data.get(zero_done, "order") == void)
+empty_route = Map.put(centered, "order", RTS.Navigation.order(201, 0))
+RTS.Check.that("an empty route does not move the entity",
+  RTS.Navigation.advance(content, grid, empty_route, true) == empty_route)
 move = %{"type" => "move", "entity_ids" => [2, 3], "x" => 1536, "z" => 512}
 result = RTS.World.command(content, world, 1, move)
 RTS.Check.that("owned move accepted", RTS.Data.get(result, "accepted"))

@@ -61,6 +61,18 @@ RTS.NavigationProfile.sample("one_finish", fn () {
   order = RTS.Data.get(unit, "order")
   RTS.Navigation.finish(unit, order, body, false)
 })
+RTS.NavigationProfile.sample("one_path_head_copy", fn () {
+  List.first(RTS.Data.get(RTS.Data.get(unit, "order"), "path"))
+})
+RTS.NavigationProfile.sample("one_path_head_direct", fn () {
+  RTS.Data.first(RTS.Data.get(unit, "order"), "path")
+})
+RTS.NavigationProfile.sample("one_path_tail_copy", fn () {
+  List.next(RTS.Data.get(RTS.Data.get(unit, "order"), "path"))
+})
+RTS.NavigationProfile.sample("one_path_tail_direct", fn () {
+  RTS.Data.rest(RTS.Data.get(unit, "order"), "path")
+})
 RTS.NavigationProfile.sample("spatial_build", fn () {
   RTS.Spatial.build(content, layout, RTS.Data.get(packed, "entities"))
 })

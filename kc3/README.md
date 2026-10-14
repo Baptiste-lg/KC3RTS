@@ -238,5 +238,12 @@ native JSON writer lacks List support; `native/data.c` supplies the bounded,
 integer-only encoder and immutable Map/`RTS.Shared` access primitives through
 `rts/data.kc3` and `rts/wire.kc3`. Shared storage is internal: serialized and
 restored worlds keep identical canonical values. Gameplay decisions remain in
-KC3. Generated `.kc3c` parse caches are ignored. The pin logs long-string
+KC3. The game-owned bridge also exposes `RTS.Data.first` / `rest` for list-valued
+fields: read just the head, or copy just the remaining list, without first
+copying the entire field. Returned values own their storage; missing/non-list
+fields return `void`, and an empty list's tail is `[]`. Navigation keeps the
+route untouched between waypoints and copies its tail only on arrival.
+These are project storage helpers, not modifications to the KC3 runtime.
+The phase profiler compares them with the ordinary list access operations.
+Generated `.kc3c` parse caches are ignored. The pin logs long-string
 diagnostics to stderr; stdout is reserved for replies.

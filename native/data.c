@@ -18,6 +18,33 @@ s_tag *kc3rts_get(s_tag *value, const s_tag *key, s_tag *result)
   return tag_init(result);
 }
 
+static const s_tag *field(const s_tag *value, const s_tag *key)
+{
+  const s_map *map = payload(value);
+  if (map)
+    for (uw i = 0; i < map->count; ++i)
+      if (!compare_tag(key, map->key + i)) return map->value + i;
+  return NULL;
+}
+
+/* Copy only the requested list part. No borrowed pointer escapes these calls;
+ * missing/non-list fields return Void. An empty list has no head, but tail []. */
+s_tag *kc3rts_first(s_tag *value, const s_tag *key, s_tag *result)
+{
+  const s_tag *list = field(value, key);
+  if (list && list->type == TAG_PLIST && list->data.td_plist)
+    return tag_init_copy(result, &list->data.td_plist->tag);
+  return tag_init(result);
+}
+
+s_tag *kc3rts_rest(s_tag *value, const s_tag *key, s_tag *result)
+{
+  const s_tag *list = field(value, key);
+  if (!list || list->type != TAG_PLIST) return tag_init(result);
+  if (!list->data.td_plist) return tag_init_plist(result, NULL);
+  return tag_init_copy(result, &list->data.td_plist->next);
+}
+
 static s_tag *wrap_map(const s_tag *source, s_map *map, s_tag *result)
 {
   if (source->type == TAG_MAP) {
