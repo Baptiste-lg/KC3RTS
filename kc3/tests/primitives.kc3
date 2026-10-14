@@ -37,6 +37,49 @@ RTS.Check.that("shared values retain exact maps", RTS.Data.unshare(shared) == %{
 RTS.Check.that("shared wrapping is idempotent", RTS.Data.share(shared) == shared)
 RTS.Check.that("missing and non-map reads are void", RTS.Data.get(%{}, "absent") == void && RTS.Data.get(void, "x") == void && RTS.Data.get(42, "x") == void)
 nested = RTS.Data.share(%{"array" => [1, %{"x" => 2}], "empty" => void})
+slot = RTS.Data.slot()
+alias = ^ slot
+other_slot = RTS.Data.slot()
+RTS.Check.that("slots start empty and own one replaceable value",
+  RTS.Data.slot_take(slot) == void && RTS.Data.slot_put(slot, [1, %{"x" => 2}]) == true &&
+  RTS.Data.slot_put(slot, nested) == true)
+RTS.Check.that("slot aliases share storage but separate instances are isolated",
+  RTS.Data.slot_take(other_slot) == void && RTS.Data.slot_take(alias) == nested &&
+  RTS.Data.slot_take(slot) == void)
+RTS.Data.slot_put(slot, %{"items" => [%{"x" => 3}]})
+taken = RTS.Data.slot_take(slot)
+RTS.Data.slot_put(slot, false)
+slot = void
+alias = void
+RTS.Check.that("taken values survive overwriting and releasing their source slot",
+  taken == %{"items" => [%{"x" => 3}]})
+List.do([void, false, 0, [], nested], value, do
+  RTS.Data.slot_put(other_slot, value)
+  RTS.Check.that("slots preserve exact values and consume them once",
+    RTS.Data.slot_take(other_slot) == value && RTS.Data.slot_take(other_slot) == void)
+end)
+RTS.Check.that("slot operations reject other storage and cannot enter wire state",
+  RTS.Data.slot_put(nested, 1) == void && RTS.Data.slot_take(%{}) == void &&
+  RTS.Wire.native_encode(other_slot) == void)
+comparands = [void, 42, %{}, %{"value" => void}, %{"value" => false},
+  %{"value" => 0}, %{"value" => (U32) 1}, %{"value" => (S64) 1},
+  %{"value" => []}, %{"value" => [1, 2]}, %{"value" => [2, 1]},
+  %{"value" => [1 | 42]}, %{"value" => [%{"x" => 2}]},
+  RTS.Data.share(%{"value" => [%{"x" => 2}]}),
+  RTS.Data.share(%{"value" => [shared]})]
+equal = true
+List.do(comparands, left, do
+  List.do(comparands, right, do
+    equal = equal && (RTS.Data.field_equal?(left, right, "value") ==
+      (RTS.Data.get(left, "value") == RTS.Data.get(right, "value")))
+  end)
+end)
+RTS.Check.that("field equality matches 225 ordinary comparisons including missing and nested values", equal)
+RTS.Check.that("field equality accepts non-string map keys",
+  RTS.Data.field_equal?(%{:key => [1]}, RTS.Data.share(%{:key => [1]}), :key))
+RTS.Check.that("field equality does not mutate either source",
+  RTS.Data.field_equal?(nested, nested, "array") &&
+  RTS.Data.get(nested, "array") == [1, %{"x" => 2}])
 RTS.Check.that("native accessor copies nested values with canonical semantics", RTS.Data.get(nested, "array") == [1, %{"x" => 2}] && RTS.Data.get(nested, "empty") == void)
 List.do([%{"items" => [0, 1, 2]}, RTS.Data.share(%{"items" => [0, 1, 2]})], source, do
   RTS.Check.that("list-field head agrees with the reference without changing its source",

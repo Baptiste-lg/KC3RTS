@@ -27,6 +27,48 @@ static const s_tag *field(const s_tag *value, const s_tag *key)
   return NULL;
 }
 
+/* Same semantics as get(left, key) == get(right, key), without materializing
+ * either field. Borrowed values stay inside this call; sources are immutable. */
+s_tag *kc3rts_field_equal(s_tag *left, s_tag *right, const s_tag *key,
+                         s_tag *result)
+{
+  const s_tag missing = {.type = TAG_VOID};
+  const s_tag *a = field(left, key), *b = field(right, key);
+  return tag_init_bool(result, !compare_tag(a ? a : &missing,
+                                          b ? b : &missing));
+}
+
+/* One explicitly mutable, worker-local slot. Its struct owns a Tag, so KC3
+ * cleans the retained value when the last alias is released. No global cache,
+ * borrowed return value, or gameplay policy lives here. Never store the slot
+ * itself (directly or indirectly) in its payload or in canonical state. */
+static s_tag *slot_value(s_tag *slot)
+{
+  if (slot->type != TAG_PSTRUCT ||
+      slot->data.td_pstruct->pstruct_type->module != sym_1("RTS.Slot") ||
+      slot->data.td_pstruct->pstruct_type->size != sizeof(s_tag)) return NULL;
+  return struct_get_w(slot->data.td_pstruct, sym_1("value"));
+}
+
+s_tag *kc3rts_slot_put(s_tag *slot, s_tag *value, s_tag *result)
+{
+  s_tag *stored = slot_value(slot), copy = {0};
+  if (!stored) return tag_init(result);
+  if (!tag_init_copy(&copy, value)) return NULL;
+  tag_clean(stored);
+  *stored = copy;
+  return tag_init_bool(result, true);
+}
+
+s_tag *kc3rts_slot_take(s_tag *slot, s_tag *result)
+{
+  s_tag *stored = slot_value(slot);
+  if (!stored) return tag_init(result);
+  *result = *stored;
+  tag_init(stored);
+  return result;
+}
+
 /* Copy only the requested list part. No borrowed pointer escapes these calls;
  * missing/non-list fields return Void. An empty list has no head, but tail []. */
 s_tag *kc3rts_first(s_tag *value, const s_tag *key, s_tag *result)

@@ -7,10 +7,21 @@ defmodule RTS.Shared do
   defstruct [value: %{}]
 end
 
+# Explicitly mutable, worker-local derived storage. Never canonical game data.
+# The Tag field owns its value and is cleaned when the final struct alias dies.
+defmodule RTS.Slot do
+  defstruct [value: (Tag) ?]
+end
+
 defmodule RTS.Data do
   def share = fn (value) { if type(value) == RTS.Shared do value else %RTS.Shared{value: value} end }
   def unshare = fn (value) { if type(value) == RTS.Shared do value.value else value end }
   def get = cfn Tag "kc3rts_get" (Tag, Tag, Result)
+  # Compare the same field in two maps without copying either field.
+  def field_equal? = cfn Tag "kc3rts_field_equal" (Tag, Tag, Tag, Result)
+  def slot = fn () { %RTS.Slot{value: void} }
+  def slot_put = cfn Tag "kc3rts_slot_put" (Tag, Tag, Result)
+  def slot_take = cfn Tag "kc3rts_slot_take" (Tag, Result)
   # Read a list field's head without copying its unused tail. Empty => void.
   def first = cfn Tag "kc3rts_first" (Tag, Tag, Result)
   def rest = cfn Tag "kc3rts_rest" (Tag, Tag, Result)
