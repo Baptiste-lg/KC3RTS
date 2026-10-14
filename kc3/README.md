@@ -188,6 +188,10 @@ its snapshot stays shared across cache calls and is never serialized.
 and per-unit movement updates. These diagnostics do not replace real-port
 latency measurements. Six baseline scene hashes check every canonical tick,
 alongside footprint, collision, cache invalidation and restoration tests.
+The KC3 footprint scan handles one or two rows/columns directly, retaining
+the general scan for larger bodies and the same row-major cell order.
+The phase profiler includes paired old/new scans for one, two, four and
+sixteen cells; these per-operation samples are not whole-tick speedups.
 
 Run `mix run scripts/benchmark_navigation.exs` from `server` with the same
 runtime environment for an isolated real-port measurement without coverage.

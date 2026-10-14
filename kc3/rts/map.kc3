@@ -142,7 +142,15 @@ defmodule RTS.Map do
       right = right / size
       top = top / size
       bottom = bottom / size
-      if left == right && top == bottom do [top * width + left] else
+      first = top * width + left
+      # Common unit footprints touch at most two rows and two columns.
+      # Preserve row-major order without entering the general scan loops.
+      if left == right && top == bottom do [first] else
+      if right == left + 1 && top == bottom do [first, first + 1] else
+      if left == right && bottom == top + 1 do [first, first + width] else
+      if right == left + 1 && bottom == top + 1 do
+        [first, first + 1, first + width, first + width + 1]
+      else
         result = []
         row = ^ top
         while row <= bottom do
@@ -154,7 +162,7 @@ defmodule RTS.Map do
           row = row + 1
         end
         List.reverse(result)
-      end
+      end end end end
     end
   }
   def signature = fn (content, state) {

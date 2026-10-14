@@ -5,11 +5,18 @@ grid = %{"width" => 4, "height" => 4, "cell_size" => 256, "origin_x" => -512, "o
 layout = RTS.Map.layout(grid)
 mask = RTS.Map.repeat(".", 16)
 RTS.Check.that("cover includes each cell of a footprint spanning a corner", RTS.Map.cover(layout, 0, 0, 128) == [5, 6, 9, 10])
+RTS.Check.that("cover preserves row-major order for one or two rows and columns",
+  RTS.Map.cover(layout, -128, -128, 128) == [5] &&
+  RTS.Map.cover(layout, 0, -128, 128) == [5, 6] &&
+  RTS.Map.cover(layout, -128, 0, 128) == [5, 9])
+RTS.Check.that("larger footprints retain the general scan",
+  RTS.Map.cover(layout, -128, -128, 512) == [0, 1, 2, 4, 5, 6, 8, 9, 10] &&
+  RTS.Map.cover(layout, 0, 0, 1024) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
 RTS.Check.that("cover rejects footprints extending beyond map bounds", RTS.Map.cover(layout, -449, -384, 128) == [] && RTS.Map.cover(layout, -448, -384, 128) == [0])
 # Compare the optimized cover with the pre-existing clipped cell enumeration
 # and boundary check across varied positions and catalog-sized footprints.
 valid = true
-List.do([128, 256, 512, 768], size, do
+List.do([2, 64, 128, 255, 256, 257, 384, 512, 768, 1024], size, do
   List.do([-576, -448, -384, -192, -64, 0, 64, 192, 384, 448, 576], x, do
     List.do([-576, -448, -384, -192, -64, 0, 64, 192, 384, 448, 576], z, do
       cells = RTS.Map.cover(layout, x, z, size)
@@ -19,7 +26,7 @@ List.do([128, 256, 512, 768], size, do
     end)
   end)
 end)
-RTS.Check.that("484 footprint cases match the reference geometry", valid)
+RTS.Check.that("1210 footprint cases match the reference geometry", valid)
 index = Facts.database()
 body = {1, -128, -128, 128}
 cells = RTS.Map.cover(layout, -128, -128, 128)
