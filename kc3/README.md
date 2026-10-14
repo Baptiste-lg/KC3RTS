@@ -183,7 +183,10 @@ the timing targets**. These are development measurements, not supported capacity
 The subsequent P04 optimization keeps orders/entities in shared storage and
 uses a derived KC3 Facts spatial index. Its single worker-local cache entry is
 consumed before mutation and reused only for an identical entity list/layout;
-it is never serialized. Six baseline scene hashes check every canonical tick,
+its snapshot stays shared across cache calls and is never serialized.
+`profile_navigation.kc3` reports cache round trips separately from index builds
+and per-unit movement updates. These diagnostics do not replace real-port
+latency measurements. Six baseline scene hashes check every canonical tick,
 alongside footprint, collision, cache invalidation and restoration tests.
 
 Run `mix run scripts/benchmark_navigation.exs` from `server` with the same

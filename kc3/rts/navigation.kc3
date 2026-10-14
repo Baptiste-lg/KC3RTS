@@ -285,7 +285,9 @@ defmodule RTS.Navigation do
     end))
     state = RTS.Navigation.plan(content, state, grid)
     layout = RTS.Map.layout(grid)
-    {buckets, rows} = RTS.Spatial.prepare(content, layout, RTS.Data.get(state, "entities"))
+    spatial = RTS.Spatial.prepare(content, layout, RTS.Data.get(state, "entities"))
+    buckets = RTS.Data.get(spatial, "index")
+    rows = RTS.Data.get(spatial, "rows")
     mask = RTS.Data.get(nav, "mask")
     rows = List.map_filter(rows, {e, speed, body, occupied_cells}, do
       order = RTS.Data.get(e, "order")
@@ -321,7 +323,8 @@ defmodule RTS.Navigation do
       {updated, speed, body, occupied_cells}
     end)
     entities = List.map_filter(rows, {e, speed, body, cells}, do e end)
-    RTS.Spatial.remember(content, layout, buckets, rows, entities)
+    RTS.Spatial.remember(content, RTS.Data.share(%{"entities" => entities,
+      "layout" => layout, "index" => buckets, "rows" => rows}))
     RTS.Data.put(state, "entities", entities)
     end
   }

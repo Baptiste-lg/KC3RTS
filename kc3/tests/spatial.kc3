@@ -39,19 +39,34 @@ RTS.Check.that("static terrain still rejects movement through an empty index",
 content = RTS.Content.compile(RTS.Core.catalog())
 unit = RTS.World.entity(content, "kiln.concord", 1, "core.worker", 1, -128, -128, void)
 entities = [unit]
-{index, rows} = RTS.Spatial.prepare(content, layout, entities)
-RTS.Spatial.remember(content, layout, index, rows, entities)
-{reused, reused_rows} = RTS.Spatial.prepare(content, layout, entities)
-RTS.Check.that("unchanged canonical input reuses the derived index", reused == index && reused_rows == rows)
+spatial = RTS.Spatial.prepare(content, layout, entities)
+RTS.Spatial.remember(content, spatial)
+saved = Facts.first_with_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, ?, fn (fact) { fact.object })
+RTS.Check.that("the cache shares its snapshot instead of copying rows through Facts",
+  type(spatial) == RTS.Shared && type(saved) == RTS.Shared)
+reused = RTS.Spatial.prepare(content, layout, entities)
+RTS.Check.that("unchanged canonical input reuses the derived snapshot", reused == spatial)
 RTS.Check.that("the cache is consumed before any mutation",
   Facts.first_with_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, ?, fn (fact) { true }) == void)
-RTS.Spatial.remember(content, layout, reused, reused_rows, entities)
+RTS.Spatial.remember(content, reused)
 changed = [Map.put(unit, "x", 128)]
-{rebuilt, rebuilt_rows} = RTS.Spatial.prepare(content, layout, changed)
+rebuilt = RTS.Spatial.prepare(content, layout, changed)
+rebuilt_index = RTS.Data.get(rebuilt, "index")
 RTS.Check.that("restored or changed coordinates invalidate the index",
-  RTS.Spatial.available(layout, mask, rebuilt, {2, -128, -128, 128}) != [] &&
-  RTS.Spatial.available(layout, mask, rebuilt, {2, 128, -128, 128}) == [])
-RTS.Spatial.remember(content, layout, rebuilt, rebuilt_rows, changed)
-{empty, empty_rows} = RTS.Spatial.prepare(content, layout, [])
-RTS.Check.that("removing the last unit invalidates all reservations", empty_rows == [] &&
-  RTS.Spatial.available(layout, mask, empty, {2, 128, -128, 128}) != [])
+  RTS.Spatial.available(layout, mask, rebuilt_index, {2, -128, -128, 128}) != [] &&
+  RTS.Spatial.available(layout, mask, rebuilt_index, {2, 128, -128, 128}) == [])
+RTS.Spatial.remember(content, rebuilt)
+empty = RTS.Spatial.prepare(content, layout, [])
+RTS.Check.that("removing the last unit invalidates all reservations", RTS.Data.get(empty, "rows") == [] &&
+  RTS.Spatial.available(layout, mask, RTS.Data.get(empty, "index"), {2, 128, -128, 128}) != [])
+RTS.Spatial.remember(content, spatial)
+other_layout = RTS.Map.layout(Map.put(grid, "origin_x", -768))
+shifted = RTS.Spatial.prepare(content, other_layout, entities)
+RTS.Check.that("changing the grid layout rebuilds cell reservations",
+  RTS.Spatial.available(other_layout, mask, RTS.Data.get(shifted, "index"), {2, -128, -128, 128}) == [])
+RTS.Spatial.remember(content, spatial)
+ordered = [Map.put(unit, "status", "planning")]
+updated_spatial = RTS.Spatial.prepare(content, layout, ordered)
+updated_rows = RTS.Data.get(updated_spatial, "rows")
+{updated, speed, body, covered} = List.first(updated_rows)
+RTS.Check.that("non-geometric changes cannot restore stale entity rows", RTS.Data.get(updated, "status") == "planning")

@@ -40,7 +40,9 @@ RTS.NavigationProfile.sample("economy", fn () { RTS.Economy.tick(content, packed
 RTS.NavigationProfile.sample("production", fn () { RTS.Production.tick(content, packed) })
 RTS.NavigationProfile.sample("unpack", fn () { RTS.World.unpack(packed) })
 RTS.NavigationProfile.sample("encode", fn () { RTS.Wire.encode(world) })
-{buckets, rows} = RTS.Spatial.prepare(content, layout, RTS.Data.get(packed, "entities"))
+spatial = RTS.Spatial.prepare(content, layout, RTS.Data.get(packed, "entities"))
+buckets = RTS.Data.get(spatial, "index")
+rows = RTS.Data.get(spatial, "rows")
 {unit, speed, body, cells} = List.first(rows)
 {id, x, z, size} = ^ body
 cell = List.first(RTS.Data.get(RTS.Data.get(unit, "order"), "path"))
@@ -54,4 +56,16 @@ RTS.NavigationProfile.sample("one_collision", fn () { RTS.Spatial.clear?(buckets
 RTS.NavigationProfile.sample("one_reservation_pair", fn () {
   RTS.Spatial.reserve(buckets, cells, body, false)
   RTS.Spatial.reserve(buckets, cells, body, true)
+})
+RTS.NavigationProfile.sample("one_finish", fn () {
+  order = RTS.Data.get(unit, "order")
+  RTS.Navigation.finish(unit, order, RTS.Data.get(order, "path"), body, false)
+})
+RTS.NavigationProfile.sample("spatial_build", fn () {
+  RTS.Spatial.build(content, layout, RTS.Data.get(packed, "entities"))
+})
+RTS.NavigationProfile.sample("spatial_cache_roundtrip", fn () {
+  entities = RTS.Data.get(packed, "entities")
+  RTS.Spatial.remember(content, spatial)
+  RTS.Spatial.prepare(content, layout, entities)
 })

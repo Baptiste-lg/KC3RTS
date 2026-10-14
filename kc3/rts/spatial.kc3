@@ -12,11 +12,15 @@ defmodule RTS.Spatial do
     end
     if restored != void do restored else RTS.Spatial.build(content, layout, entities) end
   }
-  def restore = fn ({previous, old_layout, index, rows}, layout, entities) {
-    if old_layout == layout && previous == entities do {index, rows} else void end
+  def restore = fn (saved, layout, entities) {
+    if RTS.Data.get(saved, "layout") == layout && RTS.Data.get(saved, "entities") == entities do
+      saved
+    else void end
   }
-  def remember = fn (content, layout, index, rows, entities) {
-    Facts.replace_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, {entities, layout, index, rows})
+  def remember = fn (content, saved) {
+    # Keep the envelope shared across function calls and Facts queries;
+    # copying it must not duplicate the full row/entity lists.
+    Facts.replace_tags(RTS.Data.get(content, "spatial_cache"), :latest, :spatial, saved)
   }
   def build = fn (content, layout, entities) {
     index = Facts.database()
@@ -33,7 +37,7 @@ defmodule RTS.Spatial do
         {e, RTS.Data.get(d, "speed"), body, cells}
       else {e, 0, void, []} end
     end)
-    {index, rows}
+    RTS.Data.share(%{"entities" => entities, "layout" => layout, "index" => index, "rows" => rows})
   }
   def reserve = fn (index, cells, body, add) {
     List.do(cells, cell, do
