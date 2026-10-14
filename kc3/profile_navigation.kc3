@@ -59,7 +59,7 @@ RTS.NavigationProfile.sample("one_reservation_pair", fn () {
 })
 RTS.NavigationProfile.sample("one_finish", fn () {
   order = RTS.Data.get(unit, "order")
-  RTS.Navigation.finish(unit, order, RTS.Data.get(order, "path"), body, false)
+  RTS.Navigation.finish(unit, order, body, false)
 })
 RTS.NavigationProfile.sample("spatial_build", fn () {
   RTS.Spatial.build(content, layout, RTS.Data.get(packed, "entities"))

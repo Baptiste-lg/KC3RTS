@@ -14,6 +14,17 @@ progressed = RTS.Navigation.advance(content, grid, retrying, true)
 RTS.Check.that("reaching a detour waypoint restores the retry for a later obstruction",
   RTS.Data.get(RTS.Data.get(progressed, "order"), "attempt") == 0 &&
   RTS.Data.get(RTS.Data.get(progressed, "order"), "wait") == 0)
+partial = RTS.World.pack_entity(Map.put(retrying, "x", -3840))
+partial_order = RTS.Data.get(partial, "order")
+advanced = RTS.Navigation.advance(content, grid, partial, true)
+RTS.Check.that("partial movement preserves the complete shared route and retry budget",
+  RTS.Data.get(advanced, "x") == -3776 &&
+  type(RTS.Data.get(advanced, "order")) == RTS.Shared &&
+  RTS.Data.get(advanced, "order") == partial_order &&
+  RTS.Data.get(partial, "x") == -3840)
+last_waypoint = Map.put(centered, "order", Map.put(RTS.Navigation.order(201, 0), "path", [201]))
+RTS.Check.that("the final waypoint removes the order exactly once",
+  RTS.Data.get(RTS.Navigation.advance(content, grid, last_waypoint, true), "order") == void)
 move = %{"type" => "move", "entity_ids" => [2, 3], "x" => 1536, "z" => 512}
 result = RTS.World.command(content, world, 1, move)
 RTS.Check.that("owned move accepted", RTS.Data.get(result, "accepted"))

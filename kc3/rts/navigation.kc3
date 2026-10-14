@@ -134,7 +134,7 @@ defmodule RTS.Navigation do
       speed = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(entity, "type_id")), "speed")
       body = {RTS.Data.get(entity, "id"), RTS.Data.get(entity, "x"), RTS.Data.get(entity, "z"), 0}
       {next, reached} = RTS.Navigation.propose(RTS.Map.layout(grid), body, speed, List.first(path), horizontal_first)
-      RTS.Navigation.finish(entity, order, path, next, reached)
+      RTS.Navigation.finish(entity, order, next, reached)
     end
   }
   def propose = fn ({width, height, ox, oz, cell_size}, {id, x, z, size}, speed, cell, horizontal_first) {
@@ -146,9 +146,11 @@ defmodule RTS.Navigation do
       z = z + RTS.Navigation.step(dz, speed) end
     {{id, x, z, size}, x == tx && z == tz}
   }
-  def finish = fn (entity, order, path, {id, x, z, size}, reached) {
+  def finish = fn (entity, order, {id, x, z, size}, reached) {
     if reached do
-      path = List.next(path)
+      # Only reaching a waypoint needs a new path. Passing the entire list
+      # into every partial step copied its unused tail through function calls.
+      path = List.next(RTS.Data.get(order, "path"))
       # Reaching a waypoint renews the budget for a later, distinct obstruction.
       order = if path == [] do void else RTS.Data.merge(order, %{"path" => path, "wait" => 0, "attempt" => 0}) end
     end
@@ -309,7 +311,7 @@ defmodule RTS.Navigation do
           RTS.Spatial.reserve(buckets, cells, next, true)
           body = ^ next
           occupied_cells = ^ cells
-          RTS.Navigation.finish(e, order, path, next, reached)
+          RTS.Navigation.finish(e, order, next, reached)
         else
           waited = RTS.Data.get(order, "wait") + 1
           if waited >= 70 do RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "blocked"}) else
