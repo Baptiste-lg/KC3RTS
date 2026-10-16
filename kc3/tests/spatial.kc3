@@ -85,9 +85,48 @@ RTS.Check.that("unrelated state fields do not invalidate the spatial cache",
   RTS.Spatial.restore(spatial, layout, RTS.Data.put(state, "tick", 42)) == spatial)
 second = Map.put(unit, "id", 2)
 pair = RTS.Spatial.build(content, layout, [unit, second])
-RTS.Check.that("entity order and complete payload still participate in cache validation",
+RTS.Check.that("entity order and membership still participate in cache validation",
   RTS.Spatial.restore(pair, layout, RTS.Data.share(%{"entities" => [second, unit]})) == void &&
-  RTS.Spatial.restore(spatial, layout, RTS.Data.put(state, "entities", [Map.put(unit, "hp", 1)])) == void &&
   RTS.Spatial.restore(spatial, layout, RTS.Data.put(state, "entities", [unit, second])) == void)
 RTS.Check.that("plain state maps keep the same cache semantics",
   RTS.Spatial.restore(spatial, layout, %{"entities" => entities}) == spatial)
+
+# A command changes authoritative rows, but not collision geometry.
+fresh = RTS.Data.put(unit, "order", RTS.Navigation.order(7, 1))
+fresh_state = RTS.Data.share(%{"entities" => [fresh]})
+refreshed = RTS.Spatial.restore(spatial, layout, fresh_state)
+RTS.Check.that("order-only changes reuse the index and replace the complete rows",
+  refreshed != void && RTS.Data.get(refreshed, "index") == RTS.Data.get(spatial, "index") &&
+  RTS.Data.get(refreshed, "entities") == [fresh] &&
+  RTS.Data.get(refreshed, "rows") == [{fresh, speed, body, covered}])
+List.do([%{"hp" => 1}, %{"owner" => 2}, %{"status" => "waiting"},
+  %{"task" => %{"kind" => "work", "target_id" => 8, "progress" => 1}},
+  %{"cargo" => %{"resource_id" => "core.wood", "amount" => 3}},
+  %{"queue" => [%{"id" => 1}]}, %{"construction" => %{"remaining_ticks" => 2}}], fields, do
+  fresh = RTS.Data.merge(unit, fields)
+  refreshed = RTS.Spatial.restore(spatial, layout, %{"entities" => [fresh]})
+  RTS.Check.that("non-geometric fields are refreshed completely without touching old rows",
+    refreshed != void && RTS.Data.get(refreshed, "index") == RTS.Data.get(spatial, "index") &&
+    RTS.Data.get(refreshed, "rows") == [{fresh, speed, body, covered}] &&
+    RTS.Data.get(spatial, "entities") == [unit])
+end)
+List.do([%{"id" => 99}, %{"type_id" => "core.scout"}, %{"x" => 0}, %{"z" => 0}], fields, do
+  RTS.Check.that("identity, type and either coordinate invalidate cached geometry",
+    RTS.Spatial.restore(spatial, layout, %{"entities" => [RTS.Data.merge(unit, fields)]}) == void)
+end)
+fresh = RTS.Data.put(unit, "order", RTS.Navigation.order(7, 1))
+RTS.Spatial.remember(content, spatial)
+refreshed = RTS.Spatial.prepare(content, layout, RTS.Data.share(%{"entities" => [fresh]}))
+RTS.Check.that("refreshed indices are consumed before mutation and retain exact collision behavior",
+  RTS.Data.slot_take(RTS.Data.get(content, "spatial_cache")) == void &&
+  RTS.Spatial.available(layout, mask, RTS.Data.get(refreshed, "index"), {2, -128, -128, 128}) == [] &&
+  RTS.Spatial.available(layout, mask, RTS.Data.get(refreshed, "index"), {2, 128, -128, 128}) != [])
+fresh_pair = [unit, RTS.Data.put(second, "hp", 1)]
+refreshed_pair = RTS.Spatial.restore(pair, layout, %{"entities" => fresh_pair})
+rebuilt_pair = RTS.Spatial.build(content, layout, fresh_pair)
+RTS.Check.that("mixed unchanged and refreshed rows agree with a full rebuild",
+  RTS.Data.get(refreshed_pair, "rows") == RTS.Data.get(rebuilt_pair, "rows") &&
+  RTS.Data.get(refreshed_pair, "index") == RTS.Data.get(pair, "index"))
+RTS.Check.that("a late geometry mismatch discards the entire refresh without mutating the snapshot",
+  RTS.Spatial.restore(pair, layout, %{"entities" => [fresh, RTS.Data.put(second, "x", 128)]}) == void &&
+  RTS.Data.get(pair, "entities") == [unit, second])

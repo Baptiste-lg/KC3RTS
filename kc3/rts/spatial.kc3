@@ -1,5 +1,5 @@
-# A derived Facts index. One worker-local cache entry can carry it to the next
-# tick only when the complete entity list and layout match. Mismatches rebuild.
+# A derived Facts index. Exact snapshots restore immediately; non-geometric
+# changes refresh complete entity rows without rebuilding collision facts.
 defmodule RTS.Spatial do
   def prepare = fn (content, layout, state) {
     cache = RTS.Data.get(content, "spatial_cache")
@@ -15,9 +15,33 @@ defmodule RTS.Spatial do
   def restore = fn (saved, layout, state) {
     # Compare complete values in-place; the shared state envelope avoids
     # copying entity lists through prepare/restore on every cache hit.
-    if RTS.Data.get(saved, "layout") == layout && RTS.Data.field_equal?(saved, state, "entities") do
-      saved
-    else void end
+    if RTS.Data.get(saved, "layout") != layout do void else
+      if RTS.Data.field_equal?(saved, state, "entities") do saved else
+        RTS.Spatial.refresh(saved, state)
+      end
+    end
+  }
+  def refresh = fn (saved, state) {
+    entities = RTS.Data.get(state, "entities")
+    pairs = RTS.Data.zip(RTS.Data.get(saved, "rows"), entities)
+    if pairs == void do void else
+      valid = true
+      rows = List.map_filter(pairs, {{previous, speed, body, cells}, entity}, do
+        if valid do
+          # The compiled catalog owns this cache and is immutable: type_id
+          # determines footprint and speed. Row order determines tick priority,
+          # so never match reordered entities by ID alone.
+          if previous != entity do
+            valid = RTS.Data.field_equal?(previous, entity, "id") &&
+              RTS.Data.field_equal?(previous, entity, "type_id") &&
+              RTS.Data.field_equal?(previous, entity, "x") &&
+              RTS.Data.field_equal?(previous, entity, "z")
+          end
+          {entity, speed, body, cells}
+        else void end
+      end)
+      if valid do RTS.Data.merge(saved, %{"entities" => entities, "rows" => rows}) else void end
+    end
   }
   def remember = fn (content, saved) {
     # Only the latest snapshot is needed: no graph indexing of its full payload.

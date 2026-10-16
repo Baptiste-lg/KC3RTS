@@ -187,13 +187,20 @@ the timing targets**. These are development measurements, not supported capacity
 
 The subsequent P04 optimization keeps orders/entities in shared storage and
 uses a derived KC3 Facts spatial index. Its single worker-local cache entry is
-consumed before mutation and reused only for an identical entity list/layout;
-its snapshot stays shared across cache calls and is never serialized. The
+consumed before mutation. Identical entities/layout restore immediately;
+order/task-only changes refresh the complete entity rows while retaining the
+index. Changed identity, type, position, ordering, membership or layout rebuilds
+it. The immutable compiled catalog owns the cache, so each type's speed and
+footprint remain fixed. Its snapshot stays shared and is never serialized. The
 single-entry cache uses an owned mutable slot in the game's storage bridge,
 avoiding graph indexing of an entire snapshot on every tick. The collision
 index itself and content permission queries still use KC3 Facts.
 `profile_navigation.kc3` reports cache round trips separately from index builds
-and per-unit movement updates. These diagnostics do not replace real-port
+and alternates old/new cache policies for unchanged and updated orders. A
+generic game-owned native list zipper avoids repeatedly copying list tails;
+all geometry validity checks and refresh decisions remain KC3. These
+measurements are phase costs, not whole-game speedup ratios. The profiler also
+reports per-unit movement updates. These diagnostics do not replace real-port
 latency measurements. Six baseline scene hashes check every canonical tick,
 alongside footprint, collision, cache invalidation and restoration tests.
 The KC3 footprint scan handles one or two rows/columns directly, retaining
