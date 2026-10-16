@@ -146,6 +146,19 @@ defmodule RTS.Navigation do
       z = z + RTS.Navigation.step(dz, speed) end
     {{id, x, z, size}, x == tx && z == tz}
   }
+  # Called only after the horizontal-first integer proposal on the SAME input failed.
+  # If it did not change x, the other axis order produces the same candidate.
+  # Otherwise only an off-axis z target gives a distinct fallback. Its x stays
+  # unchanged, so it cannot have reached the waypoint yet.
+  def alternate = fn ({width, height, ox, oz, cell_size}, {id, x, z, size}, speed, cell,
+                       {next_id, next_x, next_z, next_size}) {
+    if next_x == x do void else
+      tz = oz + (cell / width) * cell_size + cell_size / 2
+      if tz == z do void else
+        {{id, x, z + RTS.Navigation.step(tz - z, speed), size}, false}
+      end
+    end
+  }
   def finish = fn (entity, order, {id, x, z, size}, reached) {
     if reached do
       # Only reaching a waypoint needs a new path. Passing the entire list
@@ -302,8 +315,13 @@ defmodule RTS.Navigation do
         {next, reached} = RTS.Navigation.propose(layout, body, speed, cell, true)
         cells = RTS.Spatial.available(layout, mask, buckets, next)
         if cells == [] do
-          {next, reached} = RTS.Navigation.propose(layout, body, speed, cell, false)
-          cells = RTS.Spatial.available(layout, mask, buckets, next)
+          alternative = RTS.Navigation.alternate(layout, body, speed, cell, next)
+          # No reservation changed since the first query. An identical
+          # candidate is still blocked; only query a genuinely different one.
+          if alternative != void do
+            {next, reached} = ^ alternative
+            cells = RTS.Spatial.available(layout, mask, buckets, next)
+          end
         end
         if cells != [] do
           RTS.Spatial.reserve(buckets, occupied_cells, body, false)

@@ -4,6 +4,7 @@ load!(__DIR__ + "load.kc3")
 RTS.Loader.world(__DIR__)
 load!(__DIR__ + "tests/army_scenario.kc3")
 load!(__DIR__ + "tests/spatial_reference.kc3")
+load!(__DIR__ + "tests/navigation_reference.kc3")
 defmodule RTS.NavigationProfile do
   # Previous population scan retained for paired measurements.
   def population_copy = fn (content, state, slot) {
@@ -147,6 +148,25 @@ RTS.NavigationProfile.sample("one_footprint", fn () {
   RTS.Map.cover(layout, body_x, body_z, body_size)
 })
 RTS.NavigationProfile.sample("one_collision", fn () { RTS.Spatial.clear?(buckets, cells, body) })
+# Only benchmark rejected first proposals, as in the actual tick branch.
+retry_layout = {4, 4, 0, 0, 256}
+retry_mask = RTS.Map.repeat(".", 16)
+retry_body = {1, 128, 128, 128}
+List.do(RTS.NavigationReference.retry_cases(), {name, retry_cell, blockers}, do
+  retry_index = Facts.database()
+  RTS.Spatial.reserve(retry_index, [0], retry_body, true)
+  List.do(blockers, {id, x, z, size}, do
+    RTS.Spatial.reserve(retry_index, RTS.Map.cover(retry_layout, x, z, size), {id, x, z, size}, true)
+  end)
+  {first, reached} = RTS.Navigation.propose(retry_layout, retry_body, 64, retry_cell, true)
+  if RTS.Spatial.available(retry_layout, retry_mask, retry_index, first) != [] do
+    puts("FAIL: retry profiling requires a rejected first candidate")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("blocked_retry_" + name,
+    fn () { RTS.NavigationReference.retry(retry_layout, retry_mask, retry_index, retry_body, 64, retry_cell, first) },
+    fn () { RTS.NavigationReference.retry_distinct(retry_layout, retry_mask, retry_index, retry_body, 64, retry_cell, first) })
+end)
 RTS.NavigationProfile.paired("cover_100_unit_geometry",
   fn () {
     List.do(rows, {entity, speed, {id, x, z, size}, cells}, do

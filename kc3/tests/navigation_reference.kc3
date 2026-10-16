@@ -1,0 +1,22 @@
+# Diagnostic wrappers for the old/new retry branches, never loaded by workers.
+# Both require that first is the rejected horizontal-first proposal and that
+# reservations have not changed since that query.
+defmodule RTS.NavigationReference do
+  def retry = fn (layout, mask, index, body, speed, cell, first) {
+    {next, reached} = RTS.Navigation.propose(layout, body, speed, cell, false)
+    RTS.Spatial.available(layout, mask, index, next)
+  }
+  def retry_distinct = fn (layout, mask, index, body, speed, cell, first) {
+    alternative = RTS.Navigation.alternate(layout, body, speed, cell, first)
+    if alternative == void do [] else
+      {next, reached} = ^ alternative
+      RTS.Spatial.available(layout, mask, index, next)
+    end
+  }
+  def retry_cases = fn () {
+    [{"horizontal", 1, [{2, 256, 128, 128}]},
+     {"vertical", 4, [{2, 128, 256, 128}]},
+     {"diagonal_open", 5, [{2, 256, 128, 128}]},
+     {"diagonal_blocked", 5, [{2, 256, 128, 128}, {3, 128, 256, 128}]}]
+  }
+end
