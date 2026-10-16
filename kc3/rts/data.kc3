@@ -25,6 +25,9 @@ defmodule RTS.Data do
   # Read a list field's head without copying its unused tail. Empty => void.
   def first = cfn Tag "kc3rts_first" (Tag, Tag, Result)
   def rest = cfn Tag "kc3rts_rest" (Tag, Tag, Result)
+  # Pair proper lists without repeatedly copying their remaining tails.
+  # Different lengths or non-lists => void; two empty lists => [].
+  def zip = cfn Tag "kc3rts_zip" (Tag, Tag, Result)
   def put = cfn Tag "kc3rts_put" (Tag, Tag, Tag, Result)
   def merge = cfn Tag "kc3rts_merge" (Tag, Tag, Result)
   def integer? = fn (value, minimum, maximum) {

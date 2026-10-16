@@ -87,6 +87,38 @@ s_tag *kc3rts_rest(s_tag *value, const s_tag *key, s_tag *result)
   return tag_init_copy(result, &list->data.td_plist->next);
 }
 
+/* Pair equal-length proper lists in one pass. Each result owns its values;
+ * no cursor or borrowed pointer escapes. Void signals incompatible inputs,
+ * distinct from successfully pairing two empty lists. */
+s_tag *kc3rts_zip(s_tag *left, s_tag *right, s_tag *result)
+{
+  s_list *a, *b, *pairs = NULL, **tail = &pairs;
+  if (left->type != TAG_PLIST || right->type != TAG_PLIST)
+    return tag_init(result);
+  a = left->data.td_plist;
+  b = right->data.td_plist;
+  while (a && b) {
+    if (a->next.type != TAG_PLIST || b->next.type != TAG_PLIST)
+      goto invalid;
+    if (!(*tail = list_new(NULL))) goto failed;
+    if (!tag_init_ptuple(&(*tail)->tag, 2)) goto failed;
+    s_tuple *pair = (*tail)->tag.data.td_ptuple;
+    if (!tag_init_copy(pair->tag, &a->tag) ||
+        !tag_init_copy(pair->tag + 1, &b->tag)) goto failed;
+    tail = &(*tail)->next.data.td_plist;
+    a = list_next(a);
+    b = list_next(b);
+  }
+  if (a || b) goto invalid;
+  return tag_init_plist(result, pairs);
+ invalid:
+  list_delete_all(pairs);
+  return tag_init(result);
+ failed:
+  list_delete_all(pairs);
+  return NULL;
+}
+
 static s_tag *wrap_map(const s_tag *source, s_map *map, s_tag *result)
 {
   if (source->type == TAG_MAP) {

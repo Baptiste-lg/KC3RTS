@@ -3,6 +3,26 @@ load!(__DIR__ + "check.kc3")
 load!(__DIR__ + "../rts/data.kc3")
 load!(__DIR__ + "../rts/wire.kc3")
 
+RTS.Check.that("zip pairs heterogeneous values in order, including null and false",
+  RTS.Data.zip([0, false, void], ["a", %{"x" => 1}, [2]]) ==
+    [{0, "a"}, {false, %{"x" => 1}}, {void, [2]}] && RTS.Data.zip([], []) == [])
+List.do([{[1], []}, {[], [1]}, {[1, 2], [3]}, {[1], [2, 3]},
+         {[1 | 2], [3]}, {[1], [2 | 3]}, {void, []}, {[], 42}], pair, do
+  {left, right} = ^ pair
+  RTS.Check.that("zip rejects unequal, improper and non-list inputs",
+    RTS.Data.zip(left, right) == void)
+end)
+left = [%{"nested" => [1, 2]}]
+right = [RTS.Data.share(%{"nested" => [3, 4]})]
+paired = RTS.Data.zip(left, right)
+RTS.Check.that("zip leaves both input lists intact",
+  left == [%{"nested" => [1, 2]}] && RTS.Data.get(List.first(right), "nested") == [3, 4])
+left = void
+right = void
+{first, second} = List.first(paired)
+RTS.Check.that("zip owns nested and shared values after inputs are released",
+  RTS.Data.get(first, "nested") == [1, 2] && RTS.Data.get(second, "nested") == [3, 4])
+
 RTS.Check.that("integer bounds exclude floats and bools",
   RTS.Data.integer?(2147483646, 1, 2147483646) &&
   (! RTS.Data.integer?(1.0, 0, 10)) && (! RTS.Data.integer?(true, 0, 10)))
