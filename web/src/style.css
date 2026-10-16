@@ -228,3 +228,6 @@ button { font: inherit; }
 #kc3-actions button:hover:not(:disabled) { background: #496365; }
 #kc3-actions button:focus-visible { outline: 2px solid #edc56a; outline-offset: 1px; }
 .kc3-trial .command-panel { max-height: calc(100vh - 150px); overflow-y: auto; }
+@media (max-height: 600px) {
+  .kc3-trial .command-panel { max-height: calc(100vh - 200px); }
+}
