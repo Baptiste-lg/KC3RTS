@@ -207,6 +207,9 @@ The KC3 footprint scan handles one or two rows/columns directly, retaining
 the general scan for larger bodies and the same row-major cell order.
 The phase profiler includes paired old/new scans for one, two, four and
 sixteen cells; these per-operation samples are not whole-tick speedups.
+Population accounting likewise traverses entities and production queues once
+in KC3, avoiding repeated remaining-list copies. The profiler compares it with
+the earlier traversal on the same 100-unit snapshot.
 
 Run `mix run scripts/benchmark_navigation.exs` from `server` with the same
 runtime environment for an isolated real-port measurement without coverage.

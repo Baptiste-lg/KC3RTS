@@ -4,6 +4,58 @@ load!(__DIR__ + "load.kc3")
 RTS.Loader.world(__DIR__)
 load!(__DIR__ + "tests/army_scenario.kc3")
 defmodule RTS.NavigationProfile do
+  # Previous population scan retained for paired measurements.
+  def population_copy = fn (content, state, slot) {
+    used = 0
+    reserved = 0
+    cap = 0
+    entities = RTS.Data.get(state, "entities")
+    while entities != [] do
+      e = List.first(entities)
+      if RTS.Data.get(e, "owner") == slot && RTS.Data.get(e, "hp") > 0 do
+        d = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+        used = used + RTS.Data.get(d, "population")
+        if RTS.Data.get(e, "construction") == void do cap = cap + RTS.Data.get(d, "supply") end
+        queue = RTS.Data.get(e, "queue")
+        while queue != [] do
+          recipe = RTS.World.definition(content, RTS.Data.get(List.first(queue), "recipe_id"))
+          reserved = reserved + RTS.Data.get(RTS.World.definition(content, RTS.Data.get(recipe, "output")), "population")
+          queue = List.next(queue)
+        end
+      end
+      entities = List.next(entities)
+    end
+    %{"used" => used, "reserved" => reserved, "cap" => if cap > RTS.Content.rule(content, "population_cap") do RTS.Content.rule(content, "population_cap") else cap end}
+  }
+  # Previous production policy: any changed entity field rebuilds the index.
+  def prepare_exact = fn (content, layout, state) {
+    saved = RTS.Data.slot_take(RTS.Data.get(content, "spatial_cache"))
+    if saved != void && RTS.Data.get(saved, "layout") == layout &&
+       RTS.Data.field_equal?(saved, state, "entities") do saved else
+      RTS.Spatial.build(content, layout, RTS.Data.get(state, "entities"))
+    end
+  }
+  # Interleave both implementations on identical input; reverse ordering on
+  # alternate rounds so host load drift is less likely to favor one variant.
+  def paired = fn (name, reference, candidate) {
+    old = []
+    fresh = []
+    List.do([1, 2, 3, 4, 5, 6, 7, 8, 9], iteration, do
+      actions = if iteration mod 2 == 1 do [{false, reference}, {true, candidate}] else
+        [{true, candidate}, {false, reference}] end
+      List.do(actions, {optimized, action}, do
+        start = Time.uptime()
+        action()
+        finish = Time.uptime()
+        elapsed = (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
+        if optimized do fresh = [elapsed | fresh] else old = [elapsed | old] end
+      end)
+    end)
+    puts(RTS.Wire.encode(%{"phase" => name, "samples" => 9,
+      "reference_median_us" => access(List.sort(old), [4]),
+      "candidate_median_us" => access(List.sort(fresh), [4]),
+      "reference_us" => List.reverse(old), "candidate_us" => List.reverse(fresh)}))
+  }
   # Previous cache API, retained for paired measurements on identical input.
   def restore_copy = fn (saved, layout, entities) {
     if RTS.Data.get(saved, "layout") == layout && RTS.Data.get(saved, "entities") == entities do saved else void end
@@ -151,3 +203,32 @@ RTS.NavigationProfile.sample("spatial_facts_write", fn () {
 RTS.NavigationProfile.sample("spatial_facts_read", fn () {
   Facts.first_with_tags(RTS.Data.get(copy_content, "spatial_cache"), :latest, :spatial, ?, fn (fact) { fact.object })
 })
+List.do([0, 8, 100], changed_count, do
+  changed = RTS.Data.put(packed, "entities", List.map_filter(RTS.Data.get(packed, "entities"), e, do
+    if RTS.Data.get(e, "id") <= changed_count do
+      RTS.Data.put(e, "order", RTS.Data.put(RTS.Data.get(e, "order"), "wait", 1))
+    else e end
+  end))
+  RTS.NavigationProfile.paired("spatial_refresh_" + (Str) changed_count,
+    fn () {
+      RTS.Spatial.remember(content, spatial)
+      RTS.NavigationProfile.prepare_exact(content, layout, changed)
+    }, fn () {
+      RTS.Spatial.remember(content, spatial)
+      RTS.Spatial.prepare(content, layout, changed)
+    })
+end)
+changed = RTS.Data.put(packed, "entities", List.map_filter(RTS.Data.get(packed, "entities"), e, do
+  if RTS.Data.get(e, "id") == 1 do RTS.Data.put(e, "x", RTS.Data.get(e, "x") + 1) else e end
+end))
+RTS.NavigationProfile.paired("spatial_geometry_miss",
+  fn () {
+    RTS.Spatial.remember(content, spatial)
+    RTS.NavigationProfile.prepare_exact(content, layout, changed)
+  }, fn () {
+    RTS.Spatial.remember(content, spatial)
+    RTS.Spatial.prepare(content, layout, changed)
+  })
+RTS.NavigationProfile.paired("population_scan",
+  fn () { RTS.NavigationProfile.population_copy(content, packed, 1) },
+  fn () { RTS.World.population(content, packed, 1) })

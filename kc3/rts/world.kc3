@@ -135,22 +135,18 @@ defmodule RTS.World do
     used = 0
     reserved = 0
     cap = 0
-    entities = RTS.Data.get(state, "entities")
-    while entities != [] do
-      e = List.first(entities)
+    # Traverse once: first/next on every remaining list copies its tail.
+    List.do(RTS.Data.get(state, "entities"), e, do
       if RTS.Data.get(e, "owner") == slot && RTS.Data.get(e, "hp") > 0 do
         d = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
         used = used + RTS.Data.get(d, "population")
         if RTS.Data.get(e, "construction") == void do cap = cap + RTS.Data.get(d, "supply") end
-        queue = RTS.Data.get(e, "queue")
-        while queue != [] do
-          recipe = RTS.World.definition(content, RTS.Data.get(List.first(queue), "recipe_id"))
+        List.do(RTS.Data.get(e, "queue"), job, do
+          recipe = RTS.World.definition(content, RTS.Data.get(job, "recipe_id"))
           reserved = reserved + RTS.Data.get(RTS.World.definition(content, RTS.Data.get(recipe, "output")), "population")
-          queue = List.next(queue)
-        end
+        end)
       end
-      entities = List.next(entities)
-    end
+    end)
     %{"used" => used, "reserved" => reserved, "cap" => if cap > RTS.Content.rule(content, "population_cap") do RTS.Content.rule(content, "population_cap") else cap end}
   }
   def refresh = fn (content, state) {

@@ -9,6 +9,30 @@ RTS.Check.that("opening follows the economy table", RTS.Scenario.stock(world, "c
 RTS.Check.that("worker and hall production use prescribed ticks", RTS.Data.get(RTS.World.definition(content, "core.train_worker"), "ticks") == 150 && RTS.Data.get(RTS.World.definition(content, "core.build_hall"), "ticks") == 600)
 RTS.Check.that("state round trips canonical JSON", JSON.from_str(RTS.Wire.encode(world)) == world)
 RTS.Check.that("outcome remains explicit pending combat", RTS.Data.get(RTS.Data.get(world, "outcome"), "status") == "ongoing")
+# Read-only population reduction: every queued job reserves supply, whereas
+# dead entities and unfinished supply buildings grant none.
+hall = RTS.World.entity(content, "kiln.concord", 101, "core.hall", 1, 0, 0, void)
+worker = RTS.World.entity(content, "kiln.concord", 102, "core.worker", 1, 0, 0, void)
+jobs = [%{"recipe_id" => "core.train_worker"}, %{"recipe_id" => "core.train_spear"}]
+population_state = %{"entities" => [RTS.Data.put(hall, "queue", jobs), worker,
+  RTS.Data.merge(worker, %{"id" => 103, "owner" => 2}),
+  RTS.Data.merge(hall, %{"id" => 104, "hp" => 0, "queue" => jobs}),
+  RTS.Data.merge(hall, %{"id" => 105, "construction" => %{"remaining_ticks" => 1}})]}
+before = RTS.Wire.encode(population_state)
+List.do([population_state, RTS.World.pack(population_state)], storage, do
+  RTS.Check.that("population excludes dead/enemy units and unfinished supply, counts every queued job",
+    RTS.World.population(content, storage, 1) == %{"used" => 1, "reserved" => 2, "cap" => 10} &&
+    RTS.World.population(content, storage, 2) == %{"used" => 1, "reserved" => 0, "cap" => 0} &&
+    RTS.World.population(content, storage, 3) == %{"used" => 0, "reserved" => 0, "cap" => 0})
+end)
+RTS.Check.that("population reduction preserves state and is independent of entity order",
+  RTS.Wire.encode(population_state) == before &&
+  RTS.World.population(content, %{"entities" => List.reverse(RTS.Data.get(population_state, "entities"))}, 1) ==
+    RTS.World.population(content, population_state, 1))
+many_halls = List.map_filter([1, 2, 3, 4, 5, 6, 7], id, do RTS.Data.put(hall, "id", id) end)
+RTS.Check.that("population supply clamps to the catalog cap and empty worlds reduce to zero",
+  RTS.World.population(content, %{"entities" => many_halls}, 1) == %{"used" => 0, "reserved" => 0, "cap" => 60} &&
+  RTS.World.population(content, %{"entities" => []}, 1) == %{"used" => 0, "reserved" => 0, "cap" => 0})
 train = %{"type" => "produce", "entity_id" => 1, "recipe_id" => "core.train_worker", "x" => 0, "z" => 0}
 RTS.Scenario.reject(content, world, Map.put(train, "entity_id", 8), "invalid_producer")
 RTS.Scenario.reject(content, world, Map.put(train, "recipe_id", "missing.recipe"), "unknown_content")
