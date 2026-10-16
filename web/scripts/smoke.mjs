@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { smokeFailureAnnotation } from "./smoke_report.mjs";
 import { checkIdleWorkers } from "./smoke_idle_workers.mjs";
+import { waitForBrowserPort } from "./smoke_browser.mjs";
 
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
@@ -185,7 +186,7 @@ try {
   }, 15_000, pagesMode ? "Pages preview" : "Vite page");
 
   profile = await mkdtemp(join(tmpdir(), "kc3rts-browser-"));
-  start("Chromium", browserExecutable(), [
+  const browser = start("Chromium", browserExecutable(), [
     `--user-data-dir=${profile}`,
     "--no-first-run",
     "--headless",
@@ -200,10 +201,7 @@ try {
     pageUrl,
   ], webDirectory);
 
-  const port = await until(async () => {
-    const contents = await readFile(join(profile, "DevToolsActivePort"), "utf8");
-    return Number(contents.split("\n")[0]);
-  }, 15_000, "Chromium DevTools port");
+  const port = await waitForBrowserPort(browser, profile);
   const pages = await until(async () => {
     const response = await fetch(`http://127.0.0.1:${port}/json/list`);
     const entries = await response.json();
