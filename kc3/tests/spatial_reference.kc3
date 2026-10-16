@@ -1,0 +1,20 @@
+# Previous production query, kept outside the worker for parity and profiling.
+defmodule RTS.SpatialReference do
+  def clear? = fn (index, cells, {id, x, z, size}) {
+    valid = true
+    List.do(cells, cell, do
+      if valid do
+        neighbors = Facts.collect_with_tags(index, cell, :body, ?, fn (fact) { fact.object })
+        List.do(neighbors, {other_id, other_x, other_z, other_size}, do
+          if other_id != id do
+            distance = (size + other_size) / 2
+            dx = x - other_x
+            dz = z - other_z
+            if dx < distance && dx > (0 - distance) && dz < distance && dz > (0 - distance) do valid = false end
+          end
+        end)
+      end
+    end)
+    valid
+  }
+end
