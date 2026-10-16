@@ -12,6 +12,11 @@ remain subsequent packages. A failed worker makes the trial unavailable.
 
 ## Playing the economy slice
 
+- The **Idle workers** counter selects and centers the camera on one available
+  worker. Click it or press **I** repeatedly to cycle. Workers already gathering,
+  delivering, building, repairing or moving are excluded; scouts are not workers.
+  This only changes selection, never issues a simulation order. This shortcut leaves
+  text entry and dialogs alone.
 - Select workers, then right click berries, wood, stone or gold. Workers carry
   up to their catalog capacity, return to reachable compatible storage, and
   seek another node of the same resource after depletion. Stop retains cargo.

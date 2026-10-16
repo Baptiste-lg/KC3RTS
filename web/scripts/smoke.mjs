@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { smokeFailureAnnotation } from "./smoke_report.mjs";
+import { checkIdleWorkers } from "./smoke_idle_workers.mjs";
 
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
@@ -17,7 +18,7 @@ const pageUrl = `http://127.0.0.1:5173${pagesMode ? "/KC3RTS/" : "/"}?${new URLS
   ...(kc3Mode ? { mode: "kc3" } : {}),
   ...(process.env.KC3RTS_ANGLE ? { angle: process.env.KC3RTS_ANGLE } : {}),
   ...(process.env.KC3RTS_ZOOM ? { zoom: process.env.KC3RTS_ZOOM } : {}),
-  ...((process.env.KC3RTS_METRICS_PATH || kc3Mode) ? { profile: "1" } : {}),
+  profile: "1",
 })}`;
 const sleep = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
 const processes = [];
@@ -325,11 +326,12 @@ try {
     const built = await until(async () => { const v = await state(); return v.entities.some((e) => e.type_id === "core.house" && e.construction) ? v : false; }, 15_000, "worker-built foundation");
     if (built.players[0].stocks["core.wood"] !== 160 || built.players[0].population.cap !== 10) throw new Error("Foundation charged or supplied population incorrectly");
     await until(async () => (await state()).players[0].population.cap === 15, 100_000, "worker completion and house capacity");
+    await checkIdleWorkers(devtools);
     if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
       const screenshot = await devtools.send("Page.captureScreenshot", { format: "png" });
       await writeFile(process.env.KC3RTS_SMOKE_SCREENSHOT, Buffer.from(screenshot.data, "base64"));
     }
-    console.log("KC3 browser smoke passed: generic entities, faction art, selection/group recall, authoritative move/stop, paid queues, cancellation, food delivery, worker spawn and house completion.");
+    console.log("KC3 browser smoke passed: generic entities, faction art, selection/group recall, authoritative move/stop, paid queues, cancellation, food delivery, worker spawn, house completion and idle worker controls.");
   } else {
     await devtools.evaluate('document.getElementById("recruit").click()');
     const recruited = await until(async () => {
@@ -370,6 +372,7 @@ try {
     }, 30_000, "villager stop order");
     const minimapVisible = await devtools.evaluate('(() => { const c = document.getElementById("minimap"); const r = c.getBoundingClientRect(); return r.width > 100 && r.height > 100 && !!c.getContext("2d"); })()');
     if (!minimapVisible) throw new Error("Minimap missing");
+    await checkIdleWorkers(devtools);
 
     if (process.env.KC3RTS_SMOKE_SCREENSHOT) {
       const screenshot = await devtools.send("Page.captureScreenshot", { format: "jpeg", quality: 65 });

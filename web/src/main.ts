@@ -6,6 +6,7 @@ import type { Building, GroundPoint, WorldSnapshot, Villager } from "./game/prot
 import { WorldView, type MapHit } from "./scene/world_view";
 import { EconomyPanel, contextActions, contextOrder, describeEntity, economyReasons } from "./ui/economy_panel";
 import { Minimap } from "./scene/minimap";
+import { idleWorkerIds, nextIdleWorker } from "./ui/idle_workers";
 
 function element<T extends HTMLElement>(id: string): T { const found = document.getElementById(id); if (!found) throw new Error(`Missing interface element: ${id}`); return found as T; }
 const sceneMount = element<HTMLDivElement>("scene");
@@ -15,11 +16,13 @@ const mapSeedLabel = element<HTMLElement>("map-seed");
 const villagerLabel = element<HTMLElement>("villagers"), enemyHpLabel = element<HTMLElement>("enemy-hp"), tickLabel = element<HTMLElement>("tick");
 const connectionBadge = element<HTMLElement>("connection"), connectionLabel = element<HTMLElement>("connection-label");
 const recruitButton = element<HTMLButtonElement>("recruit"), buildButton = element<HTMLButtonElement>("build"), stopButton = element<HTMLButtonElement>("stop");
+const idleButton = element<HTMLButtonElement>("idle-workers"), idleCount = element<HTMLElement>("idle-count");
 const selectionLabel = element<HTMLElement>("selection"), selectionDetail = element<HTMLElement>("selection-detail"), commandHelp = element<HTMLElement>("command-help"), notice = element<HTMLElement>("notice");
 const loading = element<HTMLElement>("loading"), fallback = element<HTMLElement>("fallback");
 let view: WorldView | null = null, world: WorldSnapshot | null = null;
 if (new URLSearchParams(window.location.search).has("profile")) {
   (window as Window & { __kc3rtsState?: () => WorldSnapshot["kc3"] }).__kc3rtsState = () => world?.kc3;
+  (window as Window & { __kc3rtsSelection?: () => number[] }).__kc3rtsSelection = () => [...selectedVillagers];
   (window as Window & { __kc3rtsStats?: () => ReturnType<WorldView["getRenderInfo"]> | null }).__kc3rtsStats = () => view?.getRenderInfo() ?? null;
 }
 let status: GameConnectionStatus = "connecting", graphicsFailed = false, placing = false, noticeTimer = 0;
@@ -29,6 +32,7 @@ let selectedInfo: { kind: "resource" | "enemy"; id: number } | null = null;
 const selectedVillagers = new Set<number>();
 const controlGroups = new Map<number, number[]>();
 let lastGroup = 0, lastGroupTime = 0;
+let lastIdleWorker: number | null = null;
 const minimap = new Minimap(minimapCanvas, (point) => { view?.focus(point); if (world && view) minimap.draw(world, view.getFocus(), view.getViewport()); });
 const statusLabels: Record<GameConnectionStatus, string> = { connecting: "Connecting…", connected: "Connected game", local: "Solo game", offline: "Server offline", expired: "Match unavailable", incompatible: "Incompatible version" };
 const errors: Record<string, string> = { ...economyReasons, insufficient_resources: "Not enough resources.", invalid_location: "Site too close to an obstacle or outside the map.", invalid_target: "Target unavailable.", invalid_selection: "Select only your mobile units (up to 100 in one group).", unreachable: "No route to that part of the map.", invalid_building: "Select a completed town center.", offline: "Connection lost.", rate_limited: "Too many orders. Try again in a moment.", match_limit: "The server is full. Try again later.", match_unavailable: "This match ended. Reload to start a new match.", game_over: "The game has ended." };
@@ -43,6 +47,11 @@ const controllable = (v: Villager): boolean => v.owner !== "enemy";
 function selectedCenter(): Building | undefined { return world?.buildings.find((b) => b.id === selectedBuilding && b.owner === "player" && b.hp > 0 && b.progress === 100); }
 function updateControls(): void {
   const ready = !graphicsFailed && (status === "connected" || status === "local") && world?.outcome === "playing";
+  const idle = idleWorkerIds(world);
+  idleCount.textContent = String(idle.length);
+  idleButton.disabled = !ready || idle.length === 0;
+  idleButton.title = !ready ? "Available when the match is connected and playable." : idle.length ? "Select and focus the next idle worker (I). Repeat to cycle." : "No idle workers. Workers with an assigned task are not idle.";
+  idleButton.setAttribute("aria-label", `Select next idle worker (${idle.length} available)`);
   recruitButton.disabled = !!world?.kc3 || !ready || !selectedCenter() || (world?.stockpile.wood ?? 0) < 5 || (world?.stockpile.gold ?? 0) < 5;
   buildButton.disabled = !!world?.kc3 || !ready || selectedVillagers.size === 0 || (world?.stockpile.wood ?? 0) < 25 || (world?.stockpile.stone ?? 0) < 15;
   const selected = world?.villagers.filter((v) => selectedVillagers.has(v.id)) ?? [];
@@ -173,8 +182,25 @@ const actions = {
 recruitButton.addEventListener("click", () => { const center = selectedCenter(); if (center) send({ type: "spawn_villager", building_id: center.id }); });
 stopButton.addEventListener("click", () => { if (selectedVillagers.size) send(world?.kc3 ? { type: "stop", entity_ids: [...selectedVillagers] } : { type: "stop", villager_ids: [...selectedVillagers] }); });
 buildButton.addEventListener("click", () => { placing = !placing; updateControls(); if (placing) showNotice("Click open ground to place the town center."); });
+idleButton.addEventListener("click", () => {
+  if (idleButton.disabled || !world) return;
+  const id = nextIdleWorker(idleWorkerIds(world), lastIdleWorker);
+  const worker = world.villagers.find((unit) => unit.id === id);
+  if (!worker) return;
+  lastIdleWorker = worker.id;
+  selectedVillagers.clear(); selectedVillagers.add(worker.id);
+  selectedBuilding = null; selectedInfo = null; placing = false; buildRecipe = null;
+  view?.focus(worker);
+  updateControls();
+});
 window.addEventListener("keydown", (e) => {
-  if (e.altKey || e.metaKey || e.repeat || (e.target instanceof HTMLElement && e.target.matches("input, textarea, select, [contenteditable=true]"))) return;
+  if (e.altKey || e.metaKey || e.repeat ||
+      (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=dialog], dialog")) ||
+      document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]:not([hidden])')) return;
+  if (e.code === "KeyI" && !e.ctrlKey && !e.shiftKey) {
+    if (!idleButton.disabled) { e.preventDefault(); idleButton.click(); }
+    return;
+  }
   const digit = /^Digit([1-9])$/.exec(e.code);
   if (digit) {
     const number = Number(digit[1]);

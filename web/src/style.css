@@ -99,6 +99,10 @@ button { font: inherit; }
 
 .command-panel { left: 32px; bottom: 31px; width: 340px; padding: 21px 22px 18px; border-radius: 17px; }
 .command-type { display: flex; align-items: center; gap: 7px; }
+.idle-workers { margin-left: auto; min-height: 28px; padding: 3px 6px; border: 1px solid #b9a16c; border-radius: 2px; color: #f1d49a; background: #172820; font: inherit; font-size: 11px; letter-spacing: normal; cursor: pointer; }
+.idle-workers:hover:not(:disabled) { background: #304735; }
+.idle-workers:disabled { color: #aeb5a1; border-color: #6b7766; cursor: default; }
+.idle-workers:focus-visible { outline: 2px solid #fff7c8; outline-offset: 3px; }
 .type-line { width: 19px; height: 1px; background: #e4be78; }
 .command-panel h1 { font-size: 25px; line-height: 1.15; letter-spacing: -.03em; margin: 12px 0 8px; }
 .command-panel p { margin: 0; font-size: 12px; color: #c4d1c2; line-height: 1.55; }
