@@ -1,0 +1,72 @@
+/* Bounded integer grid arithmetic only. KC3 owns terrain, collision and
+ * movement policy. Unsupported inputs return Void for the KC3 fallback. */
+#include <stdint.h>
+#include "libkc3/kc3.h"
+
+static bool grid_scalar(const s_tag *tag, s64 *out)
+{
+  switch (tag->type) {
+  case TAG_S8:  *out = tag->data.td_s8; break;
+  case TAG_S16: *out = tag->data.td_s16; break;
+  case TAG_S32: *out = tag->data.td_s32; break;
+  case TAG_S64: *out = tag->data.td_s64; break;
+  case TAG_SW:  *out = tag->data.td_sw; break;
+  case TAG_U8:  *out = tag->data.td_u8; break;
+  case TAG_U16: *out = tag->data.td_u16; break;
+  case TAG_U32: *out = tag->data.td_u32; break;
+  case TAG_U64:
+    if (tag->data.td_u64 > INT32_MAX) return false;
+    *out = tag->data.td_u64;
+    break;
+  case TAG_UW:
+    if (tag->data.td_uw > INT32_MAX) return false;
+    *out = tag->data.td_uw;
+    break;
+  default: return false;
+  }
+  return *out >= INT32_MIN && *out <= INT32_MAX;
+}
+
+s_tag *kc3rts_grid_cover(const s_tag *layout, const s_tag *x_tag,
+                        const s_tag *z_tag, const s_tag *footprint_tag,
+                        s_tag *result)
+{
+  s64 w, h, ox, oz, size, x, z, footprint;
+  if (layout->type != TAG_PTUPLE || layout->data.td_ptuple->count != 5)
+    return tag_init(result);
+  const s_tag *parts = layout->data.td_ptuple->tag;
+  if (!grid_scalar(parts, &w) || !grid_scalar(parts + 1, &h) ||
+      !grid_scalar(parts + 2, &ox) || !grid_scalar(parts + 3, &oz) ||
+      !grid_scalar(parts + 4, &size) || !grid_scalar(x_tag, &x) ||
+      !grid_scalar(z_tag, &z) || !grid_scalar(footprint_tag, &footprint) ||
+      w < 1 || w > 65535 || h < 1 || h > 65535 || size < 1 || footprint < 2)
+    return tag_init(result);
+
+  /* Signed-32-bit inputs make all intermediate arithmetic safe in s64.
+   * Dimensions also keep cell IDs representable by uw on 32-bit hosts.
+   * Preserve KC3's integer half-size rule, including odd footprints. */
+  s64 half = footprint / 2;
+  s64 left = x - half - ox, right = x + half - 1 - ox;
+  s64 top = z - half - oz, bottom = z + half - 1 - oz;
+  if (left < 0 || top < 0 || right >= w * size || bottom >= h * size)
+    return tag_init_plist(result, NULL);
+  left /= size;
+  right /= size;
+  top /= size;
+  bottom /= size;
+  /* Limit native allocation; unusually large queries retain the reference. */
+  if ((right - left + 1) * (bottom - top + 1) > 4096)
+    return tag_init(result);
+
+  s_list *cells = NULL, **tail = &cells;
+  for (s64 row = top; row <= bottom; ++row)
+    for (s64 col = left; col <= right; ++col) {
+      *tail = list_new_uw_reduce((uw) (row * w + col), NULL);
+      if (!*tail) {
+        list_delete_all(cells);
+        return NULL;
+      }
+      tail = &(*tail)->next.data.td_plist;
+    }
+  return tag_init_plist(result, cells);
+}

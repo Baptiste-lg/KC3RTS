@@ -20,6 +20,8 @@ List.do([2, 64, 128, 255, 256, 257, 384, 512, 768, 1024], size, do
   List.do([-576, -448, -384, -192, -64, 0, 64, 192, 384, 448, 576], x, do
     List.do([-576, -448, -384, -192, -64, 0, 64, 192, 384, 448, 576], z, do
       cells = RTS.Map.cover(layout, x, z, size)
+      valid = valid && cells == RTS.Map.cover_reference(layout, x, z, size) &&
+        cells == RTS.Map.cover_native(layout, x, z, size)
       fits = RTS.Map.fits?(grid, mask, x, z, size)
       valid = valid && ((cells != []) == fits)
       if fits do valid = valid && cells == RTS.Map.cells(grid, x, z, size) end
@@ -27,6 +29,63 @@ List.do([2, 64, 128, 255, 256, 257, 384, 512, 768, 1024], size, do
   end)
 end)
 RTS.Check.that("1210 footprint cases match the reference geometry", valid)
+valid = true
+List.do([{1, 1, 0, 0, 1}, {7, 3, -21, 14, 7},
+  {4, 5, -2147483648, -2147483648, 256},
+  {4, 5, 2147482623, 2147482623, 256}], geometry, do
+  {width, height, ox, oz, cell_size} = ^ geometry
+  List.do([2, 3, 64, 127, 128, 257, 1024], size, do
+    List.do([0, 1, 63, 127, 256, 511, 1023], dx, do
+      List.do([0, 1, 63, 127, 256, 511, 1023], dz, do
+        valid = valid && RTS.Map.cover_native(geometry, ox + dx, oz + dz, size) ==
+          RTS.Map.cover_reference(geometry, ox + dx, oz + dz, size)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("1372 native cases preserve odd sizes, non-square grids and signed boundaries", valid)
+List.do([(S8) 2, (S16) 2, (S32) 2, (S64) 2, (Sw) 2,
+  (U8) 2, (U16) 2, (U32) 2, (U64) 2, (Uw) 2], value, do
+  RTS.Check.that("native cover accepts every bounded machine-integer representation",
+    RTS.Map.cover_native({value, value, 0, 0, value}, value, value, value) == [0, 1, 2, 3])
+end)
+List.do([{void, 0, 0, 2}, {{1, 1}, 0, 0, 2}, {[1, 1, 0, 0, 1], 0, 0, 2},
+  {{0, 1, 0, 0, 1}, 0, 0, 2}, {{1, -1, 0, 0, 1}, 0, 0, 2},
+  {{65536, 1, 0, 0, 1}, 0, 0, 2}, {{1, 65536, 0, 0, 1}, 0, 0, 2},
+  {{1, 1, 0, 0, 0}, 0, 0, 2}, {{1, 1, 0, 0, -1}, 0, 0, 2},
+  {{1, 1, "0", 0, 1}, 0, 0, 2}, {{1, 1, 0, false, 1}, 0, 0, 2},
+  {layout, 0.5, 0, 2}, {layout, true, 0, 2}, {layout, 0, "0", 2},
+  {layout, 2147483648, 0, 2}, {layout, -2147483649, 0, 2},
+  {layout, (U32) 4294967295, 0, 2},
+  {layout, (S64) -9223372036854775808, 0, 2},
+  {layout, (S64) 9223372036854775807, 0, 2},
+  {layout, (Uw) 4294967295, 0, 2},
+  {layout, (U64) 18446744073709551615, 0, 2},
+  {layout, 18446744073709551616, 0, 2},
+  {layout, 0, 0, 1}, {layout, 0, 0, 0}, {layout, 0, 0, -2}],
+  {geometry, x, z, size}, do
+  RTS.Check.that("native cover declines unsupported inputs without coercion",
+    RTS.Map.cover_native(geometry, x, z, size) == void)
+end)
+List.do([{layout, 0, 0, 1}, {layout, -512, -512, 1},
+  {{2, 2, 9007199254740000, -9007199254740000, 256}, 9007199254740256, -9007199254739744, 128},
+  {{65536, 2, 0, 0, 256}, 128, 128, 128}], {geometry, x, z, size}, do
+  RTS.Check.that("unsupported geometry uses the exact KC3 reference",
+    RTS.Map.cover_native(geometry, x, z, size) == void &&
+    RTS.Map.cover(geometry, x, z, size) == RTS.Map.cover_reference(geometry, x, z, size))
+end)
+large_cells = RTS.Map.cover_native({64, 64, 0, 0, 1}, 32, 32, 64)
+RTS.Check.that("the native allocation bound includes exactly 4096 row-major cells",
+  List.length(large_cells) == 4096 && List.first(large_cells) == 0 && List.last(large_cells) == 4095)
+RTS.Check.that("larger enumerations request the reference fallback before allocation",
+  RTS.Map.cover_native({66, 66, 0, 0, 1}, 33, 33, 66) == void)
+wide_layout = {65535, 65535, 0, 0, 1}
+RTS.Check.that("large cell IDs do not overflow signed 32-bit arithmetic",
+  RTS.Map.cover_native(wide_layout, 65534, 65534, 2) == RTS.Map.cover_reference(wide_layout, 65534, 65534, 2))
+extreme_layout = {65535, 65535, -2147483648, -2147483648, 2147483647}
+RTS.Check.that("origin subtraction and map extent products use wide intermediates",
+  RTS.Map.cover_native(extreme_layout, 2147483647, 2147483647, 2) ==
+    RTS.Map.cover_reference(extreme_layout, 2147483647, 2147483647, 2))
 index = Facts.database()
 body = {1, -128, -128, 128}
 cells = RTS.Map.cover(layout, -128, -128, 128)

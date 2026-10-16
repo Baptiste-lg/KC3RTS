@@ -130,8 +130,14 @@ defmodule RTS.Map do
       RTS.Data.get(map, "origin_x"), RTS.Data.get(map, "origin_z"), RTS.Data.get(map, "cell_size")}
   }
   # Unlike cells (which clips static obstacles), cover rejects out-of-map bodies.
-  # An in-bounds, positive footprint always covers at least one cell.
-  def cover = fn ({width, height, ox, oz, size}, x, z, footprint) {
+  # The bounded native primitive only enumerates integer geometry. Keep the
+  # exact KC3 implementation for unsupported ranges and diagnostic parity.
+  def cover_native = cfn Tag "kc3rts_grid_cover" (Tag, Tag, Tag, Tag, Result)
+  def cover = fn (layout, x, z, footprint) {
+    cells = RTS.Map.cover_native(layout, x, z, footprint)
+    if cells == void do RTS.Map.cover_reference(layout, x, z, footprint) else cells end
+  }
+  def cover_reference = fn ({width, height, ox, oz, size}, x, z, footprint) {
     half = footprint / 2
     left = x - half - ox
     top = z - half - oz

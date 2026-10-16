@@ -147,6 +147,16 @@ RTS.NavigationProfile.sample("one_footprint", fn () {
   RTS.Map.cover(layout, body_x, body_z, body_size)
 })
 RTS.NavigationProfile.sample("one_collision", fn () { RTS.Spatial.clear?(buckets, cells, body) })
+RTS.NavigationProfile.paired("cover_100_unit_geometry",
+  fn () {
+    List.do(rows, {entity, speed, {id, x, z, size}, cells}, do
+      RTS.Map.cover_reference(layout, x, z, size)
+    end)
+  }, fn () {
+    List.do(rows, {entity, speed, {id, x, z, size}, cells}, do
+      RTS.Map.cover(layout, x, z, size)
+    end)
+  })
 # Batch ten identical calls so timer overhead does not dominate small queries.
 # Sparse, multi-cell and crowded buckets exercise both accepted and blocked
 # moves. Both implementations run interleaved against the same Facts index.
@@ -171,7 +181,8 @@ List.do([{"empty", [3], {99, 0, 0, 128}},
       end)
     })
 end)
-List.do([{128, 128, 128}, {256, 128, 128}, {128, 256, 128}, {256, 256, 128}, {256, 256, 768}], position, do
+List.do([{128, 128, 128}, {256, 128, 128}, {128, 256, 128}, {256, 256, 128},
+  {256, 256, 768}, {-10000, 0, 128}, {128, 128, 1}], position, do
   {px, pz, footprint} = ^ position
   shape = (Str) position
   RTS.NavigationProfile.sample("cover_scan_" + shape, fn () {
@@ -180,6 +191,9 @@ List.do([{128, 128, 128}, {256, 128, 128}, {128, 256, 128}, {256, 256, 128}, {25
   RTS.NavigationProfile.sample("cover_fast_" + shape, fn () {
     RTS.Map.cover(layout, px, pz, footprint)
   })
+  RTS.NavigationProfile.paired("cover_native_" + shape,
+    fn () { RTS.Map.cover_reference(layout, px, pz, footprint) },
+    fn () { RTS.Map.cover(layout, px, pz, footprint) })
 end)
 RTS.NavigationProfile.sample("one_reservation_pair", fn () {
   RTS.Spatial.reserve(buckets, cells, body, false)
