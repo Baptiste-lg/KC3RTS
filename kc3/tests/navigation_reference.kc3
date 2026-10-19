@@ -1,5 +1,31 @@
-# Diagnostic proposal and retry implementations, never loaded by workers.
+# Diagnostic navigation implementations, never loaded by workers.
 defmodule RTS.NavigationReference do
+  # Original activity, revision and pending-job passes, before the planner.
+  def prepare = fn (state) {
+    active = false
+    List.do(RTS.Data.get(state, "entities"), e, do
+      if RTS.Data.get(e, "order") != void do active = true end
+    end)
+    pending = []
+    if active do
+      nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
+      revision = RTS.Data.get(nav, "revision")
+      state = RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
+        order = RTS.Data.get(e, "order")
+        if order != void && RTS.Data.get(order, "revision") != revision do
+          RTS.Data.merge(e, %{"order" => RTS.Data.share(RTS.Data.put(RTS.Navigation.order(RTS.Data.get(order, "goal"), revision), "priority", RTS.Data.get(order, "priority"))), "status" => "planning"})
+        else e end
+      end))
+      pending = List.sort(List.map_filter(RTS.Data.get(state, "entities"), e, do
+        order = RTS.Data.get(e, "order")
+        if RTS.Data.get(e, "status") == "planning" && order != void do
+          id = RTS.Data.get(e, "id")
+          [if RTS.Data.get(nav, "entity_id") == id do -100000 else 0 - RTS.Data.get(order, "priority") end, id]
+        else void end
+      end))
+    end
+    {state, active, pending}
+  }
   # Original per-axis arithmetic, independent of the optimized proposal.
   def propose = fn ({width, height, ox, oz, cell_size}, {id, x, z, size}, speed, cell, horizontal_first) {
     tx = ox + (cell mod width) * cell_size + cell_size / 2

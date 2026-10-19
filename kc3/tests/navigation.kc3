@@ -69,6 +69,54 @@ end)
 content = RTS.Content.compile(RTS.Core.catalog())
 world = RTS.World.opening(content, "navigation", 1234, ["kiln.concord", "lantern.synod"])
 grid = RTS.Map.grid(RTS.Data.get(world, "map"))
+# Compare the fused inspection with the previous three passes, including a
+# stale order late in the list and a resumed search outranking equal priorities.
+prepare_order = Map.merge(RTS.Navigation.order(13, 7),
+  %{"path" => [4, 8, 13], "wait" => 19, "attempt" => 1, "priority" => 12})
+old_order = Map.put(prepare_order, "revision", 6)
+variants = [{void, void}, {"planning", void}, {void, prepare_order},
+  {"planning", prepare_order}, {"waiting", prepare_order},
+  {void, old_order}, {"waiting", old_order}, {"blocked", old_order}]
+prepare_unit = RTS.World.entity(content, "kiln.concord", 9, "core.worker", 1, -128, -128, void)
+valid = true
+List.do(variants, {status_a, order_a}, do
+  List.do(variants, {status_b, order_b}, do
+    List.do([0, 2, 9], search_id, do
+      trial = %{"entities" => [Map.merge(prepare_unit, %{"status" => status_a, "order" => order_a}),
+        Map.merge(prepare_unit, %{"id" => 2, "status" => status_b, "order" => order_b})],
+        "navigation" => %{"revision" => 7, "entity_id" => search_id, "search" => %{"sentinel" => 42}},
+        "sentinel" => [1, 2, 3]}
+      List.do([trial, RTS.World.pack(trial)], input, do
+        before = RTS.Wire.encode(input)
+        actual = RTS.Navigation.prepare(input)
+        valid = valid && actual == RTS.NavigationReference.prepare(input) && RTS.Wire.encode(input) == before
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("384 order preparations preserve activity, state, priority and input immutability", valid)
+trial = %{"entities" => [Map.merge(prepare_unit, %{"status" => "planning", "order" => prepare_order}),
+  Map.merge(prepare_unit, %{"id" => 2, "status" => "planning", "order" => prepare_order})],
+  "navigation" => %{"revision" => 7, "entity_id" => 0}}
+{prepared, active, pending} = RTS.Navigation.prepare(trial)
+RTS.Check.that("equal planner priorities retain ascending ID tie-breaking",
+  active && prepared == trial && pending == [[-12, 2], [-12, 9]])
+trial = Map.put(trial, "navigation", %{"revision" => 7, "entity_id" => 9})
+{prepared, active, pending} = RTS.Navigation.prepare(trial)
+RTS.Check.that("the in-progress search still precedes higher-ID tie-breaking",
+  pending == [[-100000, 9], [-12, 2]])
+trial = Map.put(trial, "entities", [Map.merge(prepare_unit, %{"status" => "waiting", "order" => old_order})])
+{prepared, active, pending} = RTS.Navigation.prepare(trial)
+fresh = RTS.Data.get(List.first(RTS.Data.get(prepared, "entities")), "order")
+RTS.Check.that("invalidation clears route and retry counters but preserves goal and priority",
+  active && pending == [[-100000, 9]] && RTS.Data.unshare(fresh) ==
+    Map.put(RTS.Navigation.order(13, 7), "priority", 12) &&
+  RTS.Data.get(List.first(RTS.Data.get(prepared, "entities")), "status") == "planning")
+List.do([[], [prepare_unit], [Map.put(prepare_unit, "status", "planning")]], idle_entities, do
+  trial = Map.put(trial, "entities", idle_entities)
+  RTS.Check.that("empty or idle preparation leaves the state untouched with no jobs",
+    RTS.Navigation.prepare(trial) == {trial, false, []})
+end)
 # A stationary neighbor blocks the same horizontal candidate on both attempts.
 # Skipping that duplicate must neither move the unit nor consume extra waits.
 retry_actor = RTS.World.entity(content, "kiln.concord", 1, "core.worker", 1, -5504, -3968, void)
@@ -200,3 +248,10 @@ changed = Map.put(world, "nodes", [Map.put(List.first(nodes), "amount", 0) | Lis
 RTS.Check.that("depletion invalidates cached walkability", RTS.Data.get(RTS.Data.get(RTS.Map.cache(content, changed), "navigation"), "revision") == nav_revision + 1)
 changed = RTS.World.remove(world, 1)
 RTS.Check.that("demolition invalidates cached walkability", RTS.Data.get(RTS.Data.get(RTS.Map.cache(content, changed), "navigation"), "revision") == nav_revision + 1)
+changed = Map.put(checkpoint, "map", Map.put(RTS.Data.get(checkpoint, "map"), "blocked", [0]))
+cached = RTS.Map.cache(content, changed)
+{reference_ready, active, pending} = RTS.NavigationReference.prepare(cached)
+RTS.Check.that("terrain invalidation schedules the same orders before the next tick",
+  active && pending != [] && RTS.Navigation.prepare(cached) == {reference_ready, active, pending})
+RTS.Check.that("a terrain-changing tick agrees with explicitly reset reference orders",
+  RTS.Wire.encode(RTS.Navigation.tick(content, changed)) == RTS.Wire.encode(RTS.Navigation.tick(content, reference_ready)))

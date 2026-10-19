@@ -234,17 +234,41 @@ defmodule RTS.Navigation do
     end)
     best
   }
-  def plan = fn (content, state, grid) {
+  # Inspect orders once for activity, invalidation and planner priority.
+  # Unchanged revisions need no rebuilt entity list. A stale order must still
+  # reset before planning, preserving the original goal and priority.
+  def prepare = fn (state) {
+    nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
+    revision = RTS.Data.get(nav, "revision")
+    planning_id = RTS.Data.get(nav, "entity_id")
+    active = false
+    stale = false
+    pending = List.sort(List.map_filter(RTS.Data.get(state, "entities"), e, do
+      order = RTS.Data.get(e, "order")
+      if order == void do void else
+        active = true
+        outdated = RTS.Data.get(order, "revision") != revision
+        if outdated do stale = true end
+        if outdated || RTS.Data.get(e, "status") == "planning" do
+          id = RTS.Data.get(e, "id")
+          [if planning_id == id do -100000 else 0 - RTS.Data.get(order, "priority") end, id]
+        else void end
+      end
+    end))
+    if stale do
+      state = RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
+        order = RTS.Data.get(e, "order")
+        if order != void && RTS.Data.get(order, "revision") != revision do
+          RTS.Data.merge(e, %{"order" => RTS.Data.share(RTS.Data.put(RTS.Navigation.order(RTS.Data.get(order, "goal"), revision), "priority", RTS.Data.get(order, "priority"))), "status" => "planning"})
+        else e end
+      end))
+    end
+    {state, active, pending}
+  }
+  def plan = fn (content, state, grid, pending) {
     nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
     budget = 128
     jobs = 8
-    pending = List.sort(List.map_filter(RTS.Data.get(state, "entities"), e, do
-      order = RTS.Data.get(e, "order")
-      if RTS.Data.get(e, "status") == "planning" && order != void do
-        id = RTS.Data.get(e, "id")
-        [if RTS.Data.get(nav, "entity_id") == id do -100000 else 0 - RTS.Data.get(order, "priority") end, id]
-      else void end
-    end))
     List.do(pending, entry, do
       if budget > 0 && jobs > 0 do
         jobs = jobs - 1
@@ -292,21 +316,11 @@ defmodule RTS.Navigation do
   }
   def tick = fn (content, state) {
     state = RTS.Map.cache(content, state)
-    active = false
-    List.do(RTS.Data.get(state, "entities"), e, do
-      if RTS.Data.get(e, "order") != void do active = true end
-    end)
+    {state, active, pending} = RTS.Navigation.prepare(state)
     if (! active) do state else
     nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
-    revision = RTS.Data.get(nav, "revision")
     grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(state, "map")))
-    state = RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
-      order = RTS.Data.get(e, "order")
-      if order != void && RTS.Data.get(order, "revision") != revision do
-        RTS.Data.merge(e, %{"order" => RTS.Data.share(RTS.Data.put(RTS.Navigation.order(RTS.Data.get(order, "goal"), revision), "priority", RTS.Data.get(order, "priority"))), "status" => "planning"})
-      else e end
-    end))
-    state = RTS.Navigation.plan(content, state, grid)
+    state = RTS.Navigation.plan(content, state, grid, pending)
     layout = RTS.Map.layout(grid)
     spatial = RTS.Spatial.prepare(content, layout, state)
     buckets = RTS.Data.get(spatial, "index")

@@ -128,7 +128,33 @@ layout = RTS.Map.layout(grid)
 RTS.NavigationProfile.sample("tick", fn () { RTS.World.tick(content, world) })
 RTS.NavigationProfile.sample("pack", fn () { RTS.World.pack(world) })
 RTS.NavigationProfile.sample("occupancy", fn () { RTS.Map.cache(content, packed) })
-RTS.NavigationProfile.sample("planner", fn () { RTS.Navigation.plan(content, packed, grid) })
+# Preparation is now fused; report it separately from the planner budget.
+{prepared, active, pending} = RTS.Navigation.prepare(packed)
+RTS.NavigationProfile.sample("prepare_orders", fn () { RTS.Navigation.prepare(packed) })
+RTS.NavigationProfile.sample("planner_jobs", fn () { RTS.Navigation.plan(content, prepared, grid, pending) })
+List.do([{"moving", 0, 0, false}, {"planning_8", 8, 0, false},
+  {"planning_100", 100, 0, false}, {"stale_1", 0, 1, false},
+  {"stale_100", 0, 100, false}, {"idle", 0, 0, true}],
+  {name, planning_count, stale_count, idle}, do
+  trial = RTS.Data.put(packed, "entities", List.map_filter(RTS.Data.get(packed, "entities"), e, do
+    order = RTS.Data.get(e, "order")
+    if idle do RTS.Data.put(e, "order", void) else
+      id = RTS.Data.get(e, "id")
+      if order != void && id <= stale_count do
+        e = RTS.Data.put(e, "order", RTS.Data.put(order, "revision", -1))
+      end
+      if id <= planning_count do e = RTS.Data.put(e, "status", "planning") end
+      e
+    end
+  end))
+  if RTS.Navigation.prepare(trial) != RTS.NavigationReference.prepare(trial) do
+    puts("FAIL: preparation profiling requires identical state and planner jobs")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("prepare_orders_" + name,
+    fn () { RTS.NavigationReference.prepare(trial) },
+    fn () { RTS.Navigation.prepare(trial) })
+end)
 RTS.NavigationProfile.sample("spatial", fn () { RTS.Spatial.prepare(content, layout, packed) })
 RTS.NavigationProfile.sample("navigation", fn () { RTS.Navigation.tick(content, packed) })
 RTS.NavigationProfile.sample("economy", fn () { RTS.Economy.tick(content, packed) })
