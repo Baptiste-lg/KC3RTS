@@ -139,12 +139,20 @@ defmodule RTS.Navigation do
   }
   def propose = fn ({width, height, ox, oz, cell_size}, {id, x, z, size}, speed, cell, horizontal_first) {
     tx = ox + (cell mod width) * cell_size + cell_size / 2
-    tz = oz + (cell / width) * cell_size + cell_size / 2
-    dx = tx - x
-    dz = tz - z
-    if dx != 0 && (horizontal_first || dz == 0) do x = x + RTS.Navigation.step(dx, speed) else
-      z = z + RTS.Navigation.step(dz, speed) end
-    {{id, x, z, size}, x == tx && z == tz}
+    # A partial horizontal-first step needs neither the z target nor delta.
+    # Keep that arithmetic behind short-circuit conditions. Clamp the chosen
+    # axis directly to its target instead of calling step then adding again.
+    if x != tx && (horizontal_first || z == oz + (cell / width) * cell_size + cell_size / 2) do
+      dx = tx - x
+      x = if dx > speed do x + speed else if dx < (0 - speed) do x - speed else tx end end
+      reached = x == tx && z == oz + (cell / width) * cell_size + cell_size / 2
+    else
+      tz = oz + (cell / width) * cell_size + cell_size / 2
+      dz = tz - z
+      z = if dz > speed do z + speed else if dz < (0 - speed) do z - speed else tz end end
+      reached = x == tx && z == tz
+    end
+    {{id, x, z, size}, reached}
   }
   # Called only after the horizontal-first integer proposal on the SAME input failed.
   # If it did not change x, the other axis order produces the same candidate.

@@ -1,9 +1,19 @@
-# Diagnostic wrappers for the old/new retry branches, never loaded by workers.
-# Both require that first is the rejected horizontal-first proposal and that
-# reservations have not changed since that query.
+# Diagnostic proposal and retry implementations, never loaded by workers.
 defmodule RTS.NavigationReference do
+  # Original per-axis arithmetic, independent of the optimized proposal.
+  def propose = fn ({width, height, ox, oz, cell_size}, {id, x, z, size}, speed, cell, horizontal_first) {
+    tx = ox + (cell mod width) * cell_size + cell_size / 2
+    tz = oz + (cell / width) * cell_size + cell_size / 2
+    dx = tx - x
+    dz = tz - z
+    if dx != 0 && (horizontal_first || dz == 0) do x = x + RTS.Navigation.step(dx, speed) else
+      z = z + RTS.Navigation.step(dz, speed) end
+    {{id, x, z, size}, x == tx && z == tz}
+  }
+  # Both retry wrappers require that first is the rejected horizontal-first
+  # proposal and that reservations have not changed since that query.
   def retry = fn (layout, mask, index, body, speed, cell, first) {
-    {next, reached} = RTS.Navigation.propose(layout, body, speed, cell, false)
+    {next, reached} = RTS.NavigationReference.propose(layout, body, speed, cell, false)
     RTS.Spatial.available(layout, mask, index, next)
   }
   def retry_distinct = fn (layout, mask, index, body, speed, cell, first) {

@@ -143,11 +143,44 @@ rows = RTS.Data.get(spatial, "rows")
 cell = List.first(RTS.Data.get(RTS.Data.get(unit, "order"), "path"))
 mask = RTS.Data.get(RTS.Data.get(packed, "navigation"), "mask")
 RTS.NavigationProfile.sample("one_proposal", fn () { RTS.Navigation.propose(layout, body, speed, cell, true) })
+RTS.NavigationProfile.paired("proposal_100_unit_rows",
+  fn () {
+    List.do(rows, {entity, unit_speed, unit_body, occupied}, do
+      target = RTS.Data.first(RTS.Data.get(entity, "order"), "path")
+      if target != void do RTS.NavigationReference.propose(layout, unit_body, unit_speed, target, true) end
+    end)
+  }, fn () {
+    List.do(rows, {entity, unit_speed, unit_body, occupied}, do
+      target = RTS.Data.first(RTS.Data.get(entity, "order"), "path")
+      if target != void do RTS.Navigation.propose(layout, unit_body, unit_speed, target, true) end
+    end)
+  })
 RTS.NavigationProfile.sample("one_footprint", fn () {
   {body_id, body_x, body_z, body_size} = ^ body
   RTS.Map.cover(layout, body_x, body_z, body_size)
 })
 RTS.NavigationProfile.sample("one_collision", fn () { RTS.Spatial.clear?(buckets, cells, body) })
+List.do([{"horizontal_partial", {37, 128, 128, 128}, 64, true},
+  {"horizontal_axis_complete", {37, 320, 128, 128}, 64, true},
+  {"horizontal_arrival", {37, 320, 384, 128}, 64, true},
+  {"vertical_partial", {37, 384, 128, 128}, 64, true},
+  {"vertical_arrival", {37, 384, 320, 128}, 64, true},
+  {"vertical_priority", {37, 128, 128, 128}, 64, false},
+  {"horizontal_fallback", {37, 128, 384, 128}, 64, false},
+  {"already_centered", {37, 384, 384, 128}, 64, true},
+  {"zero_speed", {37, 128, 128, 128}, 0, true}],
+  {name, sample_body, sample_speed, horizontal_first}, do
+  RTS.NavigationProfile.paired("proposal_batch10_" + name,
+    fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.NavigationReference.propose({4, 4, 0, 0, 256}, sample_body, sample_speed, 5, horizontal_first)
+      end)
+    }, fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.Navigation.propose({4, 4, 0, 0, 256}, sample_body, sample_speed, 5, horizontal_first)
+      end)
+    })
+end)
 # Only benchmark rejected first proposals, as in the actual tick branch.
 retry_layout = {4, 4, 0, 0, 256}
 retry_mask = RTS.Map.repeat(".", 16)

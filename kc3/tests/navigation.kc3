@@ -4,6 +4,7 @@ RTS.Loader.world(__DIR__ + "../")
 load!(__DIR__ + "scenario.kc3")
 load!(__DIR__ + "navigation_reference.kc3")
 valid = true
+proposals_valid = true
 List.do([{4, 4, -512, -512, 256}, {7, 3, 5, -9, 7}, {1, 1, 0, 0, 1}], layout, do
   {width, height, ox, oz, cell_size} = ^ layout
   offsets = [0 - cell_size, 0, cell_size / 2, cell_size, cell_size * 2]
@@ -13,7 +14,10 @@ List.do([{4, 4, -512, -512, 256}, {7, 3, 5, -9, 7}, {1, 1, 0, 0, 1}], layout, do
       List.do([0, width - 1, (height - 1) * width, width * height - 1], cell, do
         List.do([0, 1, 64, 256, 1024], speed, do
           {first, first_reached} = RTS.Navigation.propose(layout, body, speed, cell, true)
-          reference = RTS.Navigation.propose(layout, body, speed, cell, false)
+          reference = RTS.NavigationReference.propose(layout, body, speed, cell, false)
+          proposals_valid = proposals_valid &&
+            {first, first_reached} == RTS.NavigationReference.propose(layout, body, speed, cell, true) &&
+            RTS.Navigation.propose(layout, body, speed, cell, false) == reference
           {next, reached} = ^ reference
           expected = if next == first do void else reference end
           valid = valid && RTS.Navigation.alternate(layout, body, speed, cell, first) == expected
@@ -23,6 +27,28 @@ List.do([{4, 4, -512, -512, 256}, {7, 3, 5, -9, 7}, {1, 1, 0, 0, 1}], layout, do
   end)
 end)
 RTS.Check.that("1500 alternate proposals preserve distinct moves and reject duplicates", valid)
+RTS.Check.that("3000 proposals preserve both axis priorities and exact waypoint arrival", proposals_valid)
+# Probe either side of the clamp, including exact arrival, no movement and
+# large signed origins. Both coordinates vary independently: completing one
+# axis must not report arrival while the other is still off target.
+proposals_valid = true
+List.do([-9007199254730000, 0, 9007199254730000], origin, do
+  edge_layout = {3, 3, origin, 0 - origin, 256}
+  List.do([0, 1, 32, 64, 256], speed, do
+    deltas = [0 - speed - 1, 0 - speed, 1 - speed, -1, 0, 1, speed - 1, speed, speed + 1]
+    List.do(deltas, dx, do
+      List.do(deltas, dz, do
+        body = {37, origin + 384 - dx, 0 - origin + 384 - dz, 127}
+        List.do([true, false], horizontal_first, do
+          proposals_valid = proposals_valid &&
+            RTS.Navigation.propose(edge_layout, body, speed, 4, horizontal_first) ==
+            RTS.NavigationReference.propose(edge_layout, body, speed, 4, horizontal_first)
+        end)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("2430 clamp-boundary proposals preserve integer coordinates and arrival", proposals_valid)
 layout = {4, 4, 0, 0, 256}
 mask = RTS.Map.repeat(".", 16)
 body = {1, 128, 128, 128}
