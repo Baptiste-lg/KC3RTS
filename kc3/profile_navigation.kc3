@@ -5,6 +5,7 @@ RTS.Loader.world(__DIR__)
 load!(__DIR__ + "tests/army_scenario.kc3")
 load!(__DIR__ + "tests/spatial_reference.kc3")
 load!(__DIR__ + "tests/navigation_reference.kc3")
+load!(__DIR__ + "tests/map_reference.kc3")
 defmodule RTS.NavigationProfile do
   # Previous population scan retained for paired measurements.
   def population_copy = fn (content, state, slot) {
@@ -128,6 +129,24 @@ layout = RTS.Map.layout(grid)
 RTS.NavigationProfile.sample("tick", fn () { RTS.World.tick(content, world) })
 RTS.NavigationProfile.sample("pack", fn () { RTS.World.pack(world) })
 RTS.NavigationProfile.sample("occupancy", fn () { RTS.Map.cache(content, packed) })
+if RTS.MapReference.signature(content, packed) != RTS.Map.signature(content, packed) do
+  puts("FAIL: signature profiling requires identical obstacles")
+  exit(1)
+end
+RTS.NavigationProfile.paired("signature_100_units",
+  fn () { RTS.MapReference.signature(content, packed) },
+  fn () { RTS.Map.signature(content, packed) })
+opening = RTS.World.pack(RTS.World.opening(content, "signature-profile", 100, ["kiln.concord", "lantern.synod"]))
+List.do([{"opening", opening},
+  {"empty", RTS.Data.merge(packed, %{"entities" => [], "nodes" => []})}], {name, trial}, do
+  if RTS.MapReference.signature(content, trial) != RTS.Map.signature(content, trial) do
+    puts("FAIL: signature profiling requires identical obstacles")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("signature_" + name,
+    fn () { RTS.MapReference.signature(content, trial) },
+    fn () { RTS.Map.signature(content, trial) })
+end)
 # Preparation is now fused; report it separately from the planner budget.
 {prepared, active, pending} = RTS.Navigation.prepare(packed)
 RTS.NavigationProfile.sample("prepare_orders", fn () { RTS.Navigation.prepare(packed) })

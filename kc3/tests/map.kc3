@@ -1,0 +1,61 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "map_reference.kc3")
+load!(__DIR__ + "extension.kc3")
+load!(__DIR__ + "scenario.kc3")
+
+List.do([RTS.Core.catalog(), RTS.Extension.catalog()], catalog, do
+  content = RTS.Content.compile(catalog)
+  footprints = RTS.Data.get(content, "building_footprints")
+  valid = true
+  List.do(RTS.Data.get(catalog, "definitions"), d, do
+    expected = if RTS.Data.get(d, "kind") == "building" do RTS.Data.get(d, "footprint") else void end
+    valid = valid && RTS.Data.get(footprints, RTS.Data.get(d, "id")) == expected
+  end)
+  RTS.Check.that("compiled footprints include exactly this catalog's building types", valid)
+  world = RTS.Scenario.world(content)
+  count = 0
+  List.do([false, true], shared, do
+    List.do([0, 1, 100], hp, do
+      List.do([0, 1, 200], amount, do
+        List.do([false, true], reverse, do
+          entities = List.map_filter(RTS.Data.get(world, "entities"), e, do
+            RTS.Data.merge(e, %{"hp" => hp, "construction" => %{"progress" => 1}})
+          end)
+          if reverse do entities = List.reverse(entities) end
+          trial = RTS.Data.merge(world, %{"entities" => entities,
+            "nodes" => [%{"x" => -1024, "z" => 0, "amount" => amount},
+              %{"x" => 0, "z" => 1024, "amount" => 0}]})
+          if shared do trial = RTS.World.pack(trial) end
+          expected = RTS.MapReference.signature(content, trial)
+          actual = RTS.Map.signature(content, trial)
+          valid = valid && actual == expected
+          cached = RTS.Map.cache(content, trial)
+          valid = valid && RTS.Data.get(RTS.Data.get(cached, "navigation"), "signature") == expected &&
+            RTS.Map.cache(content, cached) == cached
+          count = count + 1
+        end)
+      end)
+    end)
+  end)
+  RTS.Check.that("36 signatures preserve death, construction, depletion, ordering and shared state",
+    valid && count == 36)
+end)
+
+# Same ID in two independent compiled catalogs must not reuse old geometry.
+catalog = RTS.Core.catalog()
+changed = Map.put(catalog, "definitions", List.map_filter(RTS.Data.get(catalog, "definitions"), d, do
+  if RTS.Data.get(d, "id") == "core.hall" do Map.put(d, "footprint", 768) else d end
+end))
+first = RTS.Content.compile(catalog)
+second = RTS.Content.compile(changed)
+state = RTS.Scenario.world(first)
+RTS.Check.that("compiled footprint maps are catalog-local and never change the source catalog",
+  RTS.Data.get(RTS.Data.get(first, "building_footprints"), "core.hall") != 768 &&
+  RTS.Data.get(RTS.Data.get(second, "building_footprints"), "core.hall") == 768 &&
+  RTS.Map.signature(first, state) != RTS.Map.signature(second, state) &&
+  RTS.Map.signature(second, state) == RTS.MapReference.signature(second, state))
+empty = RTS.Data.merge(state, %{"entities" => [], "nodes" => []})
+RTS.Check.that("empty worlds retain their map and no obstacles",
+  RTS.Map.signature(first, empty) == %{"map" => RTS.Data.get(empty, "map"), "obstacles" => []})

@@ -1,0 +1,15 @@
+# Frozen pre-index signature; diagnostic only, never loaded by workers.
+defmodule RTS.MapReference do
+  def signature = fn (content, state) {
+    obstacles = List.map_filter(RTS.Data.get(state, "nodes"), n, do
+      if RTS.Data.get(n, "amount") > 0 do [RTS.Data.get(n, "x"), RTS.Data.get(n, "z"), RTS.Data.get(RTS.Data.get(state, "map"), "cell_size")] else void end
+    end)
+    List.do(RTS.Data.get(state, "entities"), e, do
+      d = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+      if RTS.Data.get(d, "kind") == "building" && RTS.Data.get(e, "hp") > 0 do
+        obstacles = [[RTS.Data.get(e, "x"), RTS.Data.get(e, "z"), RTS.Data.get(d, "footprint")] | obstacles]
+      end
+    end)
+    %{"map" => RTS.Data.get(state, "map"), "obstacles" => List.sort(obstacles)}
+  }
+end
