@@ -1,5 +1,10 @@
 # Previous production query, kept outside the worker for parity and profiling.
 defmodule RTS.SpatialReference do
+  def relocate = fn (index, old_cells, old_body, new_cells, new_body) {
+    RTS.Spatial.reserve(index, old_cells, old_body, false)
+    RTS.Spatial.reserve(index, new_cells, new_body, true)
+    void
+  }
   # Two-pass production availability check before terrain/collision fusion.
   def available = fn (layout, mask, index, {id, x, z, size}) {
     body = {id, x, z, size}

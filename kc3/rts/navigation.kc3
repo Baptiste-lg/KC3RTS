@@ -346,8 +346,7 @@ defmodule RTS.Navigation do
           end
         end
         if cells != [] do
-          RTS.Spatial.reserve(buckets, occupied_cells, body, false)
-          RTS.Spatial.reserve(buckets, cells, next, true)
+          RTS.Spatial.relocate(buckets, occupied_cells, body, cells, next)
           body = ^ next
           occupied_cells = ^ cells
           RTS.Navigation.finish(e, order, next, reached)

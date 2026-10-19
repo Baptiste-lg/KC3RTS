@@ -103,6 +103,43 @@ RTS.Check.that("removal immediately releases old cells",
 RTS.Check.that("static terrain still rejects movement through an empty index",
   RTS.Spatial.available(layout, RTS.Map.mark(mask, 5), index, {2, -128, -128, 128}) == [])
 load!(__DIR__ + "spatial_reference.kc3")
+# Compare complete Facts sets after each movement, including overlapping
+# old/new cells, unchanged geometry, empty sets and repeated cell entries.
+reservation_valid = true
+reservation_cases = 0
+List.do([[], [0], [0, 1], [0, 1, 4, 5], [5, 5]], old_cells, do
+  List.do([[], [0], [1, 2], [0, 1, 4, 5], [5, 5]], new_cells, do
+    List.do([{1, 128, 128, 128}, {1, 192, 128, 128}, {1, 256, 256, 384}], new_body, do
+      old_body = {1, 128, 128, 128}
+      reference_index = Facts.database()
+      candidate_index = Facts.database()
+      List.do([reference_index, candidate_index], reservations, do
+        RTS.Spatial.reserve(reservations, old_cells, old_body, true)
+        # A neighbor sharing buckets and unrelated predicates must survive.
+        RTS.Spatial.reserve(reservations, [0, 1, 2, 4, 5], {2, 256, 128, 128}, true)
+        Facts.add_tags(reservations, 0, :sentinel, "keep")
+      end)
+      List.do([false, true], reverse, do
+        before_cells = if reverse do new_cells else old_cells end
+        before_body = if reverse do new_body else old_body end
+        after_cells = if reverse do old_cells else new_cells end
+        after_body = if reverse do old_body else new_body end
+        reference_result = RTS.SpatialReference.relocate(reference_index, before_cells, before_body, after_cells, after_body)
+        candidate_result = RTS.Spatial.relocate(candidate_index, before_cells, before_body, after_cells, after_body)
+        expected = List.sort(Facts.collect_with_tags(reference_index, ?, ?, ?, fn (fact) {
+          {fact.subject, fact.predicate, fact.object}
+        }))
+        actual = List.sort(Facts.collect_with_tags(candidate_index, ?, ?, ?, fn (fact) {
+          {fact.subject, fact.predicate, fact.object}
+        }))
+        reservation_valid = reservation_valid && reference_result == void && candidate_result == void && actual == expected
+        reservation_cases = reservation_cases + 1
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("150 reservation transitions match exact remove/add Facts sets",
+  reservation_valid && reservation_cases == 150)
 # Availability must preserve the exact row-major cell list, not only a boolean.
 # Real reservations span cells, including repeated encounters with one body.
 availability_index = Facts.database()

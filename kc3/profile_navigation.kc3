@@ -313,6 +313,32 @@ RTS.NavigationProfile.sample("one_reservation_pair", fn () {
   RTS.Spatial.reserve(buckets, cells, body, false)
   RTS.Spatial.reserve(buckets, cells, body, true)
 })
+# Each sample returns the index to its initial state; variants see the same
+# neighbors. Include unchanged geometry and different multi-cell footprints.
+List.do([{"single", [0], [0]}, {"crossing", [0], [0, 1]},
+  {"corner", [0, 1, 4, 5], [1, 2, 5, 6]},
+  {"disjoint", [0], [15]}, {"unchanged", [0], [0]}],
+  {name, before_cells, after_cells}, do
+  reservation_index = Facts.database()
+  before_body = {1, 128, 128, 128}
+  after_body = if name == "unchanged" do before_body else {1, 192, 128, 128} end
+  RTS.Spatial.reserve(reservation_index, before_cells, before_body, true)
+  RTS.Spatial.reserve(reservation_index, [0, 1, 2, 4, 5, 6, 15], {2, 384, 128, 128}, true)
+  RTS.NavigationProfile.paired("reservation_roundtrip10_" + name,
+    fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.Spatial.reserve(reservation_index, before_cells, before_body, false)
+        RTS.Spatial.reserve(reservation_index, after_cells, after_body, true)
+        RTS.Spatial.reserve(reservation_index, after_cells, after_body, false)
+        RTS.Spatial.reserve(reservation_index, before_cells, before_body, true)
+      end)
+    }, fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.Spatial.relocate(reservation_index, before_cells, before_body, after_cells, after_body)
+        RTS.Spatial.relocate(reservation_index, after_cells, after_body, before_cells, before_body)
+      end)
+    })
+end)
 RTS.NavigationProfile.sample("one_finish", fn () {
   order = RTS.Data.get(unit, "order")
   RTS.Navigation.finish(unit, order, body, false)
