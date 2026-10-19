@@ -1,5 +1,39 @@
 # Diagnostic navigation implementations, never loaded by workers.
 defmodule RTS.NavigationReference do
+  # Frozen planner clearance before scalar geometry reuse.
+  def planner_mask = fn (content, state, grid, mask, e) {
+    size = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "footprint")
+    if size > 256 do
+      original = ^ mask
+      cell = 0
+      while cell < Str.size(mask) do
+        point = RTS.Map.point(grid, cell)
+        if (! RTS.Map.fits?(grid, original, RTS.Data.get(point, "x"), RTS.Data.get(point, "z"), size)) do mask = RTS.Map.mark(mask, cell) end
+        cell = cell + 1
+      end
+    end
+    if RTS.Data.get(RTS.Data.get(e, "order"), "attempt") > 0 do
+      List.do(RTS.Data.get(state, "entities"), other, do
+        if RTS.Data.get(other, "id") != RTS.Data.get(e, "id") do
+          d = RTS.World.definition(content, RTS.Data.get(other, "type_id"))
+          if RTS.Data.get(d, "kind") == "unit" do
+            clearance = RTS.Data.get(d, "footprint") + size
+            ox = RTS.Data.get(other, "x")
+            oz = RTS.Data.get(other, "z")
+            List.do(RTS.Map.cells(grid, ox, oz, clearance), cell, do
+              point = RTS.Map.point(grid, cell)
+              dx = RTS.Data.get(point, "x") - ox
+              dz = RTS.Data.get(point, "z") - oz
+              if dx * 2 < clearance && dx * 2 > (0 - clearance) && dz * 2 < clearance && dz * 2 > (0 - clearance) do
+                mask = RTS.Map.mark(mask, cell)
+              end
+            end)
+          end
+        end
+      end)
+    end
+    mask
+  }
   # Original activity, revision and pending-job passes, before the planner.
   def prepare = fn (state) {
     active = false

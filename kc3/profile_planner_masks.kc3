@@ -1,0 +1,46 @@
+# Diagnostic only; run alone. Alternate both versions on identical inputs.
+require Time
+load!(__DIR__ + "load.kc3")
+RTS.Loader.world(__DIR__)
+load!(__DIR__ + "tests/army_scenario.kc3")
+load!(__DIR__ + "tests/navigation_reference.kc3")
+defmodule RTS.PlannerMaskProfile do
+  def paired = fn (name, content, state, grid, mask, entity) {
+    expected = RTS.NavigationReference.planner_mask(content, state, grid, mask, entity)
+    if RTS.Navigation.planner_mask(content, state, grid, mask, entity) != expected do
+      puts("FAIL: planner mask changed")
+      exit(1)
+    end
+    old = []
+    fresh = []
+    List.do([1, 2, 3, 4, 5, 6, 7, 8, 9], iteration, do
+      actions = if iteration mod 2 == 1 do [false, true] else [true, false] end
+      List.do(actions, optimized, do
+        start = Time.uptime()
+        if optimized do RTS.Navigation.planner_mask(content, state, grid, mask, entity) else
+          RTS.NavigationReference.planner_mask(content, state, grid, mask, entity) end
+        finish = Time.uptime()
+        elapsed = (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
+        if optimized do fresh = [elapsed | fresh] else old = [elapsed | old] end
+      end)
+    end)
+    puts(RTS.Wire.encode(%{"phase" => name, "samples" => 9,
+      "reference_median_us" => access(List.sort(old), [4]),
+      "candidate_median_us" => access(List.sort(fresh), [4]),
+      "reference_us" => List.reverse(old), "candidate_us" => List.reverse(fresh)}))
+  }
+end
+catalog = RTS.Core.catalog()
+cart = Map.put(RTS.Core.entity("test.cart", "unit", "Cart", 40, ["move"]), "footprint", 512)
+content = RTS.Content.compile(Map.put(catalog, "definitions", [cart | RTS.Data.get(catalog, "definitions")]))
+opening = RTS.World.opening(content, "mask-profile", 100, ["kiln.concord", "lantern.synod"])
+List.do([50, 100], count, do
+  state = RTS.World.pack(RTS.ArmyScenario.world(content, opening, count))
+  grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(state, "map")))
+  mask = RTS.Data.get(RTS.Data.get(state, "navigation"), "mask")
+  List.do([{"worker_fresh", "core.worker", 0}, {"worker_retry", "core.worker", 1},
+    {"cart_fresh", "test.cart", 0}, {"cart_retry", "test.cart", 1}], {name, type_id, attempt}, do
+    entity = RTS.Data.share(%{"id" => 1, "type_id" => type_id, "order" => RTS.Data.share(%{"attempt" => attempt})})
+    RTS.PlannerMaskProfile.paired(name + "_" + (Str) count, content, state, grid, mask, entity)
+  end)
+end)

@@ -1,0 +1,44 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "navigation_reference.kc3")
+catalog = RTS.Core.catalog()
+definitions = RTS.Data.get(catalog, "definitions")
+sizes = [1, 127, 128, 255, 256, 257, 384, 512, 1024]
+List.do(sizes, size, do
+  definitions = [Map.put(RTS.Core.entity("test.body" + (Str) size, "unit", "Body", 40, ["move"]), "footprint", size) | definitions]
+end)
+content = RTS.Content.compile(Map.put(catalog, "definitions", definitions))
+valid = true
+cases = 0
+List.do([{8, 8, -1024, -1024, 256}, {7, 3, -21, 14, 7},
+  {1, 1, 0, 0, 1}, {4, 5, -9007199254730000, 9007199254730000, 256}], layout, do
+  {width, height, ox, oz, cell_size} = ^ layout
+  grid = RTS.Data.share(%{"width" => width, "height" => height, "origin_x" => ox,
+    "origin_z" => oz, "cell_size" => cell_size})
+  open = RTS.Map.repeat(".", width * height)
+  # Include self, another owner, buildings, overlapping and off-map neighbors.
+  neighbors = [%{"id" => 1, "type_id" => "test.body512", "x" => ox, "z" => oz},
+    %{"id" => 2, "type_id" => "core.hall", "x" => ox + 128, "z" => oz + 128},
+    %{"id" => 3, "type_id" => "test.body127", "owner" => 2, "x" => ox - 1, "z" => oz + 128},
+    %{"id" => 4, "type_id" => "test.body384", "x" => ox + 256, "z" => oz + 256},
+    %{"id" => 5, "type_id" => "test.body128", "x" => ox + width * cell_size, "z" => oz + height * cell_size},
+    %{"id" => 6, "type_id" => "test.body1", "x" => ox + 128, "z" => oz + 128}]
+  List.do(sizes, size, do
+    List.do([0, 1], attempt, do
+      entity = RTS.Data.share(%{"id" => 1, "type_id" => "test.body" + (Str) size,
+        "order" => RTS.Data.share(%{"attempt" => attempt})})
+      List.do([open, RTS.Map.mark(RTS.Map.mark(open, 0), width * height - 1), RTS.Map.repeat("#", width * height)], mask, do
+        List.do([[], neighbors], entities, do
+          state = RTS.Data.share(%{"entities" => entities})
+          expected = RTS.NavigationReference.planner_mask(content, state, grid, mask, entity)
+          actual = RTS.Navigation.planner_mask(content, state, grid, mask, entity)
+          valid = valid && actual == expected && Str.size(actual) == Str.size(mask)
+          cases = cases + 1
+        end)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("432 planner masks preserve terrain, retries, clipping, odd footprints and wide origins",
+  valid && cases == 432)
