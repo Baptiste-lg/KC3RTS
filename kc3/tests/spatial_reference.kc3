@@ -1,5 +1,13 @@
 # Previous production query, kept outside the worker for parity and profiling.
 defmodule RTS.SpatialReference do
+  # Two-pass production availability check before terrain/collision fusion.
+  def available = fn (layout, mask, index, {id, x, z, size}) {
+    body = {id, x, z, size}
+    cells = RTS.Map.cover(layout, x, z, size)
+    valid = cells != []
+    List.do(cells, cell, do if Str.byte(mask, cell) == 35 do valid = false end end)
+    if valid && RTS.Spatial.clear?(index, cells, body) do cells else [] end
+  }
   def clear? = fn (index, cells, {id, x, z, size}) {
     valid = true
     List.do(cells, cell, do

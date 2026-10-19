@@ -186,6 +186,41 @@ RTS.NavigationProfile.sample("one_footprint", fn () {
   RTS.Map.cover(layout, body_x, body_z, body_size)
 })
 RTS.NavigationProfile.sample("one_collision", fn () { RTS.Spatial.clear?(buckets, cells, body) })
+RTS.NavigationProfile.paired("availability_100_unit_rows",
+  fn () {
+    List.do(rows, {entity, unit_speed, unit_body, occupied}, do
+      RTS.SpatialReference.available(layout, mask, buckets, unit_body)
+    end)
+  }, fn () {
+    List.do(rows, {entity, unit_speed, unit_body, occupied}, do
+      RTS.Spatial.available(layout, mask, buckets, unit_body)
+    end)
+  })
+availability_index = Facts.database()
+RTS.Spatial.reserve(availability_index, [0, 1, 4, 5], {1, 256, 256, 128}, true)
+List.do([{"empty", {99, 640, 640, 128}, "................"},
+  {"self", {1, 256, 256, 128}, "................"},
+  {"touching", {99, 384, 256, 128}, "................"},
+  {"blocked", {99, 383, 256, 128}, "................"},
+  {"terrain_first", {99, 256, 256, 128}, "#..............."},
+  {"terrain_last", {1, 256, 256, 128}, ".....#.........."},
+  {"outside", {99, -1, 0, 128}, "................"}], {name, query, terrain}, do
+  if RTS.SpatialReference.available({4, 4, 0, 0, 256}, terrain, availability_index, query) !=
+     RTS.Spatial.available({4, 4, 0, 0, 256}, terrain, availability_index, query) do
+    puts("FAIL: availability profiling requires identical cells")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("availability_batch10_" + name,
+    fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.SpatialReference.available({4, 4, 0, 0, 256}, terrain, availability_index, query)
+      end)
+    }, fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.Spatial.available({4, 4, 0, 0, 256}, terrain, availability_index, query)
+      end)
+    })
+end)
 List.do([{"horizontal_partial", {37, 128, 128, 128}, 64, true},
   {"horizontal_axis_complete", {37, 320, 128, 128}, 64, true},
   {"horizontal_arrival", {37, 320, 384, 128}, 64, true},

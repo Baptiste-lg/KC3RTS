@@ -96,10 +96,28 @@ defmodule RTS.Spatial do
   }
   # Return the already-checked cells for the subsequent reservation update.
   def available = fn (layout, mask, index, {id, x, z, size}) {
-    body = {id, x, z, size}
     cells = RTS.Map.cover(layout, x, z, size)
     valid = cells != []
-    List.do(cells, cell, do if Str.byte(mask, cell) == 35 do valid = false end end)
-    if valid && RTS.Spatial.clear?(index, cells, body) do cells else [] end
+    # Fuse terrain and collision checks in the hot path. No second traversal
+    # or reconstructed body is needed. Keep clear? for collision-only callers.
+    # Queries are read-only; reservations change only after this returns.
+    List.do(cells, cell, do
+      if valid do
+        if Str.byte(mask, cell) == 35 do valid = false else
+          Facts.with_macro(index, [[cell, :body, neighbor = ?]], do
+            if valid do
+              {other_id, other_x, other_z, other_size} = ^ neighbor
+              if other_id != id do
+                distance = (size + other_size) / 2
+                dx = x - other_x
+                dz = z - other_z
+                if dx < distance && dx > (0 - distance) && dz < distance && dz > (0 - distance) do valid = false end
+              end
+            end
+          end)
+        end
+      end
+    end)
+    if valid do cells else [] end
   }
 end

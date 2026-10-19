@@ -103,6 +103,44 @@ RTS.Check.that("removal immediately releases old cells",
 RTS.Check.that("static terrain still rejects movement through an empty index",
   RTS.Spatial.available(layout, RTS.Map.mark(mask, 5), index, {2, -128, -128, 128}) == [])
 load!(__DIR__ + "spatial_reference.kc3")
+# Availability must preserve the exact row-major cell list, not only a boolean.
+# Real reservations span cells, including repeated encounters with one body.
+availability_index = Facts.database()
+List.do([{1, -128, -128, 128}, {2, 0, 0, 255}, {3, 256, 128, 384}], neighbor, do
+  {id, x, z, size} = ^ neighbor
+  RTS.Spatial.reserve(availability_index, RTS.Map.cover(layout, x, z, size), neighbor, true)
+end)
+valid = true
+List.do([1, 2, 3, 99], id, do
+  List.do([1, 64, 127, 128, 384], size, do
+    List.do([-513, -384, -129, -128, -1, 0, 128, 384, 513], x, do
+      List.do([-513, -384, -129, -128, -1, 0, 128, 384, 513], z, do
+        List.do([mask, RTS.Map.mark(mask, 5), RTS.Map.mark(mask, 10), RTS.Map.repeat("#", 16)], terrain, do
+          query = {id, x, z, size}
+          actual = RTS.Spatial.available(layout, terrain, availability_index, query)
+          expected = RTS.SpatialReference.available(layout, terrain, availability_index, query)
+          valid = valid && actual == expected
+        end)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("6480 fused availability queries match terrain-first collision checks", valid)
+# Both terrain and collision rejection must close every read cursor before
+# later navigation reservations can change the same Facts database.
+query_index = Facts.database()
+query_body = {1, -128, -128, 128}
+RTS.Spatial.reserve(query_index, [5], query_body, true)
+RTS.Check.that("fused queries reject terrain and collision blockers",
+  RTS.Spatial.available(layout, RTS.Map.mark(mask, 5), query_index, {2, -128, -128, 128}) == [] &&
+  RTS.Spatial.available(layout, mask, query_index, {2, -128, -128, 128}) == [])
+RTS.Spatial.reserve(query_index, [5], query_body, false)
+RTS.Check.that("fused rejection releases the cursor before removal",
+  RTS.Spatial.available(layout, mask, query_index, {2, -128, -128, 128}) == [5])
+RTS.Spatial.reserve(query_index, [5], query_body, true)
+RTS.Check.that("fused acceptance releases the cursor before insertion",
+  RTS.Spatial.available(layout, mask, query_index, {2, -128, -128, 128}) == [] &&
+  RTS.Spatial.available(layout, mask, query_index, query_body) == [5])
 # Vary query identity, odd/even sizes, strict boundaries and bucket order.
 # Repeated buckets also model bodies spanning multiple cells. The final
 # bucket has a different blocker, exercising matches after an empty bucket.
