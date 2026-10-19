@@ -1,0 +1,51 @@
+# Frozen formation enumeration; diagnostics only.
+defmodule RTS.FormationReference do
+  def slots = fn (grid, mask, goal, footprint, others, count) {
+    width = RTS.Data.get(grid, "width")
+    height = RTS.Data.get(grid, "height")
+    stride = (footprint * 2 + 255) / 256 + 1
+    result = []
+    side = 1
+    while side * side < count do side = side + 1 end
+    radius = side / 2
+    maximum = goal mod width / stride
+    if (width - 1 - goal mod width) / stride > maximum do maximum = (width - 1 - goal mod width) / stride end
+    if (goal / width) / stride > maximum do maximum = (goal / width) / stride end
+    if (height - 1 - goal / width) / stride > maximum do maximum = (height - 1 - goal / width) / stride end
+    # Fill a compact rectangle first; later rings compensate for obstacles.
+    first = true
+    while List.length(result) < count && radius <= maximum do
+      dz = 0 - radius
+      while dz <= radius do
+        dx = 0 - radius
+        while dx <= radius do
+          included = if first do dx < side - radius && dz < side - radius else
+            dx == (0 - radius) || dx == radius || dz == (0 - radius) || dz == radius end
+          if included do
+            col = goal mod width + dx * stride
+            row = goal / width + dz * stride
+            if col >= 0 && row >= 0 && col < width && row < height && List.length(result) < count do
+              cell = row * width + col
+              p = RTS.Map.point(grid, cell)
+              x = RTS.Data.get(p, "x")
+              z = RTS.Data.get(p, "z")
+              valid = RTS.Map.fits?(grid, mask, x, z, footprint)
+              List.do(others, other, do
+                distance = (footprint + access(other, [2])) / 2
+                dx_other = x - access(other, [0])
+                dz_other = z - access(other, [1])
+                if dx_other < distance && dx_other > (0 - distance) && dz_other < distance && dz_other > (0 - distance) do valid = false end
+              end)
+              if valid do result = [cell | result] end
+            end
+          end
+          dx = dx + 1
+        end
+        dz = dz + 1
+      end
+      radius = radius + 1
+      first = false
+    end
+    List.reverse(result)
+  }
+end

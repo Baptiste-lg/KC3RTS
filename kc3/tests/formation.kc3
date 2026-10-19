@@ -1,0 +1,38 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "formation_reference.kc3")
+grid = %{"width" => 8, "height" => 8, "cell_size" => 256, "origin_x" => -1024, "origin_z" => -1024}
+open = RTS.Map.repeat(".", 64)
+valid = true
+cases = 0
+List.do([0, 1, 9, 50, 100], count, do
+  List.do([1, 128, 255, 384], footprint, do
+    List.do([open, RTS.Map.mark(RTS.Map.mark(open, 27), 0)], mask, do
+      List.do([0, 27], goal, do
+        List.do([[], [[-128, -128, 128], [128, 128, 384]]], others, do
+          actual = RTS.Navigation.slots(grid, mask, goal, footprint, others, count)
+          expected = RTS.FormationReference.slots(grid, mask, goal, footprint, others, count)
+          valid = valid && actual == expected && List.length(actual) <= count &&
+            List.length(List.unique(actual)) == List.length(actual)
+          cases = cases + 1
+        end)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("160 formations preserve exact ordered slots with terrain, neighbors, odd sizes and insufficient space",
+  valid && cases == 160)
+List.do([{1, 1, 0, 0, 1}, {7, 3, -21, 14, 7},
+  {4, 5, -9007199254730000, 9007199254730000, 256}], layout, do
+  {width, height, ox, oz, cell_size} = ^ layout
+  grid = RTS.Data.share(%{"width" => width, "height" => height, "origin_x" => ox, "origin_z" => oz, "cell_size" => cell_size})
+  mask = RTS.Map.repeat(".", width * height)
+  List.do([1, 2, 127, 1024], footprint, do
+    List.do([0, width * height - 1], goal, do
+      RTS.Check.that("formation geometry preserves small cells, shared grids and wide integer origins",
+        RTS.Navigation.slots(grid, mask, goal, footprint, [], 4) ==
+          RTS.FormationReference.slots(grid, mask, goal, footprint, [], 4))
+    end)
+  end)
+end)

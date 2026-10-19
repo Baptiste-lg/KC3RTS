@@ -6,6 +6,7 @@ load!(__DIR__ + "tests/army_scenario.kc3")
 load!(__DIR__ + "tests/spatial_reference.kc3")
 load!(__DIR__ + "tests/navigation_reference.kc3")
 load!(__DIR__ + "tests/map_reference.kc3")
+load!(__DIR__ + "tests/formation_reference.kc3")
 defmodule RTS.NavigationProfile do
   # Previous population scan retained for paired measurements.
   def population_copy = fn (content, state, slot) {
@@ -118,6 +119,19 @@ world = RTS.ArmyScenario.world(content, RTS.World.opening(content, "profile", 10
 world = RTS.World.pack(world)
 command = %{"type" => "move", "entity_ids" => RTS.ArmyScenario.ids(world), "x" => 3072, "z" => 0}
 RTS.NavigationProfile.sample("command", fn () { RTS.World.command(content, world, 1, command) })
+formation_grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(world, "map")))
+formation_mask = RTS.Data.get(RTS.Data.get(RTS.Map.cache(content, world), "navigation"), "mask")
+formation_goal = RTS.Map.cell(formation_grid, 3072, 0)
+List.do([1, 50, 100], count, do
+  reference_slots = RTS.FormationReference.slots(formation_grid, formation_mask, formation_goal, 128, [], count)
+  if RTS.Navigation.slots(formation_grid, formation_mask, formation_goal, 128, [], count) != reference_slots do
+    puts("FAIL: formation profiling requires identical ordered slots")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("formation_slots_" + (Str) count,
+    fn () { RTS.FormationReference.slots(formation_grid, formation_mask, formation_goal, 128, [], count) },
+    fn () { RTS.Navigation.slots(formation_grid, formation_mask, formation_goal, 128, [], count) })
+end)
 world = RTS.ArmyScenario.move(content, world, RTS.ArmyScenario.ids(world), 3072, 0)
 world = RTS.World.pack(world)
 List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], iteration, do
