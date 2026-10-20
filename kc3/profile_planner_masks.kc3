@@ -5,7 +5,7 @@ RTS.Loader.world(__DIR__)
 load!(__DIR__ + "tests/army_scenario.kc3")
 load!(__DIR__ + "tests/navigation_reference.kc3")
 defmodule RTS.PlannerMaskProfile do
-  def paired = fn (name, content, state, grid, mask, entity) {
+  def paired = fn (name, content, state, grid, mask, entity, warm) {
     expected = RTS.NavigationReference.planner_mask(content, state, grid, mask, entity)
     if RTS.Navigation.planner_mask(content, state, grid, mask, entity) != expected do
       puts("FAIL: planner mask changed")
@@ -16,6 +16,8 @@ defmodule RTS.PlannerMaskProfile do
     List.do([1, 2, 3, 4, 5, 6, 7, 8, 9], iteration, do
       actions = if iteration mod 2 == 1 do [false, true] else [true, false] end
       List.do(actions, optimized, do
+        # Clear outside timing: report misses separately from cache hits.
+        if optimized && (! warm) do RTS.Data.slot_take(RTS.Data.get(content, "clearance_cache")) end
         start = Time.uptime()
         if optimized do RTS.Navigation.planner_mask(content, state, grid, mask, entity) else
           RTS.NavigationReference.planner_mask(content, state, grid, mask, entity) end
@@ -41,6 +43,9 @@ List.do([50, 100], count, do
   List.do([{"worker_fresh", "core.worker", 0}, {"worker_retry", "core.worker", 1},
     {"cart_fresh", "test.cart", 0}, {"cart_retry", "test.cart", 1}], {name, type_id, attempt}, do
     entity = RTS.Data.share(%{"id" => 1, "type_id" => type_id, "order" => RTS.Data.share(%{"attempt" => attempt})})
-    RTS.PlannerMaskProfile.paired(name + "_" + (Str) count, content, state, grid, mask, entity)
+    RTS.PlannerMaskProfile.paired(name + "_cold_" + (Str) count, content, state, grid, mask, entity, false)
+    if type_id == "test.cart" do
+      RTS.PlannerMaskProfile.paired(name + "_warm_" + (Str) count, content, state, grid, mask, entity, true)
+    end
   end)
 end)

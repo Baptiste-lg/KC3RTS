@@ -42,3 +42,43 @@ List.do([{8, 8, -1024, -1024, 256}, {7, 3, -21, 14, 7},
 end)
 RTS.Check.that("432 planner masks preserve terrain, retries, clipping, odd footprints and wide origins",
   valid && cases == 432)
+
+# Reuse, terrain changes and restored geometry must agree with a fresh scan.
+grid = RTS.Data.share(%{"width" => 8, "height" => 8, "origin_x" => -1024, "origin_z" => -1024, "cell_size" => 256})
+mask = RTS.Map.repeat(".", 64)
+entity = RTS.Data.share(%{"id" => 1, "type_id" => "test.body512", "order" => RTS.Data.share(%{"attempt" => 0})})
+state = RTS.Data.share(%{"entities" => []})
+valid = true
+List.do([{grid, mask, entity}, {grid, mask, entity},
+  {grid, RTS.Map.mark(mask, 27), entity}, {grid, mask, entity},
+  {RTS.Data.put(grid, "origin_x", 0), mask, entity},
+  {RTS.Data.merge(grid, %{"width" => 16, "height" => 4}), mask, entity},
+  {RTS.Data.put(grid, "cell_size", 128), mask, entity},
+  {grid, mask, RTS.Data.put(entity, "type_id", "test.body257")},
+  {grid, mask, entity}], {geometry, terrain, unit}, do
+  actual = RTS.Navigation.planner_mask(content, state, geometry, terrain, unit)
+  expected = RTS.NavigationReference.planner_mask(content, state, geometry, terrain, unit)
+  saved = RTS.Data.slot_take(RTS.Data.get(content, "clearance_cache"))
+  valid = valid && actual == expected && RTS.Data.get(saved, "mask") == terrain &&
+    RTS.Data.get(saved, "layout") == RTS.Map.layout(geometry) &&
+    RTS.Data.get(saved, "size") == RTS.Data.get(RTS.World.definition(content, RTS.Data.get(unit, "type_id")), "footprint") &&
+    RTS.Data.get(saved, "clearance") == actual
+  RTS.Data.slot_put(RTS.Data.get(content, "clearance_cache"), saved)
+end)
+RTS.Check.that("one-entry clearance cache follows terrain, footprint and layout changes and restoration", valid)
+
+retry = RTS.Data.put(entity, "order", RTS.Data.share(%{"attempt" => 1}))
+valid = true
+List.do([0, 256, 512, 256, 0], x, do
+  state = RTS.Data.share(%{"entities" => [%{"id" => 2, "type_id" => "test.body128", "x" => x, "z" => 0}]})
+  actual = RTS.Navigation.planner_mask(content, state, grid, mask, retry)
+  saved = RTS.Data.slot_take(RTS.Data.get(content, "clearance_cache"))
+  valid = valid && actual == RTS.NavigationReference.planner_mask(content, state, grid, mask, retry) &&
+    RTS.Data.get(saved, "clearance") == RTS.NavigationReference.planner_mask(content, state, grid, mask, entity)
+  RTS.Data.slot_put(RTS.Data.get(content, "clearance_cache"), saved)
+end)
+RTS.Check.that("moving retry blockers never contaminate cached static clearance", valid)
+independent = RTS.Content.compile(catalog)
+RTS.Check.that("another compiled catalog starts with an independent empty clearance cache",
+  RTS.Data.slot_take(RTS.Data.get(independent, "clearance_cache")) == void &&
+    RTS.Data.slot_take(RTS.Data.get(content, "clearance_cache")) != void)

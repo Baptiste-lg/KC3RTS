@@ -194,6 +194,35 @@ defmodule RTS.Navigation do
     target_cell = RTS.Map.cell(map, RTS.Data.get(target, "x"), RTS.Data.get(target, "z"))
     cell == target_cell || List.has?(RTS.Map.neighbors(map, target_cell), cell)
   }
+  # One worker/catalog-local entry bounds retained memory. Compare the actual
+  # terrain and geometry, not revision numbers that can repeat after restore.
+  # Dynamic unit blockers must never enter this static clearance cache.
+  def clearance = fn (content, layout, mask, size) {
+    cache = RTS.Data.get(content, "clearance_cache")
+    saved = RTS.Data.slot_take(cache)
+    if saved != void && RTS.Data.get(saved, "layout") == layout &&
+       RTS.Data.get(saved, "size") == size && RTS.Data.get(saved, "mask") == mask do
+      RTS.Data.slot_put(cache, saved)
+      RTS.Data.get(saved, "clearance")
+    else
+      original = ^ mask
+      {width, height, origin_x, origin_z, cell_size} = ^ layout
+      center_x = origin_x + cell_size / 2
+      center_z = origin_z + cell_size / 2
+      cell = 0
+      while cell < Str.size(mask) do
+        cells = RTS.Map.cover(layout, center_x + (cell mod width) * cell_size,
+          center_z + (cell / width) * cell_size, size)
+        clear = cells != []
+        List.do(cells, covered, do if Str.byte(original, covered) == 35 do clear = false end end)
+        if (! clear) do mask = RTS.Map.mark(mask, cell) end
+        cell = cell + 1
+      end
+      RTS.Data.slot_put(cache, RTS.Data.share(%{"layout" => layout, "size" => size,
+        "mask" => original, "clearance" => mask}))
+      mask
+    end
+  }
   def planner_mask = fn (content, state, grid, mask, e) {
     size = RTS.Data.get(RTS.World.definition(content, RTS.Data.get(e, "type_id")), "footprint")
     retry = RTS.Data.get(RTS.Data.get(e, "order"), "attempt") > 0
@@ -206,18 +235,7 @@ defmodule RTS.Navigation do
     end
     # Large units need clearance from both terrain and map edges.
     if size > 256 do
-      original = ^ mask
-      cell = 0
-      while cell < Str.size(mask) do
-        # The bounded cover primitive preserves the same footprint geometry
-        # without allocating a point map or re-reading the grid for every cell.
-        cells = RTS.Map.cover(layout, center_x + (cell mod width) * cell_size,
-          center_z + (cell / width) * cell_size, size)
-        clear = cells != []
-        List.do(cells, covered, do if Str.byte(original, covered) == 35 do clear = false end end)
-        if (! clear) do mask = RTS.Map.mark(mask, cell) end
-        cell = cell + 1
-      end
+      mask = RTS.Navigation.clearance(content, layout, mask, size)
     end
     if retry do
       id = RTS.Data.get(e, "id")
