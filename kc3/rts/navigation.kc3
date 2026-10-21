@@ -326,14 +326,28 @@ defmodule RTS.Navigation do
     {state, active, pending}
   }
   def plan = fn (content, state, grid, pending) {
+    # Moving-only ticks need neither a job budget nor an update map. Retain
+    # the previous normalization of navigation storage, even if it was Shared.
+    if pending == [] do
+      RTS.Data.put(state, "navigation", RTS.Data.unshare(RTS.Data.get(state, "navigation")))
+    else RTS.Navigation.plan_pending(content, state, grid, pending) end
+  }
+  def plan_pending = fn (content, state, grid, pending) {
     nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
+    batch = List.length(pending) > 1
+    updates = if batch do RTS.Data.share(%{}) else void end
+    changed = false
+    packed = type(state) == RTS.Shared
     budget = 128
     jobs = 8
     List.do(pending, entry, do
       if budget > 0 && jobs > 0 do
         jobs = jobs - 1
         id = access(entry, [1])
-        e = RTS.World.find(state, id)
+        # Preserve sequential reads for repeated jobs without rebuilding all
+        # entities after each completion. At most eight IDs enter this map.
+        e = if batch do RTS.Data.get(updates, id) else void end
+        if e == void do e = RTS.World.find(state, id) end
         order = RTS.Data.get(e, "order")
         search = RTS.Data.get(nav, "search")
         before = 0
@@ -368,10 +382,23 @@ defmodule RTS.Navigation do
               e = RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "path", []), "status" => "waiting"})
             else e = RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "unreachable"}) end
           end
-          state = RTS.World.put(state, e)
+          if batch do
+            if packed do e = RTS.World.pack_entity(e) end
+            updates = RTS.Data.put(updates, id, e)
+            changed = true
+          else state = RTS.World.put(state, e) end
         end
       end
     end)
+    # Planning changes orders/status/task only. Other jobs' blocker masks read
+    # unchanged geometry; commit completed jobs once, even if a later search
+    # exhausted the budget. Preserve entity order and untouched storage types.
+    if changed do
+      state = RTS.Data.put(state, "entities", List.map_filter(RTS.Data.get(state, "entities"), e, do
+        updated = RTS.Data.get(updates, RTS.Data.get(e, "id"))
+        if updated == void do e else updated end
+      end))
+    end
     RTS.Data.put(state, "navigation", RTS.Data.unshare(nav))
   }
   def tick = fn (content, state) {

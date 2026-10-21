@@ -1,0 +1,53 @@
+# Frozen 17bba18 planner: apply every completed job immediately with World.put.
+# Diagnostic only, never loaded by production workers.
+defmodule RTS.PlannerReference do
+  def plan = fn (content, state, grid, pending) {
+    nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
+    budget = 128
+    jobs = 8
+    List.do(pending, entry, do
+      if budget > 0 && jobs > 0 do
+        jobs = jobs - 1
+        id = access(entry, [1])
+        e = RTS.World.find(state, id)
+        order = RTS.Data.get(e, "order")
+        search = RTS.Data.get(nav, "search")
+        before = 0
+        if RTS.Data.get(nav, "entity_id") != id || search == void do
+          mask = RTS.Navigation.planner_mask(content, state, grid, RTS.Data.get(nav, "mask"), e)
+          start = RTS.Navigation.entry(grid, mask, e)
+          goal = RTS.Data.get(order, "goal")
+          path = RTS.Search.direct(grid, mask, start, goal, true)
+          if path == [] do path = RTS.Search.direct(grid, mask, start, goal, false) end
+          search = if path != [] do %{"expanded" => 0, "status" => "ready", "path" => path} else
+            RTS.Data.put(RTS.Search.start(grid, start, goal, true), "mask", mask) end
+        else before = RTS.Data.get(search, "expanded") end
+        if RTS.Data.get(search, "status") == "planning" do
+          search = RTS.Search.run(grid, RTS.Data.get(search, "mask"), search, budget)
+        end
+        used = RTS.Data.get(search, "expanded") - before
+        budget = budget - used - 1
+        status = RTS.Data.get(search, "status")
+        if status == "planning" do
+          nav = RTS.Data.merge(nav, %{"search" => search, "entity_id" => id})
+          budget = 0
+        else
+          nav = RTS.Data.merge(nav, %{"search" => void, "entity_id" => 0})
+          if status == "ready" do
+            path = RTS.Data.get(search, "path")
+            # The unit may be between centers after a collision. Moving back to
+            # its start center would trap it against the unit following behind.
+            if List.length(path) > 1 && List.first(path) == RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")) do path = List.next(path) end
+            e = RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "path", path), "status" => void})
+          else
+            if RTS.Data.get(order, "attempt") > 0 do
+              e = RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "path", []), "status" => "waiting"})
+            else e = RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "unreachable"}) end
+          end
+          state = RTS.World.put(state, e)
+        end
+      end
+    end)
+    RTS.Data.put(state, "navigation", RTS.Data.unshare(nav))
+  }
+end

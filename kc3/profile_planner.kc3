@@ -1,0 +1,46 @@
+# Run alone, without other tests. Measure complete planner calls on identical
+# immutable inputs; reference retains the immediately preceding per-job writes.
+require Time
+load!(__DIR__ + "load.kc3")
+RTS.Loader.world(__DIR__)
+load!(__DIR__ + "tests/planner_reference.kc3")
+load!(__DIR__ + "tests/planner_scenario.kc3")
+defmodule RTS.PlannerProfile do
+  def paired = fn (name, content, state, pending) {
+    grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(state, "map")))
+    before = RTS.Wire.encode(state)
+    reference = RTS.PlannerReference.plan(content, state, grid, pending)
+    if RTS.Navigation.plan(content, state, grid, pending) != reference do
+      puts("FAIL: planner profiling requires identical states")
+      exit(1)
+    end
+    old = []
+    fresh = []
+    List.do([1, 2, 3, 4, 5, 6, 7, 8, 9], iteration, do
+      actions = if iteration mod 2 == 1 do [false, true] else [true, false] end
+      List.do(actions, optimized, do
+        start = Time.uptime()
+        if optimized do RTS.Navigation.plan(content, state, grid, pending) else
+          RTS.PlannerReference.plan(content, state, grid, pending) end
+        finish = Time.uptime()
+        elapsed = (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
+        if optimized do fresh = [elapsed | fresh] else old = [elapsed | old] end
+      end)
+    end)
+    if RTS.Wire.encode(state) != before do puts("FAIL: planner profiling mutated its input"); exit(1) end
+    puts(RTS.Wire.encode(%{"phase" => name, "samples" => 9,
+      "reference_median_us" => access(List.sort(old), [4]),
+      "candidate_median_us" => access(List.sort(fresh), [4]),
+      "reference_us" => List.reverse(old), "candidate_us" => List.reverse(fresh)}))
+  }
+end
+content = RTS.Content.compile(RTS.Core.catalog())
+List.do([1, 8, 50, 100], count, do
+  state = RTS.World.pack(RTS.PlannerScenario.world(content, count, [], 0))
+  {state, active, pending} = RTS.Navigation.prepare(state)
+  RTS.PlannerProfile.paired("fresh_" + (Str) count, content, state, pending)
+  if count == 100 do
+    RTS.PlannerProfile.paired("idle_100", content, state, [])
+    RTS.PlannerProfile.paired("one_job_100", content, state, [List.first(pending)])
+  end
+end)

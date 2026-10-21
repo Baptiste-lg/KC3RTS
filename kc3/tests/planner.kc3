@@ -1,0 +1,131 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "planner_reference.kc3")
+load!(__DIR__ + "planner_scenario.kc3")
+defmodule RTS.PlannerCheck do
+  def same = fn (name, content, state, pending) {
+    before = RTS.Wire.encode(state)
+    grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(state, "map")))
+    reference = RTS.PlannerReference.plan(content, state, grid, pending)
+    actual = RTS.Navigation.plan(content, state, grid, pending)
+    RTS.Check.that(name + ": exact state and storage representation", actual == reference &&
+      RTS.Wire.encode(actual) == RTS.Wire.encode(reference) && type(actual) == type(state))
+    RTS.Check.that(name + ": input remains immutable", RTS.Wire.encode(state) == before)
+    actual
+  }
+end
+content = RTS.Content.compile(RTS.Core.catalog())
+List.do([0, 1, 8, 9, 50, 100], count, do
+  world = RTS.PlannerScenario.world(content, count, [], 0)
+  List.do([world, RTS.World.pack(world)], state, do
+    {state, active, pending} = RTS.Navigation.prepare(state)
+    after = RTS.PlannerCheck.same("fresh jobs " + (Str) count, content, state, pending)
+    remaining = 0
+    List.do(RTS.Data.get(after, "entities"), e, do
+      if RTS.Data.get(e, "status") == "planning" do remaining = remaining + 1 end
+      if type(state) == RTS.Shared do
+        RTS.Check.that("packed state retains packed entities and orders", type(e) == RTS.Shared &&
+          type(RTS.Data.get(e, "order")) == RTS.Shared)
+      end
+    end)
+    RTS.Check.that("no more than eight jobs complete", remaining == if count > 8 do count - 8 else 0 end)
+  end)
+end)
+# Repeated jobs observe prior updates; they still consume individual job slots.
+world = RTS.PlannerScenario.world(content, 10, [], 0)
+List.do([world, RTS.World.pack(world)], state, do
+  after = RTS.PlannerCheck.same("repeated jobs", content, state,
+    [[0, 1], [0, 1], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7]])
+  RTS.Check.that("duplicates retain the original eight-job limit",
+    RTS.Data.get(RTS.World.find(after, 6), "status") == void &&
+    RTS.Data.get(RTS.World.find(after, 7), "status") == "planning")
+  RTS.PlannerCheck.same("no pending jobs", content, state, [])
+  RTS.PlannerCheck.same("no pending jobs with shared navigation", content,
+    RTS.Data.put(state, "navigation", RTS.Data.share(RTS.Data.get(state, "navigation"))), [])
+end)
+# Retry masks inspect unit geometry. Earlier completed jobs change only their
+# orders/status; deferred storage must not change dynamic blocker decisions.
+world = RTS.PlannerScenario.world(content, 10, [], 1)
+List.do([world, RTS.World.pack(world)], state, do
+  {state, active, pending} = RTS.Navigation.prepare(state)
+  RTS.PlannerCheck.same("dynamic retry blockers", content, state, pending)
+end)
+# Reaching the current cell and starting between centers retain their original
+# route trimming. IDs need not match list positions or remain in the small range.
+world = RTS.PlannerScenario.world(content, 1, [], 0)
+List.do([{128, 0}, {192, 1}], {x, goal}, do
+  e = RTS.Data.merge(RTS.World.find(world, 1), %{"id" => 9007199254740991, "x" => x,
+    "order" => RTS.Navigation.order(goal, 7)})
+  trial = RTS.Data.put(world, "entities", [e])
+  List.do([trial, RTS.World.pack(trial)], state, do
+    after = RTS.PlannerCheck.same("off-center or current-cell route", content, state, [[0, 9007199254740991]])
+    RTS.Check.that("route starts at the correct next waypoint",
+      RTS.Data.get(RTS.Data.get(RTS.World.find(after, 9007199254740991), "order"), "path") == [goal])
+    RTS.PlannerCheck.same("repeated wide ID", content, state,
+      [[0, 9007199254740991], [0, 9007199254740991]])
+  end)
+end)
+# Revision invalidation happens before planning, not from captured stale rows.
+world = RTS.PlannerScenario.world(content, 10, [], 0)
+world = RTS.Data.put(world, "entities", List.map_filter(RTS.Data.get(world, "entities"), e, do
+  RTS.Data.merge(e, %{"status" => "waiting", "order" => RTS.Data.merge(RTS.Data.get(e, "order"),
+    %{"revision" => 6, "wait" => 19, "attempt" => 1, "path" => [17, 18]})})
+end))
+List.do([world, RTS.World.pack(world)], state, do
+  {state, active, pending} = RTS.Navigation.prepare(state)
+  after = RTS.PlannerCheck.same("stale orders", content, state, pending)
+  List.do(RTS.Data.get(after, "entities"), e, do
+    order = RTS.Data.get(e, "order")
+    RTS.Check.that("stale reset survives batched planning", RTS.Data.get(order, "revision") == 7 &&
+      RTS.Data.get(order, "wait") == 0 && RTS.Data.get(order, "attempt") == 0 &&
+      RTS.Data.get(order, "priority") == RTS.Data.get(e, "id") mod 3)
+  end)
+end)
+# Sealed goal exhausts the 128-expansion budget and resumes across calls.
+# Later jobs must stay pending until that search completes.
+world = RTS.PlannerScenario.world(content, 3, [276, 299, 301, 324], 0)
+e = RTS.World.find(world, 1)
+world = RTS.World.put(world, RTS.Data.put(e, "order", RTS.Navigation.order(300, 7)))
+List.do([world, RTS.World.pack(world)], state, do
+  first = RTS.PlannerCheck.same("bounded search", content, state, [[0, 1], [0, 2]])
+  nav = RTS.Data.get(first, "navigation")
+  search = RTS.Data.get(nav, "search")
+  RTS.Check.that("unfinished search owns the next tick", RTS.Data.get(nav, "entity_id") == 1 &&
+    RTS.Data.get(search, "status") == "planning" && RTS.Data.get(search, "expanded") <= 128 &&
+    RTS.World.find(first, 2) == RTS.World.find(state, 2))
+  {prepared, active, pending} = RTS.Navigation.prepare(first)
+  RTS.Check.that("resumed job retains priority", access(List.first(pending), [1]) == 1)
+  resumed = RTS.PlannerCheck.same("resumed search", content, prepared, pending)
+  restored = JSON.from_str(RTS.Wire.encode(prepared))
+  grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(restored, "map")))
+  RTS.Check.that("serialized search resumes identically", RTS.Wire.encode(resumed) ==
+    RTS.Wire.encode(RTS.Navigation.plan(content, restored, grid, pending)))
+end)
+# Completed updates must survive a later job exhausting this tick's budget.
+first_unit = RTS.World.find(world, 1)
+world = RTS.World.put(world, RTS.Data.put(first_unit, "order", RTS.Navigation.order(1, 7)))
+second_unit = RTS.World.find(world, 2)
+world = RTS.World.put(world, RTS.Data.put(second_unit, "order", RTS.Navigation.order(300, 7)))
+List.do([world, RTS.World.pack(world), RTS.Data.share(world)], state, do
+  after = RTS.PlannerCheck.same("ready then bounded search", content, state, [[0, 1], [0, 2], [0, 3]])
+  RTS.Check.that("earlier completion survives a suspended search",
+    RTS.Data.get(RTS.World.find(after, 1), "status") == void &&
+    RTS.Data.get(RTS.Data.get(after, "navigation"), "entity_id") == 2 &&
+    RTS.World.find(after, 3) == RTS.World.find(state, 3))
+end)
+# A blocked goal fails immediately. Fresh failures clear order/task while
+# retried failures wait; the following successful job still runs this tick.
+List.do([0, 1], attempt, do
+  world = RTS.PlannerScenario.world(content, 3, [300], attempt)
+  e = RTS.World.find(world, 1)
+  world = RTS.World.put(world, RTS.Data.merge(e, %{"task" => %{"kind" => "sentinel"},
+    "order" => RTS.Data.put(RTS.Navigation.order(300, 7), "attempt", attempt)}))
+  List.do([world, RTS.World.pack(world)], state, do
+    after = RTS.PlannerCheck.same("failed job then ready", content, state, [[0, 1], [0, 2]])
+    e = RTS.World.find(after, 1)
+    RTS.Check.that("failure policy is unchanged", RTS.Data.get(e, "status") ==
+      if attempt == 0 do "unreachable" else "waiting" end)
+    RTS.Check.that("ready job follows failed job", RTS.Data.get(RTS.World.find(after, 2), "status") == void)
+  end)
+end)

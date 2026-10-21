@@ -1,0 +1,22 @@
+# Deterministic inputs for planner contracts and isolated paired profiling.
+defmodule RTS.PlannerScenario do
+  def world = fn (content, count, blocked, attempt) {
+    grid = %{"width" => 24, "height" => 24, "cell_size" => 256,
+      "origin_x" => 0, "origin_z" => 0, "blocked" => blocked}
+    mask = RTS.Map.repeat(".", 576)
+    List.do(blocked, cell, do mask = RTS.Map.mark(mask, cell) end)
+    entities = []
+    id = 1
+    while id <= count do
+      e = RTS.World.entity(content, "kiln.concord", id, "core.worker", 1,
+        128 + ((id - 1) mod 24) * 256, 128 + ((id - 1) / 24) * 256, void)
+      order = RTS.Data.merge(RTS.Navigation.order(480 + (id mod 24), 7),
+        %{"priority" => id mod 3, "attempt" => attempt})
+      entities = [RTS.Data.merge(e, %{"order" => order, "status" => "planning"}) | entities]
+      id = id + 1
+    end
+    %{"entities" => List.reverse(entities), "map" => grid,
+      "navigation" => %{"revision" => 7, "mask" => mask, "entity_id" => 0, "search" => void},
+      "sentinel" => [1, "untouched", %{"nested" => true}]}
+  }
+end
