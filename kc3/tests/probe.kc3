@@ -1,0 +1,106 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "spatial_reference.kc3")
+defmodule RTS.ProbeReference do
+  def run = fn (layout, mask, index, body, speed, cell, horizontal_first) {
+    {next, reached} = RTS.Navigation.propose_reference(layout, body, speed, cell, horizontal_first)
+    {next, reached, RTS.SpatialReference.available(layout, mask, index, next)}
+  }
+  def snapshot = fn (index) {
+    List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) {
+      {fact.subject, fact.predicate, fact.object}
+    }))
+  }
+end
+layout = {4, 4, 0, 0, 256}
+mask = "................"
+index = Facts.database()
+List.do([{1, 128, 128, 128}, {2, 256, 256, 255}, {3, 640, 384, 384}], body, do
+  {id, x, z, size} = ^ body
+  RTS.Spatial.reserve(index, RTS.Map.cover(layout, x, z, size), body, true)
+end)
+Facts.add_tags(index, 0, :sentinel, "keep")
+before = RTS.ProbeReference.snapshot(index)
+valid = true
+cases = 0
+List.do([2, 64, 127, 128, 255, 384], size, do
+  List.do([{-1, 128}, {64, 128}, {128, 128}, {192, 256},
+    {256, 256}, {384, 384}, {640, 640}, {1024, 128}], {x, z}, do
+    List.do([1, 99], id, do
+      List.do([0, 5, 15], target, do
+        List.do([0, 64, 256], speed, do
+          List.do([true, false], horizontal_first, do
+            List.do([mask, "#...............", ".....#..........", "################"], terrain, do
+              body = {id, x, z, size}
+              expected = RTS.ProbeReference.run(layout, terrain, index, body, speed, target, horizontal_first)
+              actual = RTS.Navigation.probe_native(layout, terrain, index, body, speed, target, horizontal_first)
+              valid = valid && actual == expected &&
+                RTS.Navigation.probe(layout, terrain, index, body, speed, target, horizontal_first) == expected
+              cases = cases + 1
+            end)
+          end)
+        end)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("6912 fused probes preserve proposals, arrival and exact ordered cells", valid && cases == 6912)
+RTS.Check.that("all fused probes leave the complete index untouched", RTS.ProbeReference.snapshot(index) == before)
+
+body = {99, 128, 128, 128}
+List.do([void, "", "....", RTS.Map.repeat(".", 17)], terrain, do
+  RTS.Check.that("incompatible mask lengths/types decline safely",
+    RTS.Navigation.probe_native(layout, terrain, index, body, 64, 5, true) == void)
+end)
+List.do(["é..............", "x...............", (Str) (Character) 0 + "..............."], terrain, do
+  RTS.Check.that("terrain checks preserve exact byte semantics",
+    RTS.Navigation.probe_native(layout, terrain, index, body, 64, 5, true) ==
+      RTS.ProbeReference.run(layout, terrain, index, body, 64, 5, true))
+end)
+RTS.Check.that("unsupported indices decline when the footprint needs a neighbor query",
+  RTS.Navigation.probe_native(layout, mask, void, body, 64, 5, true) == void)
+List.do([{void, body, 64, 5, true}, {{4, 4}, body, 64, 5, true},
+  {layout, [99, 128, 128, 128], 64, 5, true}, {layout, {99, 128}, 64, 5, true},
+  {layout, body, -1, 5, true}, {layout, body, 64, -1, true},
+  {layout, body, 64, 16, true}, {layout, body, 64, 5, void}],
+  {geometry, unit, speed, target, horizontal_first}, do
+  RTS.Check.that("unsupported step inputs decline before any index change",
+    RTS.Navigation.probe_native(geometry, mask, index, unit, speed, target, horizontal_first) == void &&
+    RTS.ProbeReference.snapshot(index) == before)
+end)
+List.do([{layout, {99, 128, 128, 1}}, {layout, {99, 128, 128, (Integer) 128}},
+  {{4, 4, 9007199254730000, -9007199254730000, 256},
+    {99, 9007199254730128, -9007199254729872, 128}},
+  {{4, 4, 2147483647, 0, 256}, {99, 2147483647, 128, 128}}], {geometry, unit}, do
+  RTS.Check.that("unsupported cover or wide geometry uses the exact combined KC3 fallback",
+    RTS.Navigation.probe_native(geometry, mask, index, unit, 64, 5, true) == void &&
+    RTS.Navigation.probe(geometry, mask, index, unit, 64, 5, true) ==
+      RTS.ProbeReference.run(geometry, mask, index, unit, 64, 5, true))
+end)
+
+# Fallback after opening a cursor must release every intermediate value and
+# permit immediate writes. Unlike malformed data, this wide neighbor is valid.
+wide_index = Facts.database()
+wide_body = {2, 9007199254730000, 128, 128}
+RTS.Spatial.reserve(wide_index, [0], wide_body, true)
+RTS.Check.that("unsupported neighbor geometry falls back without changing the proposal",
+  RTS.Navigation.probe_native(layout, mask, wide_index, body, 0, 0, true) == void &&
+  RTS.Navigation.probe(layout, mask, wide_index, body, 0, 0, true) ==
+    RTS.ProbeReference.run(layout, mask, wide_index, body, 0, 0, true))
+RTS.Spatial.reserve(wide_index, [0], wide_body, false)
+RTS.Spatial.reserve(wide_index, [0], {2, 128, 128, 128}, true)
+RTS.Check.that("fallback cleanup permits immediate removal/insertion",
+  RTS.Navigation.probe_native(layout, mask, wide_index, body, 0, 0, true) == {body, true, []})
+RTS.Spatial.reserve(wide_index, [0], {2, 128, 128, 128}, false)
+RTS.Check.that("collision rejection cleanup permits immediate removal",
+  RTS.Navigation.probe_native(layout, mask, wide_index, body, 0, 0, true) == {body, true, [0]})
+RTS.Check.that("terrain rejection returns the proposal without touching the index",
+  RTS.Navigation.probe_native(layout, "#...............", wide_index, body, 0, 0, true) == {body, true, []})
+
+owned_body = {%{"opaque" => [18446744073709551616]}, 128, 128, 128}
+packet = RTS.Navigation.probe_native(layout, mask, wide_index, owned_body, 0, 0, true)
+owned_body = void
+wide_index = void
+RTS.Check.that("returned proposal metadata and cells own their storage",
+  packet == {{%{"opaque" => [18446744073709551616]}, 128, 128, 128}, true, [0]})

@@ -184,3 +184,64 @@ s_tag *kc3rts_grid_cover(const s_tag *layout, const s_tag *x_tag,
     }
   return tag_init_plist(result, cells);
 }
+
+/* Fuse existing bounded geometry/read-only queries, avoiding intermediate
+ * interpreter crossings. The returned proposal exists even when blocked;
+ * KC3 still chooses axis priority, alternatives and movement acceptance.
+ * No reservation changes here. Unsupported inputs fall back as one unit. */
+s_tag *kc3rts_grid_probe(const s_tag *layout, const s_tag *mask,
+                        const s_tag *index, const s_tag *body,
+                        const s_tag *speed, const s_tag *cell,
+                        const s_tag *horizontal, s_tag *result)
+{
+  s_tag proposal = {0}, cells = {0}, clear = {0}, output = {0};
+  if (!kc3rts_grid_step(layout, body, speed, cell, horizontal, &proposal))
+    return NULL;
+  if (proposal.type == TAG_VOID) return tag_init(result);
+  s64 width, height;
+  const s_tag *grid = layout->data.td_ptuple->tag;
+  /* grid_step already validated these bounded dimensions. */
+  if (!grid_scalar(grid, &width) || !grid_scalar(grid + 1, &height) ||
+      mask->type != TAG_STR || mask->data.td_str.size != (uw) (width * height))
+    goto fallback;
+  s_tag *pair = proposal.data.td_ptuple->tag;
+  s_tag *next = pair->data.td_ptuple->tag;
+  if (!kc3rts_grid_cover(layout, next + 1, next + 2, next + 3, &cells))
+    goto failed;
+  if (cells.type == TAG_VOID) goto fallback;
+  for (s_list *item = cells.data.td_plist; item; item = list_next(item)) {
+    s64 offset;
+    if (!grid_scalar(&item->tag, &offset) || offset < 0 ||
+        (uw) offset >= mask->data.td_str.size) goto fallback;
+    bool blocked = mask->data.td_str.ptr.p_pchar[offset] == '#';
+    if (!blocked) {
+      if (!kc3rts_cell_clear(index, &item->tag, pair, &clear)) goto failed;
+      if (clear.type != TAG_BOOL) goto fallback;
+      blocked = !clear.data.td_bool_;
+    }
+    if (blocked) {
+      tag_clean(&cells);
+      tag_init_plist(&cells, NULL);
+      break;
+    }
+  }
+  if (!tag_init_ptuple(&output, 3)) goto failed;
+  /* Move owned values, not borrowed Facts objects, into the result. */
+  output.data.td_ptuple->tag[0] = pair[0];
+  output.data.td_ptuple->tag[1] = pair[1];
+  output.data.td_ptuple->tag[2] = cells;
+  tag_init(pair);
+  tag_init(pair + 1);
+  tag_clean(&proposal);
+  *result = output;
+  return result;
+ fallback:
+  tag_clean(&proposal);
+  tag_clean(&cells);
+  return tag_init(result);
+ failed:
+  tag_clean(&proposal);
+  tag_clean(&cells);
+  tag_clean(&output);
+  return NULL;
+}

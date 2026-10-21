@@ -202,6 +202,24 @@ rows = RTS.Data.get(spatial, "rows")
 cell = List.first(RTS.Data.get(RTS.Data.get(unit, "order"), "path"))
 mask = RTS.Data.get(RTS.Data.get(packed, "navigation"), "mask")
 RTS.NavigationProfile.sample("one_proposal", fn () { RTS.Navigation.propose(layout, body, speed, cell, true) })
+RTS.NavigationProfile.paired("probe_100_unit_rows",
+  fn () {
+    List.do(rows, {entity, unit_speed, unit_body, occupied}, do
+      target = RTS.Data.first(RTS.Data.get(entity, "order"), "path")
+      if target != void do
+        {next, reached} = RTS.Navigation.propose(layout, unit_body, unit_speed, target, true)
+        RTS.Spatial.available(layout, mask, buckets, next)
+      end
+    end)
+  }, fn () {
+    List.do(rows, {entity, unit_speed, unit_body, occupied}, do
+      target = RTS.Data.first(RTS.Data.get(entity, "order"), "path")
+      if target != void do
+        {next, reached, cells} = RTS.Navigation.probe(layout, mask, buckets, unit_body, unit_speed, target, true)
+        cells
+      end
+    end)
+  })
 RTS.NavigationProfile.paired("proposal_100_unit_rows",
   fn () {
     List.do(rows, {entity, unit_speed, unit_body, occupied}, do
@@ -231,6 +249,34 @@ RTS.NavigationProfile.paired("availability_100_unit_rows",
   })
 availability_index = Facts.database()
 RTS.Spatial.reserve(availability_index, [0, 1, 4, 5], {1, 256, 256, 128}, true)
+List.do([{"empty", {4, 4, 0, 0, 256}, {99, 640, 640, 128}, 0, 10, "................"},
+  {"self", {4, 4, 0, 0, 256}, {1, 256, 256, 128}, 64, 0, "................"},
+  {"touching", {4, 4, 0, 0, 256}, {99, 320, 256, 128}, 64, 5, "................"},
+  {"blocked", {4, 4, 0, 0, 256}, {99, 319, 256, 128}, 64, 5, "................"},
+  {"terrain_first", {4, 4, 0, 0, 256}, {99, 256, 256, 128}, 0, 5, "#..............."},
+  {"outside", {4, 4, 0, 0, 256}, {99, -64, 128, 128}, 0, 0, "................"},
+  {"wide_fallback", {4, 4, 9007199254730000, 0, 256},
+    {99, 9007199254730128, 128, 128}, 64, 5, "................"}],
+  {name, geometry, query, velocity, target, terrain}, do
+  {next, reached} = RTS.Navigation.propose(geometry, query, velocity, target, true)
+  expected = {next, reached, RTS.Spatial.available(geometry, terrain, availability_index, next)}
+  if RTS.Navigation.probe(geometry, terrain, availability_index, query, velocity, target, true) != expected do
+    puts("FAIL: fused probe profiling requires identical results")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("probe_batch10_" + name,
+    fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        {next, reached} = RTS.Navigation.propose(geometry, query, velocity, target, true)
+        RTS.Spatial.available(geometry, terrain, availability_index, next)
+      end)
+    }, fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        {next, reached, cells} = RTS.Navigation.probe(geometry, terrain, availability_index, query, velocity, target, true)
+        cells
+      end)
+    })
+end)
 dense_index = Facts.database()
 neighbor_id = 1
 while neighbor_id <= 64 do
