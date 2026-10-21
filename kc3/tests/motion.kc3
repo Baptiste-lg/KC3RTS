@@ -4,31 +4,41 @@ RTS.Loader.world(__DIR__ + "../")
 load!(__DIR__ + "navigation_reference.kc3")
 valid = true
 cases = 0
-List.do([{4, 4, -512, -512, 256}, {7, 3, 5, -9, 7}, {1, 1, 0, 0, 1},
-  {65535, 65535, -2147483648, 2147483647, 2147483647}], layout, do
+layouts = [{4, 4, -512, -512, 256}, {7, 3, 5, -9, 7}, {1, 1, 0, 0, 1},
+  {65535, 65535, -2147483648, 2147483647, 2147483647}]
+xs = [-2147483648, -1, 0, 1, 2147483647]
+zs = [-2147483648, 0, 2147483647]
+speeds = [0, 1, 64, 2147483647]
+# Preserve all six original dimensions and their order, including repeated
+# cell-zero cases on the 1x1 layout and the same out-of-range exclusions.
+sample = 0
+while sample < 1440 do
+  choice = ^ sample
+  horizontal_first = choice mod 2 == 0
+  choice = choice / 2
+  cell_slot = choice mod 3
+  choice = choice / 3
+  speed = access(speeds, [choice mod 4])
+  choice = choice / 4
+  z = access(zs, [choice mod 3])
+  choice = choice / 3
+  x = access(xs, [choice mod 5])
+  layout = access(layouts, [choice / 5])
   {width, height, ox, oz, cell_size} = ^ layout
-  List.do([-2147483648, -1, 0, 1, 2147483647], x, do
-    List.do([-2147483648, 0, 2147483647], z, do
-      List.do([0, 1, 64, 2147483647], speed, do
-        List.do([0, width - 1, width * (height - 1)], cell, do
-          if cell <= 2147483647 do
-            List.do([true, false], horizontal_first, do
-              body = {9007199254740991, x, z, 1024}
-              expected = RTS.NavigationReference.propose(layout, body, speed, cell, horizontal_first)
-              actual = RTS.Navigation.propose_native(layout, body, speed, cell, horizontal_first)
-              {{actual_id, actual_x, actual_z, actual_size}, actual_reached} = ^ actual
-              {{expected_id, expected_x, expected_z, expected_size}, expected_reached} = ^ expected
-              valid = valid && actual == expected && RTS.Navigation.propose(layout, body, speed, cell, horizontal_first) == expected &&
-                RTS.Wire.encode([actual_id, actual_x, actual_z, actual_size, actual_reached]) ==
-                  RTS.Wire.encode([expected_id, expected_x, expected_z, expected_size, expected_reached])
-              cases = cases + 1
-            end)
-          end
-        end)
-      end)
-    end)
-  end)
-end)
+  cell = access([0, width - 1, width * (height - 1)], [cell_slot])
+  if cell <= 2147483647 do
+    body = {9007199254740991, x, z, 1024}
+    expected = RTS.NavigationReference.propose(layout, body, speed, cell, horizontal_first)
+    actual = RTS.Navigation.propose_native(layout, body, speed, cell, horizontal_first)
+    {{actual_id, actual_x, actual_z, actual_size}, actual_reached} = ^ actual
+    {{expected_id, expected_x, expected_z, expected_size}, expected_reached} = ^ expected
+    valid = valid && actual == expected && RTS.Navigation.propose(layout, body, speed, cell, horizontal_first) == expected &&
+      RTS.Wire.encode([actual_id, actual_x, actual_z, actual_size, actual_reached]) ==
+        RTS.Wire.encode([expected_id, expected_x, expected_z, expected_size, expected_reached])
+    cases = cases + 1
+  end
+  sample = sample + 1
+end
 RTS.Check.that("1320 native proposals preserve signed extremes, wide intermediates and canonical encoding", valid && cases == 1320)
 List.do([(S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1,
   (U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1], one, do
