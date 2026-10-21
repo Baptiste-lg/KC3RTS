@@ -27,6 +27,55 @@ static bool grid_scalar(const s_tag *tag, s64 *out)
   return *out >= INT32_MIN && *out <= INT32_MAX;
 }
 
+/* Enumerate one caller-selected, axis-aligned two-segment corridor. This is
+ * not a planner: KC3 chooses axis priority, retries, clearance and A* budgets.
+ * Only destination bytes are tested (the starting cell may be blocked).
+ * Void declines unsupported input; [] means this exact corridor is blocked.
+ * Build an owned list in linear time, with no shared mutable path storage. */
+s_tag *kc3rts_grid_corridor(const s_tag *width_tag, const s_tag *mask,
+                           s_tag *start_tag, const s_tag *goal_tag,
+                           const s_tag *horizontal, s_tag *result)
+{
+  s64 width, start, goal;
+  if (!grid_scalar(width_tag, &width) || width < 1 || width > 65535 ||
+      mask->type != TAG_STR || !mask->data.td_str.size ||
+      mask->data.td_str.size > 1048576 ||
+      mask->data.td_str.size % (uw) width ||
+      !grid_scalar(start_tag, &start) || !grid_scalar(goal_tag, &goal) ||
+      start < 0 || goal < 0 || (uw) start >= mask->data.td_str.size ||
+      (uw) goal >= mask->data.td_str.size || horizontal->type != TAG_BOOL)
+    return tag_init(result);
+  s64 dx = goal % width - start % width;
+  s64 dz = goal / width - start / width;
+  s64 count[2] = {dx < 0 ? -dx : dx, dz < 0 ? -dz : dz};
+  s64 step[2] = {dx < 0 ? -1 : 1, dz < 0 ? -width : width};
+  if (count[0] + count[1] >= 4096) return tag_init(result);
+  s_list *path = list_new(NULL);
+  if (!path) return NULL;
+  if (!tag_init_copy(&path->tag, start_tag)) {
+    list_delete_all(path);
+    return NULL;
+  }
+  s_list **tail = &path->next.data.td_plist;
+  s64 cell = start;
+  for (int segment = 0; segment < 2; ++segment) {
+    int axis = horizontal->data.td_bool_ ? segment : 1 - segment;
+    for (s64 i = 0; i < count[axis]; ++i) {
+      cell += step[axis];
+      if (mask->data.td_str.ptr.p_pchar[cell] == '#') {
+        list_delete_all(path);
+        return tag_init_plist(result, NULL);
+      }
+      if (!(*tail = list_new_uw_reduce((uw) cell, NULL))) {
+        list_delete_all(path);
+        return NULL;
+      }
+      tail = &(*tail)->next.data.td_plist;
+    }
+  }
+  return tag_init_plist(result, path);
+}
+
 /* Read one worker-local Facts bucket of {id, x, z, size} bounding boxes.
  * The range cursor borrows objects without materializing a variable/callback
  * for every neighbor. No mutation, retained pointer or gameplay decision:

@@ -1,0 +1,99 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+# Every 3x2 obstacle mask, start, goal and axis order. Flatten the matrix to
+# avoid nested macro expansion cost; no randomized sampling or case omission.
+valid = true
+cases = 0
+sample = 0
+while sample < 4608 do
+  choice = ^ sample
+  horizontal = choice mod 2 == 0
+  choice = choice / 2
+  goal = choice mod 6
+  choice = choice / 6
+  start = choice mod 6
+  bits = choice / 6
+  mask = ""
+  i = 0
+  while i < 6 do
+    mask = mask + if bits mod 2 == 1 do "#" else "." end
+    bits = bits / 2
+    i = i + 1
+  end
+  map = %{"width" => 3, "height" => 2}
+  expected = RTS.Search.direct_reference(map, mask, start, goal, horizontal)
+  actual = RTS.Search.direct_native(3, mask, start, goal, horizontal)
+  valid = valid && actual == expected &&
+    RTS.Search.direct(map, mask, start, goal, horizontal) == expected &&
+    RTS.Wire.encode(actual) == RTS.Wire.encode(expected)
+  cases = cases + 1
+  sample = sample + 1
+end
+RTS.Check.that("4608 exhaustive corridors preserve cells, obstacles, ties and canonical bytes", valid && cases == 4608)
+List.do([{1, 1}, {1, 9}, {9, 1}, {7, 5}, {96, 96}], {width, height}, do
+  map = RTS.Data.share(%{"width" => width, "height" => height})
+  mask = RTS.Map.repeat(".", width * height)
+  List.do([0, width - 1, width * (height - 1), width * height - 1], start, do
+    List.do([0, width - 1, width * (height - 1), width * height - 1], goal, do
+      List.do([true, false], horizontal, do
+        RTS.Check.that("rectangular and degenerate corridors preserve ordered cells",
+          RTS.Search.direct(map, mask, start, goal, horizontal) ==
+            RTS.Search.direct_reference(map, mask, start, goal, horizontal))
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("a blocked starting cell is not checked, even for a zero-length corridor",
+  RTS.Search.direct_native(3, "#.....", 0, 0, true) == [0] &&
+  RTS.Search.direct_native(3, "#.....", 0, 5, true) == [0, 1, 2, 5])
+RTS.Check.that("only hash bytes block a corridor",
+  RTS.Search.direct_native(3, " abcde", 0, 5, false) == [0, 3, 4, 5])
+List.do([(S8) 3, (S16) 3, (S32) 3, (S64) 3, (Sw) 3,
+  (U8) 3, (U16) 3, (U32) 3, (U64) 3, (Uw) 3], width, do
+  start = width - 1
+  RTS.Check.that("all bounded integer widths preserve the original starting tag",
+    RTS.Search.direct_native(width, "......", start, 3, true) == [2, 1, 0, 3] &&
+    type(List.first(RTS.Search.direct_native(3, "......", width, 3, true))) == type(width))
+end)
+List.do([{0, "......", 0, 5, true}, {-1, "......", 0, 5, true},
+  {65536, "......", 0, 5, true}, {2147483648, "......", 0, 5, true},
+  {(U64) 18446744073709551615, "......", 0, 5, true},
+  {true, "......", 0, 5, true}, {3.0, "......", 0, 5, true},
+  {"3", "......", 0, 5, true}, {3, void, 0, 5, true},
+  {3, [], 0, 5, true}, {3, "", 0, 0, true}, {3, ".....", 0, 4, true},
+  {3, "......", -1, 5, true}, {3, "......", 0, -1, true},
+  {3, "......", 6, 0, true}, {3, "......", 0, 6, true},
+  {3, "......", 0.0, 5, true}, {3, "......", 0, false, true},
+  {3, "......", 2147483648, 5, true}, {3, "......", 0, 2147483648, true},
+  {3, "......", 0, 5, void}, {3, "......", 0, 5, 1}],
+  {width, mask, start, goal, horizontal}, do
+  RTS.Check.that("unsupported corridors decline without coercion or partial output",
+    RTS.Search.direct_native(width, mask, start, goal, horizontal) == void)
+end)
+# Allocation bounds decline before any list allocation; valid unusual inputs
+# still use the unmodified KC3 implementation (block early to keep tests small).
+mask = "#" + RTS.Map.repeat(".", 4096)
+RTS.Check.that("4096 destination cells exceed the bounded allocation budget",
+  RTS.Search.direct_native(4097, mask, 4096, 0, true) == void)
+path = RTS.Search.direct_native(4096, RTS.Map.repeat(".", 4096), 0, 4095, true)
+RTS.Check.that("the inclusive 4096-cell allocation boundary succeeds",
+  List.length(path) == 4096 && List.first(path) == 0 && List.last(path) == 4095)
+mask = RTS.Map.repeat(".", 1048577)
+RTS.Check.that("oversized masks decline even for an empty traversal",
+  RTS.Search.direct_native(1, mask, 0, 0, true) == void &&
+  RTS.Search.direct(%{"width" => 1}, mask, 0, 0, true) == [0])
+mask = ".#" + RTS.Map.repeat(".", 4095)
+map = %{"width" => 4097}
+RTS.Check.that("oversized valid corridors retain KC3 fallback",
+  RTS.Search.direct(map, mask, 0, 4096, true) ==
+    RTS.Search.direct_reference(map, mask, 0, 4096, true))
+map = %{"width" => 3}
+RTS.Check.that("nonrectangular masks preserve legacy KC3 behavior via fallback",
+  RTS.Search.direct(map, ".....", 0, 4, true) ==
+    RTS.Search.direct_reference(map, ".....", 0, 4, true))
+mask = "......"
+path = RTS.Search.direct_native(3, mask, 0, 5, true)
+mask = void
+RTS.Check.that("returned paths own their cells independently of later calls",
+  RTS.Search.direct_native(3, "######", 0, 5, true) == [] && path == [0, 1, 2, 5])

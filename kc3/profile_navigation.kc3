@@ -140,6 +140,22 @@ end)
 packed = RTS.World.pack(world)
 grid = RTS.Data.share(RTS.Map.grid(RTS.Data.get(world, "map")))
 layout = RTS.Map.layout(grid)
+List.do([{"open", RTS.Map.repeat(".", 96 * 96), 0, 9215},
+  {"blocked_first", ".#" + RTS.Map.repeat(".", 96 * 96 - 2), 0, 9215},
+  {"blocked_last", RTS.Map.repeat(".", 96 * 96 - 1) + "#", 0, 9215},
+  {"reverse", RTS.Map.repeat(".", 96 * 96), 9215, 0},
+  {"same_cell", RTS.Map.repeat("#", 96 * 96), 0, 0}],
+  {name, corridor_mask, start, goal}, do
+  corridor_map = RTS.Data.share(%{"width" => 96, "height" => 96})
+  if RTS.Search.direct(corridor_map, corridor_mask, start, goal, true) !=
+      RTS.Search.direct_reference(corridor_map, corridor_mask, start, goal, true) do
+    puts("FAIL: corridor profiling requires identical ordered paths")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("corridor_" + name,
+    fn () { RTS.Search.direct_reference(corridor_map, corridor_mask, start, goal, true) },
+    fn () { RTS.Search.direct(corridor_map, corridor_mask, start, goal, true) })
+end)
 RTS.NavigationProfile.sample("tick", fn () { RTS.World.tick(content, world) })
 RTS.NavigationProfile.sample("pack", fn () { RTS.World.pack(world) })
 RTS.NavigationProfile.sample("occupancy", fn () { RTS.Map.cache(content, packed) })

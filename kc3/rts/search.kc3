@@ -20,7 +20,13 @@ defmodule RTS.Search do
     Str.slice_cfn(table, (Sw) 0, (Sw) offset) + digits + Str.slice_cfn(table, (Sw) (offset + 3), (Sw) Str.size(table))
   }
   # Check the two shortest axis-aligned corridors before allocating A* state.
+  def direct_native = cfn Tag "kc3rts_grid_corridor" (Tag, Tag, Tag, Tag, Tag, Result)
   def direct = fn (map, mask, start, goal, horizontal_first) {
+    path = RTS.Search.direct_native(RTS.Data.get(map, "width"), mask, start, goal, horizontal_first)
+    if path != void do path else RTS.Search.direct_reference(map, mask, start, goal, horizontal_first) end
+  }
+  # Preserve the original KC3 algorithm for unsupported geometry and parity.
+  def direct_reference = fn (map, mask, start, goal, horizontal_first) {
     width = RTS.Data.get(map, "width")
     dx = goal mod width - start mod width
     dz = goal / width - start / width
