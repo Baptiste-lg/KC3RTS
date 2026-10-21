@@ -1,0 +1,124 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "spatial_reference.kc3")
+
+# Compare the direct native result, not only the fallback wrapper. Wide sums
+# and coordinate differences must not wrap; odd sizes retain integer division.
+valid = true
+cases = 0
+List.do([{1, -2147483648, 2147483647, 2147483647},
+  {1, 2147483647, -2147483648, 2147483647},
+  {1, 0, 0, 0}, {1, 0, 0, 1}, {1, 0, 0, 127}, {1, 0, 0, 128}], neighbor, do
+  index = Facts.database()
+  RTS.Spatial.reserve(index, [-1, 0, 2147483647], neighbor, true)
+  Facts.add_tags(index, 0, :sentinel, "not a body")
+  List.do([1, 99], id, do
+    List.do([0, 1, 127, 128, 2147483647], size, do
+      List.do([-2147483648, -129, -128, -127, 0, 127, 128, 129, 2147483647], position, do
+        List.do([-1, 0, 1, 2147483647], cell, do
+          query = {id, position, 0 - position - 1, size}
+          expected = RTS.SpatialReference.clear?(index, [cell], query)
+          valid = valid && RTS.Spatial.cell_clear_native(index, cell, query) == expected &&
+            RTS.Spatial.clear?(index, [cell], query) == expected
+          cases = cases + 1
+        end)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("2160 native bucket queries preserve strict overlap and wide intermediates", valid && cases == 2160)
+
+List.do([(S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1,
+  (U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1], one, do
+  index = Facts.database()
+  RTS.Spatial.reserve(index, [one], {one, one, one, one}, true)
+  RTS.Check.that("bounded integer tags compare geometrically and ignore the same numeric ID",
+    RTS.Spatial.cell_clear_native(index, one, {1, 1, 1, 1}) == true &&
+    RTS.Spatial.cell_clear_native(index, one, {2, one, one, one}) == false)
+end)
+List.do([18446744073709551616, "unit.id", %{"opaque" => [1, 2]}], id, do
+  index = Facts.database()
+  RTS.Spatial.reserve(index, [0], {id, 0, 0, 128}, true)
+  RTS.Check.that("IDs remain opaque and are never narrowed",
+    RTS.Spatial.cell_clear_native(index, 0, {id, 0, 0, 128}) == true &&
+    RTS.Spatial.cell_clear_native(index, 0, {:different, 0, 0, 128}) == false)
+end)
+
+index = Facts.database()
+List.do([void, [1, 0, 0, 128], {1, 0, 0}, {1, false, 0, 128},
+  {1, 0, "0", 128}, {1, 0, 0, false}, {1, 0, 0, -1},
+  {1, 2147483648, 0, 128}, {1, -2147483649, 0, 128},
+  {1, 0, 0, 2147483648}, {1, 0.5, 0, 128},
+  {1, (U64) 18446744073709551615, 0, 128},
+  {1, 0, (S64) -9223372036854775808, 128},
+  {1, 18446744073709551616, 0, 128}], query, do
+  RTS.Check.that("unsupported query geometry declines without coercion",
+    RTS.Spatial.cell_clear_native(index, 0, query) == void)
+end)
+RTS.Check.that("non-Facts input declines safely",
+  RTS.Spatial.cell_clear_native(void, 0, {1, 0, 0, 128}) == void &&
+  RTS.Spatial.cell_clear_native(%{}, 0, {1, 0, 0, 128}) == void)
+List.do(["bucket", 0.5, 2147483648, -2147483649, (U64) 18446744073709551615,
+  18446744073709551616], cell, do
+  index = Facts.database()
+  RTS.Spatial.reserve(index, [cell], {1, 0, 0, 128}, true)
+  query = {2, 0, 0, 128}
+  RTS.Check.that("unsupported bucket keys fall back to exact KC3 queries",
+    RTS.Spatial.cell_clear_native(index, cell, query) == void &&
+    RTS.Spatial.clear?(index, [cell], query) == RTS.SpatialReference.clear?(index, [cell], query))
+end)
+
+# Invalid neighbor geometry also declines. Each early return must close its
+# cursor: immediately remove and reinsert on the same index after every probe.
+List.do([void, "invalid", {1, 0}, {1, "0", 0, 128},
+  {1, 2147483648, 0, 128}, {1, 0, -2147483649, 128},
+  {1, 0, 0, -1}, {1, 0, 0, 2147483648}], neighbor, do
+  index = Facts.database()
+  RTS.Spatial.reserve(index, [0], neighbor, true)
+  RTS.Check.that("unsupported neighbors decline safely", RTS.Spatial.cell_clear_native(index, 0, {99, 0, 0, 128}) == void)
+  RTS.Spatial.reserve(index, [0], neighbor, false)
+  RTS.Spatial.reserve(index, [0], {1, 0, 0, 128}, true)
+  RTS.Check.that("fallback cleanup permits immediate reservation writes",
+    RTS.Spatial.cell_clear_native(index, 0, {99, 0, 0, 128}) == false)
+end)
+List.do([{1, 2147483648, -2147483649, 128}, {1, 0, 0, -1},
+  {1, 0, 0, 2147483648}, {1, 18446744073709551616, 0, 128}], neighbor, do
+  index = Facts.database()
+  RTS.Spatial.reserve(index, [0], neighbor, true)
+  List.do([{99, 0, 0, 128}, {99, 2147483648, -2147483649, 128},
+    {99, 18446744073709551616, 0, 128}], query, do
+    RTS.Check.that("valid wide arithmetic falls back without changing collisions",
+      RTS.Spatial.cell_clear_native(index, 0, query) == void &&
+      RTS.Spatial.clear?(index, [0], query) == RTS.SpatialReference.clear?(index, [0], query))
+  end)
+end)
+
+wide_layout = {4, 4, 9007199254730000, -9007199254730000, 256}
+wide_index = Facts.database()
+wide_body = {1, 9007199254730128, -9007199254729872, 128}
+RTS.Spatial.reserve(wide_index, [0], wide_body, true)
+List.do([wide_body, {99, 9007199254730128, -9007199254729872, 128},
+  {99, 9007199254730256, -9007199254729872, 128}], query, do
+  RTS.Check.that("wide availability preserves both terrain and exact returned cells",
+    RTS.Spatial.available(wide_layout, "................", wide_index, query) ==
+      RTS.SpatialReference.available(wide_layout, "................", wide_index, query) &&
+    RTS.Spatial.available(wide_layout, "#...............", wide_index, query) ==
+      RTS.SpatialReference.available(wide_layout, "#...............", wide_index, query))
+end)
+
+index = Facts.database()
+List.do([{1, 0, 0, 128}, {2, 256, 0, 128}, {3, 512, 0, 128}], neighbor, do
+  RTS.Spatial.reserve(index, [0, 1], neighbor, true)
+end)
+Facts.add_tags(index, 0, :other, "keep")
+before = List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) { {fact.subject, fact.predicate, fact.object} }))
+List.do([{99, 0, 0, 128}, {99, 512, 0, 128}, {99, 640, 0, 128}, {1, 0, 0, 128}], query, do
+  RTS.Check.that("first/last blockers, touching and self queries preserve complete Facts sets",
+    RTS.Spatial.cell_clear_native(index, 0, query) == RTS.SpatialReference.clear?(index, [0], query) &&
+    before == List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) { {fact.subject, fact.predicate, fact.object} })))
+end)
+RTS.Spatial.reserve(index, [0, 1], {1, 0, 0, 128}, false)
+RTS.Check.that("early-hit cursor cleanup permits immediate removal", RTS.Spatial.cell_clear_native(index, 0, {99, 0, 0, 128}) == true)
+RTS.Spatial.reserve(index, [0, 1], {4, 0, 0, 128}, true)
+RTS.Check.that("miss cursor cleanup permits immediate insertion", RTS.Spatial.cell_clear_native(index, 0, {99, 0, 0, 128}) == false)

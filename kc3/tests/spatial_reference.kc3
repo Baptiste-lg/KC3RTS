@@ -5,13 +5,29 @@ defmodule RTS.SpatialReference do
     RTS.Spatial.reserve(index, new_cells, new_body, true)
     void
   }
-  # Two-pass production availability check before terrain/collision fusion.
+  # Frozen fused query before bounded native bucket reads. Do not call the
+  # production collision helper here: parity must remain independent.
   def available = fn (layout, mask, index, {id, x, z, size}) {
-    body = {id, x, z, size}
     cells = RTS.Map.cover(layout, x, z, size)
     valid = cells != []
-    List.do(cells, cell, do if Str.byte(mask, cell) == 35 do valid = false end end)
-    if valid && RTS.Spatial.clear?(index, cells, body) do cells else [] end
+    List.do(cells, cell, do
+      if valid do
+        if Str.byte(mask, cell) == 35 do valid = false else
+          Facts.with_macro(index, [[cell, :body, neighbor = ?]], do
+            if valid do
+              {other_id, other_x, other_z, other_size} = ^ neighbor
+              if other_id != id do
+                distance = (size + other_size) / 2
+                dx = x - other_x
+                dz = z - other_z
+                if dx < distance && dx > (0 - distance) && dz < distance && dz > (0 - distance) do valid = false end
+              end
+            end
+          end)
+        end
+      end
+    end)
+    if valid do cells else [] end
   }
   def clear? = fn (index, cells, {id, x, z, size}) {
     valid = true

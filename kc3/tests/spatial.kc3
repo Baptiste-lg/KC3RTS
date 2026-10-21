@@ -162,7 +162,7 @@ List.do([1, 2, 3, 99], id, do
     end)
   end)
 end)
-RTS.Check.that("6480 fused availability queries match terrain-first collision checks", valid)
+RTS.Check.that("6480 availability queries match the previous KC3 cursor checks", valid)
 # Both terrain and collision rejection must close every read cursor before
 # later navigation reservations can change the same Facts database.
 query_index = Facts.database()

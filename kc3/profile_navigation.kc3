@@ -231,6 +231,36 @@ RTS.NavigationProfile.paired("availability_100_unit_rows",
   })
 availability_index = Facts.database()
 RTS.Spatial.reserve(availability_index, [0, 1, 4, 5], {1, 256, 256, 128}, true)
+dense_index = Facts.database()
+neighbor_id = 1
+while neighbor_id <= 64 do
+  RTS.Spatial.reserve(dense_index, [0, 1, 4, 5], {neighbor_id, 256, 256, 128}, true)
+  neighbor_id = neighbor_id + 1
+end
+wide_index = Facts.database()
+wide_origin = 9007199254730000
+RTS.Spatial.reserve(wide_index, [0], {1, wide_origin + 128, wide_origin + 128, 128}, true)
+List.do([{"dense_blocked", {4, 4, 0, 0, 256}, dense_index, {99, 383, 256, 128}},
+  {"dense_touching", {4, 4, 0, 0, 256}, dense_index, {99, 384, 256, 128}},
+  {"wide_fallback", {4, 4, wide_origin, wide_origin, 256}, wide_index,
+    {99, wide_origin + 128, wide_origin + 128, 128}}], {name, geometry, index, query}, do
+  terrain = "................"
+  if RTS.SpatialReference.available(geometry, terrain, index, query) !=
+     RTS.Spatial.available(geometry, terrain, index, query) do
+    puts("FAIL: dense/fallback profiling requires identical cells")
+    exit(1)
+  end
+  RTS.NavigationProfile.paired("availability_batch10_" + name,
+    fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.SpatialReference.available(geometry, terrain, index, query)
+      end)
+    }, fn () {
+      List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+        RTS.Spatial.available(geometry, terrain, index, query)
+      end)
+    })
+end)
 List.do([{"empty", {99, 640, 640, 128}, "................"},
   {"self", {1, 256, 256, 128}, "................"},
   {"touching", {99, 384, 256, 128}, "................"},

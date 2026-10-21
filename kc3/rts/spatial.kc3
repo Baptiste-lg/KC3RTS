@@ -80,7 +80,19 @@ defmodule RTS.Spatial do
     List.do(new_cells, cell, do Facts.add_tags(index, cell, :body, new_body) end)
     void
   }
-  def clear? = fn (index, cells, {id, x, z, size}) {
+  def cell_clear_native = cfn Tag "kc3rts_cell_clear" (Tag, Tag, Tag, Result)
+  def clear? = fn (index, cells, body) {
+    valid = true
+    List.do(cells, cell, do
+      if valid do
+        valid = RTS.Spatial.cell_clear_native(index, cell, body)
+        if valid == void do valid = RTS.Spatial.clear_reference(index, [cell], body) end
+      end
+    end)
+    valid
+  }
+  # Exact KC3 fallback for geometry outside the bounded native query.
+  def clear_reference = fn (index, cells, {id, x, z, size}) {
     valid = true
     List.do(cells, cell, do
       if valid do
@@ -103,26 +115,18 @@ defmodule RTS.Spatial do
     valid
   }
   # Return the already-checked cells for the subsequent reservation update.
-  def available = fn (layout, mask, index, {id, x, z, size}) {
+  def available = fn (layout, mask, index, body) {
+    {id, x, z, size} = ^ body
     cells = RTS.Map.cover(layout, x, z, size)
     valid = cells != []
     # Fuse terrain and collision checks in the hot path. No second traversal
-    # or reconstructed body is needed. Keep clear? for collision-only callers.
+    # is needed. Keep clear? for collision-only callers.
     # Queries are read-only; reservations change only after this returns.
     List.do(cells, cell, do
       if valid do
         if Str.byte(mask, cell) == 35 do valid = false else
-          Facts.with_macro(index, [[cell, :body, neighbor = ?]], do
-            if valid do
-              {other_id, other_x, other_z, other_size} = ^ neighbor
-              if other_id != id do
-                distance = (size + other_size) / 2
-                dx = x - other_x
-                dz = z - other_z
-                if dx < distance && dx > (0 - distance) && dz < distance && dz > (0 - distance) do valid = false end
-              end
-            end
-          end)
+          valid = RTS.Spatial.cell_clear_native(index, cell, body)
+          if valid == void do valid = RTS.Spatial.clear_reference(index, [cell], body) end
         end
       end
     end)

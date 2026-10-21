@@ -1,5 +1,5 @@
-/* Bounded integer grid arithmetic only. KC3 owns terrain, collision and
- * movement policy. Unsupported inputs return Void for the KC3 fallback. */
+/* Bounded integer geometry only. KC3 owns terrain, reservations and movement
+ * policy. Unsupported inputs return Void for the KC3 fallback. */
 #include <stdint.h>
 #include "libkc3/kc3.h"
 
@@ -25,6 +25,68 @@ static bool grid_scalar(const s_tag *tag, s64 *out)
   default: return false;
   }
   return *out >= INT32_MIN && *out <= INT32_MAX;
+}
+
+/* Read one worker-local Facts bucket of {id, x, z, size} bounding boxes.
+ * The range cursor borrows objects without materializing a variable/callback
+ * for every neighbor. No mutation, retained pointer or gameplay decision:
+ * strict overlap and integer half-sizes match the KC3 reference exactly.
+ * KC3 owns the index and must not mutate it concurrently with this query. */
+s_tag *kc3rts_cell_clear(const s_tag *index, s_tag *cell,
+                        const s_tag *body, s_tag *result)
+{
+  s64 cell_id, x, z, size;
+  if (index->type != TAG_PFACTS || !index->data.td_pfacts ||
+      !grid_scalar(cell, &cell_id) ||
+      body->type != TAG_PTUPLE || body->data.td_ptuple->count != 4)
+    return tag_init(result);
+  const s_tag *query = body->data.td_ptuple->tag;
+  if (!grid_scalar(query + 1, &x) || !grid_scalar(query + 2, &z) ||
+      !grid_scalar(query + 3, &size) || size < 0)
+    return tag_init(result);
+
+  s_tag predicate;
+  tag_init_psym(&predicate, sym_1("body"));
+  s_fact start = {.subject = cell, .predicate = &predicate,
+                  .object = TAG_FIRST};
+  s_fact end = {.subject = cell, .predicate = &predicate,
+                .object = TAG_LAST};
+  s_facts *facts = index->data.td_pfacts;
+  s_facts_cursor cursor;
+  s_fact *fact;
+  if (!facts_cursor_init(facts, &cursor, facts->index_spo, &start, &end))
+    return NULL;
+  tag_init_bool(result, true);
+  for (;;) {
+    if (!facts_cursor_next(&cursor, &fact)) {
+      facts_cursor_clean(&cursor);
+      return NULL;
+    }
+    if (!fact) break;
+    const s_tag *neighbor = fact->object;
+    if (neighbor->type != TAG_PTUPLE || neighbor->data.td_ptuple->count != 4) {
+      tag_init(result);
+      break;
+    }
+    const s_tag *other = neighbor->data.td_ptuple->tag;
+    if (!compare_tag(query, other)) continue;
+    s64 other_x, other_z, other_size;
+    if (!grid_scalar(other + 1, &other_x) ||
+        !grid_scalar(other + 2, &other_z) ||
+        !grid_scalar(other + 3, &other_size) || other_size < 0) {
+      tag_init(result);
+      break;
+    }
+    s64 distance = (size + other_size) / 2;
+    s64 dx = x - other_x, dz = z - other_z;
+    if (dx < distance && dx > -distance &&
+        dz < distance && dz > -distance) {
+      tag_init_bool(result, false);
+      break;
+    }
+  }
+  facts_cursor_clean(&cursor);
+  return result;
 }
 
 /* Pure axis-aligned integer interpolation to a cell center. The caller picks
