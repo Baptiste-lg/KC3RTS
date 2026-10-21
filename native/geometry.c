@@ -27,6 +27,58 @@ static bool grid_scalar(const s_tag *tag, s64 *out)
   return *out >= INT32_MIN && *out <= INT32_MAX;
 }
 
+/* Pure axis-aligned integer interpolation to a cell center. The caller picks
+ * the axis priority; KC3 still decides routes, speed, collision and acceptance.
+ * Bounds keep target products, differences and clamping safe in signed 64 bits.
+ * IDs/footprints are opaque owned copies, never narrowed or used as indices. */
+s_tag *kc3rts_grid_step(const s_tag *layout, const s_tag *body,
+                       const s_tag *speed_tag, const s_tag *cell_tag,
+                       const s_tag *horizontal_tag, s_tag *result)
+{
+  s64 w, h, ox, oz, size, x, z, speed, cell;
+  if (layout->type != TAG_PTUPLE || layout->data.td_ptuple->count != 5 ||
+      body->type != TAG_PTUPLE || body->data.td_ptuple->count != 4 ||
+      horizontal_tag->type != TAG_BOOL)
+    return tag_init(result);
+  const s_tag *grid = layout->data.td_ptuple->tag;
+  s_tag *unit = body->data.td_ptuple->tag;
+  if (!grid_scalar(grid, &w) || !grid_scalar(grid + 1, &h) ||
+      !grid_scalar(grid + 2, &ox) || !grid_scalar(grid + 3, &oz) ||
+      !grid_scalar(grid + 4, &size) || !grid_scalar(unit + 1, &x) ||
+      !grid_scalar(unit + 2, &z) || !grid_scalar(speed_tag, &speed) ||
+      !grid_scalar(cell_tag, &cell) || w < 1 || w > 65535 || h < 1 ||
+      h > 65535 || size < 1 || speed < 0 || cell < 0 || cell >= w * h)
+    return tag_init(result);
+
+  s64 tx = ox + (cell % w) * size + size / 2;
+  s64 tz = oz + (cell / w) * size + size / 2;
+  if (x != tx && (horizontal_tag->data.td_bool_ || z == tz)) {
+    s64 delta = tx - x;
+    x = delta > speed ? x + speed : delta < -speed ? x - speed : tx;
+  } else {
+    s64 delta = tz - z;
+    z = delta > speed ? z + speed : delta < -speed ? z - speed : tz;
+  }
+
+  s_tag output = {0}, coordinate;
+  if (!tag_init_ptuple(&output, 2)) return NULL;
+  s_tag *pair = output.data.td_ptuple->tag;
+  if (!tag_init_ptuple(pair, 4)) goto failed;
+  s_tag *next = pair->data.td_ptuple->tag;
+  if (!tag_init_copy(next, unit) || !tag_init_copy(next + 3, unit + 3))
+    goto failed;
+  tag_init_s64(&coordinate, x);
+  if (!tag_integer_reduce(&coordinate, next + 1)) goto failed;
+  tag_init_s64(&coordinate, z);
+  if (!tag_integer_reduce(&coordinate, next + 2)) goto failed;
+  tag_init_bool(pair + 1, x == tx && z == tz);
+  *result = output;
+  return result;
+ failed:
+  tag_clean(&output);
+  return NULL;
+}
+
 s_tag *kc3rts_grid_cover(const s_tag *layout, const s_tag *x_tag,
                         const s_tag *z_tag, const s_tag *footprint_tag,
                         s_tag *result)

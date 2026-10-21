@@ -149,7 +149,14 @@ defmodule RTS.Navigation do
       RTS.Navigation.finish(entity, order, next, reached)
     end
   }
-  def propose = fn ({width, height, ox, oz, cell_size}, {id, x, z, size}, speed, cell, horizontal_first) {
+  # The native helper performs bounded integer geometry only. Retain the exact
+  # KC3 implementation for wider integers/unsupported inputs and parity tests.
+  def propose_native = cfn Tag "kc3rts_grid_step" (Tag, Tag, Tag, Tag, Tag, Result)
+  def propose = fn (layout, body, speed, cell, horizontal_first) {
+    next = RTS.Navigation.propose_native(layout, body, speed, cell, horizontal_first)
+    if next == void do RTS.Navigation.propose_reference(layout, body, speed, cell, horizontal_first) else next end
+  }
+  def propose_reference = fn ({width, height, ox, oz, cell_size}, {id, x, z, size}, speed, cell, horizontal_first) {
     tx = ox + (cell mod width) * cell_size + cell_size / 2
     # A partial horizontal-first step needs neither the z target nor delta.
     # Keep that arithmetic behind short-circuit conditions. Clamp the chosen

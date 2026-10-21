@@ -206,7 +206,7 @@ RTS.NavigationProfile.paired("proposal_100_unit_rows",
   fn () {
     List.do(rows, {entity, unit_speed, unit_body, occupied}, do
       target = RTS.Data.first(RTS.Data.get(entity, "order"), "path")
-      if target != void do RTS.NavigationReference.propose(layout, unit_body, unit_speed, target, true) end
+      if target != void do RTS.Navigation.propose_reference(layout, unit_body, unit_speed, target, true) end
     end)
   }, fn () {
     List.do(rows, {entity, unit_speed, unit_body, occupied}, do
@@ -267,7 +267,7 @@ List.do([{"horizontal_partial", {37, 128, 128, 128}, 64, true},
   RTS.NavigationProfile.paired("proposal_batch10_" + name,
     fn () {
       List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
-        RTS.NavigationReference.propose({4, 4, 0, 0, 256}, sample_body, sample_speed, 5, horizontal_first)
+        RTS.Navigation.propose_reference({4, 4, 0, 0, 256}, sample_body, sample_speed, 5, horizontal_first)
       end)
     }, fn () {
       List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
@@ -276,6 +276,15 @@ List.do([{"horizontal_partial", {37, 128, 128, 128}, 64, true},
     })
 end)
 # Only benchmark rejected first proposals, as in the actual tick branch.
+wide_layout = {4, 4, -9007199254730000, 9007199254730000, 256}
+wide_body = {37, -9007199254729872, 9007199254730128, 128}
+RTS.NavigationProfile.paired("proposal_batch10_wide_fallback",
+  fn () { List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+    RTS.Navigation.propose_reference(wide_layout, wide_body, 64, 5, true)
+  end) },
+  fn () { List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
+    RTS.Navigation.propose(wide_layout, wide_body, 64, 5, true)
+  end) })
 retry_layout = {4, 4, 0, 0, 256}
 retry_mask = RTS.Map.repeat(".", 16)
 retry_body = {1, 128, 128, 128}
