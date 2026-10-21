@@ -24,27 +24,32 @@ Facts.add_tags(index, 0, :sentinel, "keep")
 before = RTS.ProbeReference.snapshot(index)
 valid = true
 cases = 0
-List.do([2, 64, 127, 128, 255, 384], size, do
-  List.do([{-1, 128}, {64, 128}, {128, 128}, {192, 256},
-    {256, 256}, {384, 384}, {640, 640}, {1024, 128}], {x, z}, do
-    List.do([1, 99], id, do
-      List.do([0, 5, 15], target, do
-        List.do([0, 64, 256], speed, do
-          List.do([true, false], horizontal_first, do
-            List.do([mask, "#...............", ".....#..........", "################"], terrain, do
-              body = {id, x, z, size}
-              expected = RTS.ProbeReference.run(layout, terrain, index, body, speed, target, horizontal_first)
-              actual = RTS.Navigation.probe_native(layout, terrain, index, body, speed, target, horizontal_first)
-              valid = valid && actual == expected &&
-                RTS.Navigation.probe(layout, terrain, index, body, speed, target, horizontal_first) == expected
-              cases = cases + 1
-            end)
-          end)
-        end)
-      end)
-    end)
-  end)
-end)
+sizes = [2, 64, 127, 128, 255, 384]
+positions = [{-1, 128}, {64, 128}, {128, 128}, {192, 256},
+  {256, 256}, {384, 384}, {640, 640}, {1024, 128}]
+terrains = [mask, "#...............", ".....#..........", "################"]
+# Same Cartesian product and iteration order as seven nested List.do calls.
+while cases < 6912 do
+  choice = ^ cases
+  terrain = access(terrains, [choice mod 4])
+  choice = choice / 4
+  horizontal_first = choice mod 2 == 0
+  choice = choice / 2
+  speed = access([0, 64, 256], [choice mod 3])
+  choice = choice / 3
+  target = access([0, 5, 15], [choice mod 3])
+  choice = choice / 3
+  id = if choice mod 2 == 0 do 1 else 99 end
+  choice = choice / 2
+  {x, z} = access(positions, [choice mod 8])
+  size = access(sizes, [choice / 8])
+  body = {id, x, z, size}
+  expected = RTS.ProbeReference.run(layout, terrain, index, body, speed, target, horizontal_first)
+  actual = RTS.Navigation.probe_native(layout, terrain, index, body, speed, target, horizontal_first)
+  valid = valid && actual == expected &&
+    RTS.Navigation.probe(layout, terrain, index, body, speed, target, horizontal_first) == expected
+  cases = cases + 1
+end
 RTS.Check.that("6912 fused probes preserve proposals, arrival and exact ordered cells", valid && cases == 6912)
 RTS.Check.that("all fused probes leave the complete index untouched", RTS.ProbeReference.snapshot(index) == before)
 
