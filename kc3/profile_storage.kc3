@@ -1,0 +1,45 @@
+# Run alone. Compare complete KC3 calls, including owned result construction.
+require Time
+dlopen("kc3rts.so")
+load!(__DIR__ + "rts/data.kc3")
+load!(__DIR__ + "rts/wire.kc3")
+defmodule RTS.StorageProfile do
+  def paired = fn (name, reference, candidate) {
+    if reference() != candidate() do puts("FAIL: storage profiling requires identical values"); exit(1) end
+    old = []
+    fresh = []
+    List.do([1, 2, 3, 4, 5, 6, 7, 8, 9], iteration, do
+      actions = if iteration mod 2 == 1 do [false, true] else [true, false] end
+      List.do(actions, optimized, do
+        start = Time.uptime()
+        if optimized do candidate() else reference() end
+        finish = Time.uptime()
+        elapsed = (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
+        if optimized do fresh = [elapsed | fresh] else old = [elapsed | old] end
+      end)
+    end)
+    puts(RTS.Wire.encode(%{"phase" => name, "samples" => 9,
+      "reference_median_us" => access(List.sort(old), [4]),
+      "candidate_median_us" => access(List.sort(fresh), [4]),
+      "reference_us" => List.reverse(old), "candidate_us" => List.reverse(fresh)}))
+  }
+end
+List.do([1, 50, 100, 150, 300], count, do
+  entities = []
+  rows = []
+  i = ^ count
+  while i > 0 do
+    entity = RTS.Data.share(%{"id" => i, "order" => RTS.Data.share(%{"path" => [1, 2, 3, 4, 5]})})
+    entities = [entity | entities]
+    rows = [{entity, 64, {i, i * 256, 0, 128}, [i, i + 1]} | rows]
+    i = i - 1
+  end
+  List.do([1, count, count + 1], target, do
+    RTS.StorageProfile.paired("find_" + (Str) count + "_target_" + (Str) target,
+      fn () { RTS.Data.find_reference(entities, "id", target) },
+      fn () { RTS.Data.find(entities, "id", target) })
+  end)
+  RTS.StorageProfile.paired("column_" + (Str) count,
+    fn () { List.map_filter(rows, {e, speed, body, cells}, do e end) },
+    fn () { RTS.Data.column(rows, 0) })
+end)

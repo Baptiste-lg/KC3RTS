@@ -448,7 +448,10 @@ defmodule RTS.Navigation do
       end
       {updated, speed, body, occupied_cells}
     end)
-    entities = List.map_filter(rows, {e, speed, body, cells}, do e end)
+    entities = RTS.Data.column(rows, 0)
+    if entities == void do
+      entities = List.map_filter(rows, {e, speed, body, cells}, do e end)
+    end
     RTS.Spatial.remember(content, RTS.Data.share(%{"entities" => entities,
       "layout" => layout, "index" => buckets, "rows" => rows}))
     RTS.Data.put(state, "entities", entities)

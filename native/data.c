@@ -27,6 +27,61 @@ static const s_tag *field(const s_tag *value, const s_tag *key)
   return NULL;
 }
 
+/* Generic ordered lookup over proper lists. [] means absent; [item] owns the
+ * first matching non-Void item (including false/0/non-maps for a missing key).
+ * Void declines unsupported list shapes so KC3 can retain its legacy path.
+ * Validate the full shape before short-circuiting, never return borrowed tags. */
+s_tag *kc3rts_find_field(s_tag *values, const s_tag *key,
+                        const s_tag *expected, s_tag *result)
+{
+  const s_tag missing = {.type = TAG_VOID};
+  if (values->type != TAG_PLIST) return tag_init(result);
+  for (s_list *item = values->data.td_plist; item; item = list_next(item))
+    if (item->next.type != TAG_PLIST) return tag_init(result);
+  for (s_list *item = values->data.td_plist; item; item = list_next(item)) {
+    if (item->tag.type == TAG_VOID) continue;
+    const s_tag *value = field(&item->tag, key);
+    if (!compare_tag(value ? value : &missing, expected)) {
+      s_list *found = list_new_tag_copy(&item->tag, NULL);
+      return found ? tag_init_plist(result, found) : NULL;
+    }
+  }
+  return tag_init_plist(result, NULL);
+}
+
+/* Project a tuple column in order, omitting Void just like List.map_filter.
+ * Only selected values are copied; unrelated columns are never materialized.
+ * Invalid rows/indices decline as a whole, cleaning any partial owned result. */
+s_tag *kc3rts_tuple_column(s_tag *rows, s_tag *index, s_tag *result)
+{
+  s_tag zero, limit;
+  tag_init_u8(&zero, 0);
+  tag_init_u32(&limit, 65535);
+  const s_sym *type = &g_sym_Uw;
+  uw column;
+  if (rows->type != TAG_PLIST || !tag_is_integer(index) ||
+      compare_tag(index, &zero) < 0 || compare_tag(index, &limit) > 0 ||
+      !uw_init_cast(&column, &type, index)) return tag_init(result);
+  s_list *values = NULL, **tail = &values;
+  for (s_list *row = rows->data.td_plist; row; row = list_next(row)) {
+    if (row->next.type != TAG_PLIST) goto invalid;
+    if (row->tag.type == TAG_VOID) continue;
+    if (row->tag.type != TAG_PTUPLE ||
+        column >= row->tag.data.td_ptuple->count) goto invalid;
+    s_tag *value = row->tag.data.td_ptuple->tag + column;
+    if (value->type == TAG_VOID) continue;
+    if (!(*tail = list_new_tag_copy(value, NULL))) {
+      list_delete_all(values);
+      return NULL;
+    }
+    tail = &(*tail)->next.data.td_plist;
+  }
+  return tag_init_plist(result, values);
+ invalid:
+  list_delete_all(values);
+  return tag_init(result);
+}
+
 /* Same semantics as get(left, key) == get(right, key), without materializing
  * either field. Borrowed values stay inside this call; sources are immutable. */
 s_tag *kc3rts_field_equal(s_tag *left, s_tag *right, const s_tag *key,

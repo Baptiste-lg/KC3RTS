@@ -28,6 +28,9 @@ defmodule RTS.Data do
   # Pair proper lists without repeatedly copying their remaining tails.
   # Different lengths or non-lists => void; two empty lists => [].
   def zip = cfn Tag "kc3rts_zip" (Tag, Tag, Result)
+  # Ordered tuple-column projection; omit Void rows/values like map_filter.
+  # Invalid shapes/indices => void, successful empty projection => [].
+  def column = cfn Tag "kc3rts_tuple_column" (Tag, Tag, Result)
   # Ordered bulk remove/add for integer-subject Facts. Unsupported inputs
   # return void BEFORE mutation; a successful batch returns true.
   def facts_exchange = cfn Tag "kc3rts_facts_exchange" (Tag, Tag, Tag, Tag, Tag, Tag, Result)
@@ -65,8 +68,15 @@ defmodule RTS.Data do
     end
     result
   }
-  # Native find_if returns the callback's value (false on a miss).
+  # A one-item list distinguishes a false-valued match from absence ([]).
+  def find_native = cfn Tag "kc3rts_find_field" (Tag, Tag, Tag, Result)
   def find = fn (values, key, expected) {
+    found = RTS.Data.find_native(values, key, expected)
+    if found == void do RTS.Data.find_reference(values, key, expected) else
+      if found == [] do void else List.first(found) end
+    end
+  }
+  def find_reference = fn (values, key, expected) {
     found = void
     List.do(values, item, do
       if found == void && RTS.Data.get(item, key) == expected do found = ^ item end

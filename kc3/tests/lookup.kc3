@@ -1,0 +1,72 @@
+dlopen("kc3rts.so")
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../rts/data.kc3")
+load!(__DIR__ + "../rts/wire.kc3")
+rows = [%{"id" => 1, "value" => [1, 2]}, RTS.Data.share(%{"id" => 2, "value" => [3, 4]}),
+  %{"id" => 1, "value" => "duplicate"}, %{"id" => 9007199254740991},
+  %{"id" => -1}, %{"id" => false}, %{"other" => 9}]
+List.do([[], rows, [void, void], [void, false, %{"id" => 1}],
+  [0, %{"id" => 1}], [[], %{"id" => 1}], ["", %{"id" => 1}],
+  [void, %{"id" => void}, %{"id" => 1}]], values, do
+  List.do([1, 2, -1, 9007199254740991, 99, false, void, [1, 2], [3, 4]], expected, do
+    List.do(["id", "value", "missing"], key, do
+      reference = RTS.Data.find_reference(values, key, expected)
+      actual = RTS.Data.find(values, key, expected)
+      RTS.Check.that("lookup preserves first match, misses, duplicates and heterogeneous values",
+        actual == reference && RTS.Wire.encode(actual) == RTS.Wire.encode(reference))
+    end)
+  end)
+end)
+List.do([(S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1,
+  (U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1, 18446744073709551616], key, do
+  value = RTS.Data.put(%{}, key, %{"nested" => [1, 2]})
+  values = [RTS.Data.share(value)]
+  RTS.Check.that("lookup retains arbitrary numeric key widths and nested values",
+    RTS.Data.find(values, key, %{"nested" => [1, 2]}) == List.first(values))
+end)
+List.do([void, 1, false, %{}, [1 | 2], [%{"id" => 1} | 2],
+  [%{"id" => 1}, %{"id" => 2} | 3]], invalid, do
+  RTS.Check.that("lookup preflights improper list tails even after an early match",
+    RTS.Data.find_native(invalid, "id", 1) == void)
+end)
+RTS.Check.that("native lookup distinguishes a false-valued match from absence",
+  RTS.Data.find_native([false], "missing", void) == [false] &&
+  RTS.Data.find_native([false], "missing", 1) == [] &&
+  RTS.Data.find_native([void, %{"x" => 1}], "missing", void) == [%{"x" => 1}])
+before = RTS.Wire.encode(rows)
+found = RTS.Data.find(rows, "id", 1)
+shared = RTS.Data.find(rows, "id", 2)
+RTS.Check.that("lookups leave ordered inputs untouched", RTS.Wire.encode(rows) == before)
+rows = void
+RTS.Check.that("lookup results own plain and shared payloads after inputs are released",
+  RTS.Data.get(found, "value") == [1, 2] && RTS.Data.get(shared, "value") == [3, 4])
+
+rows = [void, {%{"id" => 1}, "a", [1, 2]},
+  {RTS.Data.share(%{"id" => 2}), "b", []}, {void, "c", false}, {false, "d", void}]
+RTS.Check.that("column projection preserves order, duplicates and false while filtering void",
+  RTS.Data.column(rows, 0) == [%{"id" => 1}, RTS.Data.share(%{"id" => 2}), false] &&
+  RTS.Data.column(rows, 1) == ["a", "b", "c", "d"] &&
+  RTS.Data.column(rows, 2) == [[1, 2], [], false] &&
+  RTS.Data.column([], 0) == [] && RTS.Data.column([void, {void, 1}], 0) == [])
+List.do([(S8) 0, (S16) 0, (S32) 0, (S64) 0, (Sw) 0,
+  (U8) 0, (U16) 0, (U32) 0, (U64) 0, (Uw) 0], column, do
+  RTS.Check.that("column projection accepts every bounded integer tag",
+    RTS.Data.column([{7, 8}, {7, 9}], column) == [7, 7])
+end)
+List.do([-1, 65536, 18446744073709551616, false, 0.0, void, "0"], column, do
+  RTS.Check.that("invalid column indices decline without coercion",
+    RTS.Data.column(rows, column) == void)
+end)
+List.do([void, false, %{}, [1], [{1, 2}, 3], [{1, 2}, []],
+  [{1, 2} | 3]], invalid, do
+  RTS.Check.that("invalid rows decline after cleaning any partial projection",
+    RTS.Data.column(invalid, 0) == void)
+end)
+RTS.Check.that("out-of-range columns never access tuple storage", RTS.Data.column([{1, 2}], 2) == void)
+projected = RTS.Data.column(rows, 0)
+RTS.Check.that("projection does not mutate any source column",
+  RTS.Data.column(rows, 1) == ["a", "b", "c", "d"])
+rows = void
+RTS.Check.that("projected values own their plain and shared payloads",
+  RTS.Data.get(List.first(projected), "id") == 1 &&
+  RTS.Data.get(access(projected, [1]), "id") == 2)
