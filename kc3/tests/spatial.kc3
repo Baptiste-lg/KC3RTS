@@ -140,6 +140,17 @@ List.do([[], [0], [0, 1], [0, 1, 4, 5], [5, 5]], old_cells, do
 end)
 RTS.Check.that("150 reservation transitions match exact remove/add Facts sets",
   reservation_valid && reservation_cases == 150)
+reference_index = Facts.database()
+candidate_index = Facts.database()
+List.do([reference_index, candidate_index], reservations, do
+  RTS.Spatial.reserve(reservations, ["old", "shared"], {1, 0, 0, 128}, true)
+  RTS.Spatial.reserve(reservations, ["shared"], {2, 128, 0, 128}, true)
+end)
+RTS.SpatialReference.relocate(reference_index, ["old", "shared"], {1, 0, 0, 128}, ["shared", "new"], {1, 64, 0, 128})
+RTS.Spatial.relocate(candidate_index, ["old", "shared"], {1, 0, 0, 128}, ["shared", "new"], {1, 64, 0, 128})
+RTS.Check.that("unsupported native bucket keys preserve the exact KC3 relocation fallback",
+  List.sort(Facts.collect_with_tags(reference_index, ?, ?, ?, fn (fact) { {fact.subject, fact.predicate, fact.object} })) ==
+    List.sort(Facts.collect_with_tags(candidate_index, ?, ?, ?, fn (fact) { {fact.subject, fact.predicate, fact.object} })))
 # Availability must preserve the exact row-major cell list, not only a boolean.
 # Real reservations span cells, including repeated encounters with one body.
 availability_index = Facts.database()

@@ -2,6 +2,56 @@ dlopen("kc3rts.so")
 load!(__DIR__ + "check.kc3")
 load!(__DIR__ + "../rts/data.kc3")
 load!(__DIR__ + "../rts/wire.kc3")
+require Facts
+
+defmodule RTS.FactsPrimitiveCheck do
+  def snapshot = fn (index) {
+    List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) {
+      {fact.subject, fact.predicate, fact.object}
+    }))
+  }
+end
+old_object = %{"id" => 1, "nested" => [1, 2]}
+new_object = %{"id" => 1, "nested" => [3, 4]}
+List.do([(S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1,
+  (U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1,
+  -1, 18446744073709551616], subject, do
+  expected = Facts.database()
+  actual = Facts.database()
+  List.do([expected, actual], index, do
+    Facts.add_tags(index, subject, :test, old_object)
+    Facts.add_tags(index, subject, :test, %{"neighbor" => true})
+    Facts.add_tags(index, subject, :other, "keep")
+  end)
+  # Preserve duplicates, absent removals, shared subjects and insertion order.
+  List.do([subject, subject, 42], cell, do Facts.remove_tags(expected, cell, :test, old_object) end)
+  List.do([subject, 2, 2], cell, do Facts.add_tags(expected, cell, :test, new_object) end)
+  RTS.Check.that("bulk Facts updates preserve all integer tags and exact objects",
+    RTS.Data.facts_exchange(actual, :test, [subject, subject, 42], old_object, [subject, 2, 2], new_object) == true &&
+    RTS.FactsPrimitiveCheck.snapshot(actual) == RTS.FactsPrimitiveCheck.snapshot(expected))
+end)
+index = Facts.database()
+Facts.add_tags(index, 0, :test, old_object)
+Facts.add_tags(index, 1, :test, old_object)
+before = RTS.FactsPrimitiveCheck.snapshot(index)
+List.do([{void, [2]}, {[0], void}, {[0 | 1], [2]}, {[0], [2 | 3]},
+  {[0, "invalid"], [2]}, {[0], [2, "invalid"]},
+  {[0, true], [2]}, {[0], [2, 0.5]}, {[[]], [2]}], {old_subjects, new_subjects}, do
+  RTS.Check.that("both lists are validated before any mutation, including late failures",
+    RTS.Data.facts_exchange(index, :test, old_subjects, old_object, new_subjects, new_object) == void &&
+    RTS.FactsPrimitiveCheck.snapshot(index) == before)
+end)
+RTS.Check.that("invalid index and predicate decline without writes",
+  RTS.Data.facts_exchange(void, :test, [0], old_object, [2], new_object) == void &&
+  RTS.Data.facts_exchange(index, "test", [0], old_object, [2], new_object) == void &&
+  RTS.FactsPrimitiveCheck.snapshot(index) == before)
+RTS.Check.that("empty batches succeed without changes",
+  RTS.Data.facts_exchange(index, :test, [], old_object, [], new_object) == true &&
+  RTS.FactsPrimitiveCheck.snapshot(index) == before)
+RTS.Check.that("add-only and remove-only batches retain ordinary Facts behavior",
+  RTS.Data.facts_exchange(index, :test, [], old_object, [2, 3], new_object) == true &&
+  RTS.Data.facts_exchange(index, :test, [2, 3], new_object, [], old_object) == true &&
+  RTS.FactsPrimitiveCheck.snapshot(index) == before)
 
 RTS.Check.that("zip pairs heterogeneous values in order, including null and false",
   RTS.Data.zip([0, false, void], ["a", %{"x" => 1}, [2]]) ==

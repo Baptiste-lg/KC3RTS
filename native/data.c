@@ -141,6 +141,39 @@ static s_tag *wrap_map(const s_tag *source, s_map *map, s_tag *result)
   return NULL;
 }
 
+static bool integer_subjects(s_tag *subjects)
+{
+  if (subjects->type != TAG_PLIST) return false;
+  for (s_list *item = subjects->data.td_plist; item; item = list_next(item))
+    if (item->next.type != TAG_PLIST || !tag_is_integer(&item->tag))
+      return false;
+  return true;
+}
+
+/* Batch the same ordered Facts operations as KC3 List.do: remove the old
+ * object at every old subject, then add the new object at every new subject.
+ * Validate BOTH lists before the first write. No replacement/deduplication,
+ * geometry, borrowed storage or game policy. Runtime errors remain errors;
+ * never request fallback after a partially applied batch. */
+s_tag *kc3rts_facts_exchange(s_tag *index, s_tag *predicate,
+                            s_tag *old_subjects, s_tag *old_object,
+                            s_tag *new_subjects, s_tag *new_object,
+                            s_tag *result)
+{
+  if (index->type != TAG_PFACTS || !index->data.td_pfacts ||
+      predicate->type != TAG_PSYM || old_object->type == TAG_PVAR ||
+      new_object->type == TAG_PVAR || !integer_subjects(old_subjects) ||
+      !integer_subjects(new_subjects)) return tag_init(result);
+  s_facts *facts = index->data.td_pfacts;
+  bool removed;
+  for (s_list *item = old_subjects->data.td_plist; item; item = list_next(item))
+    if (!facts_remove_fact_tags(facts, &item->tag, predicate, old_object, &removed))
+      return NULL;
+  for (s_list *item = new_subjects->data.td_plist; item; item = list_next(item))
+    if (!facts_add_tags(facts, &item->tag, predicate, new_object)) return NULL;
+  return tag_init_bool(result, true);
+}
+
 s_tag *kc3rts_put(s_tag *source, s_tag *key, s_tag *value, s_tag *result)
 {
   const s_map *map = payload(source);

@@ -399,10 +399,8 @@ List.do([{"single", [0], [0]}, {"crossing", [0], [0, 1]},
   RTS.NavigationProfile.paired("reservation_roundtrip10_" + name,
     fn () {
       List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do
-        RTS.Spatial.reserve(reservation_index, before_cells, before_body, false)
-        RTS.Spatial.reserve(reservation_index, after_cells, after_body, true)
-        RTS.Spatial.reserve(reservation_index, after_cells, after_body, false)
-        RTS.Spatial.reserve(reservation_index, before_cells, before_body, true)
+        RTS.SpatialReference.relocate(reservation_index, before_cells, before_body, after_cells, after_body)
+        RTS.SpatialReference.relocate(reservation_index, after_cells, after_body, before_cells, before_body)
       end)
     }, fn () {
       List.do([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], iteration, do

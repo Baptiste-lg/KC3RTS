@@ -76,8 +76,10 @@ defmodule RTS.Spatial do
   # Keep distinct bodies in shared cells; replace_tags would erase neighbors.
   # No read cursor may be open while this derived index is mutated.
   def relocate = fn (index, old_cells, old_body, new_cells, new_body) {
-    List.do(old_cells, cell, do Facts.remove_tags(index, cell, :body, old_body) end)
-    List.do(new_cells, cell, do Facts.add_tags(index, cell, :body, new_body) end)
+    if RTS.Data.facts_exchange(index, :body, old_cells, old_body, new_cells, new_body) == void do
+      List.do(old_cells, cell, do Facts.remove_tags(index, cell, :body, old_body) end)
+      List.do(new_cells, cell, do Facts.add_tags(index, cell, :body, new_body) end)
+    end
     void
   }
   def cell_clear_native = cfn Tag "kc3rts_cell_clear" (Tag, Tag, Tag, Result)

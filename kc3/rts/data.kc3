@@ -28,6 +28,9 @@ defmodule RTS.Data do
   # Pair proper lists without repeatedly copying their remaining tails.
   # Different lengths or non-lists => void; two empty lists => [].
   def zip = cfn Tag "kc3rts_zip" (Tag, Tag, Result)
+  # Ordered bulk remove/add for integer-subject Facts. Unsupported inputs
+  # return void BEFORE mutation; a successful batch returns true.
+  def facts_exchange = cfn Tag "kc3rts_facts_exchange" (Tag, Tag, Tag, Tag, Tag, Tag, Result)
   def put = cfn Tag "kc3rts_put" (Tag, Tag, Tag, Result)
   def merge = cfn Tag "kc3rts_merge" (Tag, Tag, Result)
   def integer? = fn (value, minimum, maximum) {

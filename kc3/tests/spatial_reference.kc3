@@ -1,8 +1,8 @@
 # Previous production query, kept outside the worker for parity and profiling.
 defmodule RTS.SpatialReference do
   def relocate = fn (index, old_cells, old_body, new_cells, new_body) {
-    RTS.Spatial.reserve(index, old_cells, old_body, false)
-    RTS.Spatial.reserve(index, new_cells, new_body, true)
+    List.do(old_cells, cell, do Facts.remove_tags(index, cell, :body, old_body) end)
+    List.do(new_cells, cell, do Facts.add_tags(index, cell, :body, new_body) end)
     void
   }
   # Frozen fused query before bounded native bucket reads. Do not call the
