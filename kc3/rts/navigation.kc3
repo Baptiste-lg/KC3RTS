@@ -287,6 +287,66 @@ defmodule RTS.Navigation do
     end
     mask
   }
+  def graph_native = cfn Tag "kc3rts_grid_graph" (Tag, Tag, Tag, Tag, Tag, Result)
+  def graph = fn (layout, mask, bodies, inflate, excluded_id) {
+    result = RTS.Navigation.graph_native(layout, mask, bodies, inflate, excluded_id)
+    if result != void do result else
+      RTS.Navigation.graph_reference(layout, mask, bodies, inflate, excluded_id) end
+  }
+  # Retry search snapshots have three equally sized planes: historical blocked
+  # centers, blocked East edges and blocked South edges. Edges describe only
+  # unit geometry; static clearance remains in the first plane. Unused boundary
+  # edge slots stay clear. Unlike rasterizing whole expanded cells, this retains
+  # tangent passages while rejecting a body strictly BETWEEN clear centers.
+  def graph_reference = fn ({width, height, ox, oz, cell_size}, mask, bodies, inflate, excluded_id) {
+    grid = %{"width" => width, "height" => height, "origin_x" => ox,
+      "origin_z" => oz, "cell_size" => cell_size}
+    count = width * height
+    east = RTS.Map.repeat(".", count)
+    south = ^ east
+    List.do(bodies, {id, x, z, size}, do
+      if id != excluded_id do
+        clearance = inflate + size
+        # Preserve the old clipped candidates and doubled strict center test,
+        # including its deliberately different odd-footprint rounding.
+        List.do(RTS.Map.cells(grid, x, z, clearance), cell, do
+          cx = ox + (cell mod width) * cell_size + cell_size / 2
+          cz = oz + (cell / width) * cell_size + cell_size / 2
+          dx = cx - x
+          dz = cz - z
+          if dx * 2 < clearance && dx * 2 > (0 - clearance) && dz * 2 < clearance && dz * 2 > (0 - clearance) do
+            mask = RTS.Map.mark(mask, cell)
+          end
+        end)
+        # Physical strict overlap uses the integer half-sum. Intersect its open
+        # collision box with each closed center-to-center segment analytically.
+        # This graph policy covers all positive sizes; it does not change the
+        # legacy Map.cover tiny/odd buckets or general movement's endpoint test.
+        distance = clearance / 2
+        cell = 0
+        while cell < count do
+          col = cell mod width
+          row = cell / width
+          cx = ox + col * cell_size + cell_size / 2
+          cz = oz + row * cell_size + cell_size / 2
+          dx = cx - x
+          dz = cz - z
+          if distance > 0 do
+            if col + 1 < width && dz < distance && dz > (0 - distance) &&
+               cx < x + distance && cx + cell_size > x - distance do
+              east = RTS.Map.mark(east, cell)
+            end
+            if row + 1 < height && dx < distance && dx > (0 - distance) &&
+               cz < z + distance && cz + cell_size > z - distance do
+              south = RTS.Map.mark(south, cell)
+            end
+          end
+          cell = cell + 1
+        end
+      end
+    end)
+    mask + east + south
+  }
   def entry = fn (grid, mask, e) {
     current = RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"))
     best = ^ current
@@ -303,6 +363,96 @@ defmodule RTS.Navigation do
         end
       end
     end)
+    best
+  }
+  # A retry may start between centers, inside a cell whose CENTER is blocked.
+  # A clear neighboring center alone is not enough: it can lie behind the unit
+  # that stopped us. Replay the same axis proposals against read-only geometry;
+  # never reserve speculative positions or use the center-only dynamic mask.
+  def connector_segment? = fn (layout, terrain, index, {id, x, z, size}, {next_id, nx, nz, next_size}) {
+    {width, height, ox, oz, cell_size} = ^ layout
+    # Start and end have already passed the exact physical query. An integer
+    # unit of minimum footprint 1 blocks at least this many consecutive axis
+    # positions; a terrain cell blocks at least cell_size positions for size>1.
+    # Checking gaps no larger than either interval prevents fast steps tunneling
+    # through an obstacle. Footprint 1 retains its exact zero-half-size behavior
+    # by checking every integer position, including grid-boundary rejection.
+    stride = if size < 2 do 1 else ((size + 1) / 2) * 2 - 1 end
+    if cell_size < stride do stride = ^ cell_size end
+    dx = nx - x
+    dz = nz - z
+    remaining = (if dx < 0 do 0 - dx else dx end) + (if dz < 0 do 0 - dz else dz end)
+    valid = stride > 0 && (dx == 0 || dz == 0)
+    while valid && remaining > stride do
+      if x != nx do x = x + if dx < 0 do 0 - stride else stride end else
+        z = z + if dz < 0 do 0 - stride else stride end
+      end
+      valid = RTS.Spatial.available(layout, terrain, index, {id, x, z, size}) != []
+      remaining = remaining - stride
+    end
+    valid
+  }
+  def connector? = fn (layout, terrain, index, body, speed, cell) {
+    {width, height, ox, oz, cell_size} = ^ layout
+    {id, x, z, size} = ^ body
+    tx = ox + (cell mod width) * cell_size + cell_size / 2
+    tz = oz + (cell / width) * cell_size + cell_size / 2
+    dx = tx - x
+    dz = tz - z
+    remaining = (if dx < 0 do 0 - dx else dx end) + (if dz < 0 do 0 - dz else dz end)
+    stride = if size < 2 do 1 else ((size + 1) / 2) * 2 - 1 end
+    if cell_size < stride do stride = ^ cell_size end
+    # Ordinary worker steps are already smaller than the conservative gap.
+    # Fast/small bodies alone need the extra segment helper and inner probes.
+    sweep = speed > stride
+    valid = (remaining == 0 || speed > 0) && RTS.Spatial.available(layout, terrain, index, body) != []
+    # Every accepted integer step strictly decreases this nonnegative distance.
+    # Even speed 1 terminates; there is no arbitrary cutoff that accepts a
+    # partially checked connector. A blocked or zero-progress step fails closed.
+    while valid && remaining > 0 do
+      {next, reached, cells} = RTS.Navigation.probe(layout, terrain, index, body, speed, cell, true)
+      if cells == [] do
+        alternative = RTS.Navigation.alternate(layout, body, speed, cell, next)
+        if alternative != void do
+          {next, reached} = ^ alternative
+          cells = RTS.Spatial.available(layout, terrain, index, next)
+        end
+      end
+      # Preserve the actual primary/alternate choice. If that chosen segment
+      # tunnels, reject it rather than inventing a different simulated route.
+      if cells == [] || (sweep && (! RTS.Navigation.connector_segment?(layout, terrain, index, body, next))) do valid = false else
+        {next_id, next_x, next_z, next_size} = ^ next
+        dx = tx - next_x
+        dz = tz - next_z
+        distance = (if dx < 0 do 0 - dx else dx end) + (if dz < 0 do 0 - dz else dz end)
+        if distance >= remaining do valid = false else
+          remaining = ^ distance
+          body = ^ next
+        end
+      end
+    end
+    valid && remaining == 0
+  }
+  def entry_retry = fn (grid, mask, terrain, index, body, speed) {
+    {id, x, z, size} = ^ body
+    current = RTS.Map.cell(grid, x, z)
+    best = void
+    distance = 9007199254740991
+    if current >= 0 do
+      layout = RTS.Map.layout(grid)
+      List.do([current | RTS.Map.neighbors(grid, current)], cell, do
+        if Str.byte(mask, cell) != 35 do
+          point = RTS.Map.point(grid, cell)
+          dx = RTS.Data.get(point, "x") - x
+          dz = RTS.Data.get(point, "z") - z
+          candidate = (if dx < 0 do 0 - dx else dx end) + (if dz < 0 do 0 - dz else dz end)
+          if candidate < distance && RTS.Navigation.connector?(layout, terrain, index, body, speed, cell) do
+            best = ^ cell
+            distance = ^ candidate
+          end
+        end
+      end)
+    end
     best
   }
   # Inspect orders once for activity, invalidation and planner priority.
@@ -349,6 +499,12 @@ defmodule RTS.Navigation do
     updates = if batch do RTS.Data.share(%{}) else void end
     changed = false
     packed = type(state) == RTS.Shared
+    # One read-only snapshot suffices for every retry job in this planner call:
+    # completed jobs change orders/status/task, never physical geometry. Keep it
+    # local rather than taking or mutating the tick's retained spatial cache.
+    retry_index = void
+    retry_bodies = void
+    retry_layout = void
     budget = 128
     jobs = 8
     List.do(pending, entry, do
@@ -363,13 +519,38 @@ defmodule RTS.Navigation do
         search = RTS.Data.get(nav, "search")
         before = 0
         if RTS.Data.get(nav, "entity_id") != id || search == void do
-          mask = RTS.Navigation.planner_mask(content, state, grid, RTS.Data.get(nav, "mask"), e)
-          start = RTS.Navigation.entry(grid, mask, e)
+          if RTS.Data.get(order, "attempt") > 0 do
+            if retry_index == void do
+              retry_layout = RTS.Map.layout(grid)
+              spatial = RTS.Spatial.build(content, retry_layout, RTS.Data.get(state, "entities"))
+              retry_index = RTS.Data.get(spatial, "index")
+              rows = RTS.Data.get(spatial, "rows")
+              retry_bodies = RTS.Data.column(rows, 2)
+              if retry_bodies == void do
+                retry_bodies = List.map_filter(rows, {entity, speed, body, cells}, do body end)
+              end
+            end
+            definition = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+            size = RTS.Data.get(definition, "footprint")
+            mask = RTS.Data.get(nav, "mask")
+            if size > 256 do mask = RTS.Navigation.clearance(content, retry_layout, mask, size) end
+            mask = RTS.Navigation.graph(retry_layout, mask, retry_bodies, size, id)
+            body = {id, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"), size}
+            start = RTS.Navigation.entry_retry(grid, mask, RTS.Data.get(nav, "mask"), retry_index,
+              body, RTS.Data.get(definition, "speed"))
+          else
+            mask = RTS.Navigation.planner_mask(content, state, grid, RTS.Data.get(nav, "mask"), e)
+            start = RTS.Navigation.entry(grid, mask, e)
+          end
           goal = RTS.Data.get(order, "goal")
-          path = RTS.Search.direct(grid, mask, start, goal, true)
-          if path == [] do path = RTS.Search.direct(grid, mask, start, goal, false) end
-          search = if path != [] do %{"expanded" => 0, "status" => "ready", "path" => path} else
-            RTS.Data.put(RTS.Search.start(grid, start, goal, true), "mask", mask) end
+          if start == void do
+            search = %{"expanded" => 0, "status" => "unreachable", "path" => []}
+          else
+            path = RTS.Search.direct(grid, mask, start, goal, true)
+            if path == [] do path = RTS.Search.direct(grid, mask, start, goal, false) end
+            search = if path != [] do %{"expanded" => 0, "status" => "ready", "path" => path} else
+              RTS.Data.put(RTS.Search.start(grid, start, goal, true), "mask", mask) end
+          end
         else before = RTS.Data.get(search, "expanded") end
         if RTS.Data.get(search, "status") == "planning" do
           search = RTS.Search.run(grid, RTS.Data.get(search, "mask"), search, budget)
@@ -384,9 +565,18 @@ defmodule RTS.Navigation do
           nav = RTS.Data.merge(nav, %{"search" => void, "entity_id" => 0})
           if status == "ready" do
             path = RTS.Data.get(search, "path")
-            # The unit may be between centers after a collision. Moving back to
-            # its start center would trap it against the unit following behind.
-            if List.length(path) > 1 && List.first(path) == RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")) do path = List.next(path) end
+            # Fresh routes retain historical trimming. Retry routes must first
+            # complete their checked connector, even inside the current cell;
+            # trimming it would substitute a different, unchecked connector.
+            # An already-centered start has no connector and can still be cut.
+            if List.length(path) > 1 && List.first(path) == RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")) do
+              if RTS.Data.get(order, "attempt") == 0 do path = List.next(path) else
+                point = RTS.Map.point(grid, List.first(path))
+                if RTS.Data.get(e, "x") == RTS.Data.get(point, "x") && RTS.Data.get(e, "z") == RTS.Data.get(point, "z") do
+                  path = List.next(path)
+                end
+              end
+            end
             e = RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "path", path), "status" => void})
           else
             if RTS.Data.get(order, "attempt") > 0 do
@@ -450,7 +640,11 @@ defmodule RTS.Navigation do
         else
           waited = RTS.Data.get(order, "wait") + 1
           if waited >= 70 do RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "blocked"}) else
-            if waited >= 20 && RTS.Data.get(order, "attempt") == 0 do
+            # A checked retry connector can become occupied before its first
+            # waypoint is reached. Keep the same ten-wait cadence as an empty
+            # waiting route; do not leave a stale ready path until cancellation.
+            # Only reaching a waypoint resets wait/attempt, and 70 still wins.
+            if waited >= 20 && (RTS.Data.get(order, "attempt") == 0 || waited mod 10 == 0) do
               RTS.Data.merge(e, %{"order" => RTS.Data.merge(order, %{"path" => [], "wait" => waited, "attempt" => 1}), "status" => "planning"})
             else RTS.Data.put(e, "order", RTS.Data.put(order, "wait", waited)) end
           end

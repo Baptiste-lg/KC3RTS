@@ -1,0 +1,90 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+defmodule RTS.GraphCorridorCheck do
+  def corridor_native = cfn Tag "kc3rts_grid_graph_corridor" (Tag, Tag, Tag, Tag, Tag, Tag, Result)
+  # Walk the selected axis order directly in KC3. Unlike the native helper,
+  # this does not first construct a legacy path and inspect its returned list.
+  def corridor_reference = fn (width, count, mask, start, goal, horizontal) {
+    dx = goal mod width - start mod width
+    dz = goal / width - start / width
+    xsteps = {if dx < 0 do -1 else 1 end, if dx < 0 do 0 - dx else dx end, true}
+    zsteps = {if dz < 0 do 0 - width else width end, if dz < 0 do 0 - dz else dz end, false}
+    axes = if horizontal do [xsteps, zsteps] else [zsteps, xsteps] end
+    path = [start]
+    cell = ^ start
+    valid = true
+    List.do(axes, {step, remaining, east}, do
+      while valid && remaining > 0 do
+        next = cell + step
+        edge = (if east do count else count * 2 end) +
+          if step > 0 do cell else next end
+        if Str.byte(mask, next) == 35 || Str.byte(mask, edge) == 35 do valid = false else
+          path = [next | path]
+        end
+        cell = ^ next
+        remaining = remaining - 1
+      end
+    end)
+    if valid do List.reverse(path) else [] end
+  }
+end
+
+sample = 0
+valid = true
+while sample < 1872 do
+  choice = ^ sample
+  horizontal = choice mod 2 == 0
+  choice = choice / 2
+  goal = choice mod 6
+  choice = choice / 6
+  start = choice mod 6
+  choice = choice / 6
+  centers = if choice mod 2 == 0 do "......" else RTS.Map.mark("......", start) end
+  edge = choice / 2 - 1
+  graph = centers + RTS.Map.repeat(".", 12)
+  if edge >= 0 do graph = RTS.Map.mark(graph, 6 + edge) end
+  expected = RTS.GraphCorridorCheck.corridor_reference(3, 6, graph, start, goal, horizontal)
+  actual = RTS.GraphCorridorCheck.corridor_native(3, 6, graph, start, goal, horizontal)
+  valid = valid && actual == expected
+  if edge < 0 do valid = valid && actual == RTS.Search.direct_native(3, centers, start, goal, horizontal) end
+  sample = sample + 1
+end
+RTS.Check.that("1872 graph corridors preserve all directions, endpoints, start blocking and unused edge slots",
+  valid && sample == 1872)
+List.do([{1, 4}, {4, 1}, {1, 1}], {width, height}, do
+  count = width * height
+  graph = RTS.Map.repeat(".", count * 3)
+  List.do([0, count - 1], start, do
+    List.do([0, count - 1], goal, do
+      List.do([true, false], horizontal, do
+        expected = RTS.GraphCorridorCheck.corridor_reference(width, count, graph, start, goal, horizontal)
+        RTS.Check.that("single-row/column graph corridors use the correct edge plane",
+          RTS.GraphCorridorCheck.corridor_native(width, count, graph, start, goal, horizontal) == expected)
+        if count > 1 do
+          offset = if width == 1 do count * 2 else count end
+          blocked = RTS.Map.mark(graph, offset)
+          RTS.Check.that("single-axis first/last edge blocking matches direct KC3 traversal",
+            RTS.GraphCorridorCheck.corridor_native(width, count, blocked, start, goal, horizontal) ==
+              RTS.GraphCorridorCheck.corridor_reference(width, count, blocked, start, goal, horizontal))
+        end
+      end)
+    end)
+  end)
+end)
+graph = RTS.Map.repeat(".", 18)
+List.do([{0, 6, graph, 0, 5, true}, {3, 0, graph, 0, 5, true},
+  {3, 5, RTS.Map.repeat(".", 15), 0, 4, true}, {3, 6, "......", 0, 5, true},
+  {3, 6, graph, -1, 5, true}, {3, 6, graph, 0, 6, true},
+  {3, 6, graph, 0, 5, 1}, {3, 6.0, graph, 0, 5, true}],
+  {width, count, mask, start, goal, horizontal}, do
+  RTS.Check.that("unsupported graph corridors decline before path allocation",
+    RTS.GraphCorridorCheck.corridor_native(width, count, mask, start, goal, horizontal) == void)
+end)
+path = RTS.GraphCorridorCheck.corridor_native(3, 6, graph, (S64) 0, 5, true)
+immutable = graph == RTS.Map.repeat(".", 18)
+graph = void
+RTS.Check.that("graph corridors own paths and preserve the original starting integer tag",
+  immutable && path == [0, 1, 2, 5] && type(List.first(path)) == S64 &&
+    RTS.GraphCorridorCheck.corridor_native(3, 6, RTS.Map.repeat("#", 18), 0, 5, true) == [] &&
+    RTS.GraphCorridorCheck.corridor_native(3, 6, RTS.Map.repeat("#", 18), 0, 0, true) == [0])

@@ -1,6 +1,7 @@
 /* Bounded integer geometry only. KC3 owns terrain, reservations and movement
  * policy. Unsupported inputs return Void for the KC3 fallback. */
 #include <stdint.h>
+#include <string.h>
 #include "libkc3/kc3.h"
 
 static bool grid_scalar(const s_tag *tag, s64 *out)
@@ -25,6 +26,177 @@ static bool grid_scalar(const s_tag *tag, s64 *out)
   default: return false;
   }
   return *out >= INT32_MIN && *out <= INT32_MAX;
+}
+
+struct graph_span { s64 left, right, top, bottom; };
+struct graph_body {
+  s64 x, z, clearance;
+  struct graph_span centers, east, south;
+};
+
+/* True signed floor/ceiling are needed for CENTER/EDGE ranges. The historical
+ * Map.cells range below deliberately retains ordinary C/KC3 truncation. */
+static s64 graph_floor(s64 value, s64 divisor)
+{
+  return value / divisor - (value % divisor < 0);
+}
+
+static s64 graph_ceil(s64 value, s64 divisor)
+{
+  return value / divisor + (value % divisor > 0);
+}
+
+static void graph_clip(struct graph_span *span, s64 width, s64 height)
+{
+  if (span->left < 0) span->left = 0;
+  if (span->top < 0) span->top = 0;
+  if (span->right >= width) span->right = width - 1;
+  if (span->bottom >= height) span->bottom = height - 1;
+}
+
+static uw graph_area(const struct graph_span *span)
+{
+  if (span->right < span->left || span->bottom < span->top) return 0;
+  return (uw) ((span->right - span->left + 1) *
+               (span->bottom - span->top + 1));
+}
+
+/* Unit-only geometry: a closed center-to-center segment is blocked when it
+ * intersects the STRICT integer-half collision box of a supplied body.
+ * This does not change tiny/odd Map.cover reservations or movement sweeping.
+ */
+static bool graph_body_init(struct graph_body *body, const s_tag *parts,
+                            s64 inflate, s64 width, s64 height,
+                            s64 ox, s64 oz, s64 step)
+{
+  s64 size;
+  if (!grid_scalar(parts + 1, &body->x) ||
+      !grid_scalar(parts + 2, &body->z) ||
+      !grid_scalar(parts + 3, &size) || size < 1)
+    return false;
+  body->clearance = inflate + size;
+  s64 half = body->clearance / 2;
+  /* Preserve Map.cells clipping, including slightly negative right/bottom
+   * bounds whose division truncates to zero. Centers are filtered later by
+   * the historical doubled-delta inequality, not the edge half-size rule. */
+  struct graph_span *centers = &body->centers;
+  centers->left = body->x - half - ox;
+  centers->right = body->x + half - 1 - ox;
+  centers->top = body->z - half - oz;
+  centers->bottom = body->z + half - 1 - oz;
+  if (centers->left < 0) centers->left = 0;
+  if (centers->top < 0) centers->top = 0;
+  centers->left /= step;
+  centers->right /= step;
+  centers->top /= step;
+  centers->bottom /= step;
+  graph_clip(centers, width, height);
+
+  /* Integer positions strictly inside the collision box are the inclusive
+   * interval [center-half+1, center+half-1]. For East edges, the left endpoint
+   * can lie one step before that interval; South is the symmetric case. */
+  s64 cx = ox + step / 2, cz = oz + step / 2;
+  s64 left = body->x - half + 1, right = body->x + half - 1;
+  s64 top = body->z - half + 1, bottom = body->z + half - 1;
+  body->east = (struct graph_span) {
+    graph_ceil(left - step - cx, step), graph_floor(right - cx, step),
+    graph_ceil(top - cz, step), graph_floor(bottom - cz, step)
+  };
+  graph_clip(&body->east, width - 1, height);
+  body->south = (struct graph_span) {
+    graph_ceil(left - cx, step), graph_floor(right - cx, step),
+    graph_ceil(top - step - cz, step), graph_floor(bottom - cz, step)
+  };
+  graph_clip(&body->south, width, height - 1);
+  return true;
+}
+
+static void graph_mark(char *bytes, s64 width,
+                        const struct graph_span *span)
+{
+  if (!graph_area(span)) return;
+  for (s64 row = span->top; row <= span->bottom; ++row)
+    memset(bytes + row * width + span->left, '#',
+           (size_t) (span->right - span->left + 1));
+}
+
+/* Build three owned ASCII planes: centers, East edges, South edges. KC3
+ * supplies the filtered bodies, expansion, excluded ID and terrain/clearance
+ * mask; retries, search policy and budgets remain outside this primitive.
+ * East/South slots beyond the map boundary remain '.', never traversed.
+ *
+ * Complete shape/range/work preflight precedes the single output allocation.
+ * Opaque IDs use KC3 equality. Excluded bodies' unused geometry is not read.
+ * No Facts traversal (which could omit clipped/tiny bodies), mutation, cache or
+ * borrowed result. Unsupported input => Void; allocation failure => NULL.
+ */
+s_tag *kc3rts_grid_graph(const s_tag *layout, const s_tag *mask,
+                        const s_tag *bodies, const s_tag *inflate_tag,
+                        const s_tag *excluded_id, s_tag *result)
+{
+  s64 width, height, ox, oz, step, inflate;
+  if (layout->type != TAG_PTUPLE || !layout->data.td_ptuple ||
+      layout->data.td_ptuple->count != 5 || mask->type != TAG_STR ||
+      bodies->type != TAG_PLIST)
+    return tag_init(result);
+  const s_tag *grid = layout->data.td_ptuple->tag;
+  if (!grid_scalar(grid, &width) || !grid_scalar(grid + 1, &height) ||
+      !grid_scalar(grid + 2, &ox) || !grid_scalar(grid + 3, &oz) ||
+      !grid_scalar(grid + 4, &step) || !grid_scalar(inflate_tag, &inflate) ||
+      width < 1 || width > 65535 || height < 1 || height > 65535 ||
+      step < 1 || inflate < 1 || width * height > 1048576 ||
+      mask->data.td_str.size != (uw) (width * height))
+    return tag_init(result);
+  uw cells = (uw) (width * height);
+  for (uw i = 0; i < cells; ++i)
+    if (mask->data.td_str.ptr.p_pchar[i] != '.' &&
+        mask->data.td_str.ptr.p_pchar[i] != '#')
+      return tag_init(result);
+
+  uw count = 0, work = 0;
+  for (s_list *item = bodies->data.td_plist; item; item = list_next(item)) {
+    if (item->next.type != TAG_PLIST || ++count > 4096 ||
+        item->tag.type != TAG_PTUPLE || !item->tag.data.td_ptuple ||
+        item->tag.data.td_ptuple->count != 4)
+      return tag_init(result);
+    const s_tag *parts = item->tag.data.td_ptuple->tag;
+    if (!compare_tag(parts, excluded_id)) continue;
+    struct graph_body body;
+    if (!graph_body_init(&body, parts, inflate, width, height, ox, oz, step))
+      return tag_init(result);
+    uw area = graph_area(&body.centers) + graph_area(&body.east) +
+      graph_area(&body.south);
+    if (area > 4194304 - work) return tag_init(result);
+    work += area;
+  }
+
+  s_tag output = {0};
+  if (!tag_init_str_alloc(&output, 3 * cells)) return NULL;
+  char *bytes = output.data.td_str.free.p_pchar;
+  memcpy(bytes, mask->data.td_str.ptr.p_pchar, cells);
+  memset(bytes + cells, '.', 2 * cells);
+  for (s_list *item = bodies->data.td_plist; item; item = list_next(item)) {
+    const s_tag *parts = item->tag.data.td_ptuple->tag;
+    if (!compare_tag(parts, excluded_id)) continue;
+    struct graph_body body;
+    if (!graph_body_init(&body, parts, inflate, width, height, ox, oz, step)) {
+      tag_clean(&output);
+      return tag_init(result);
+    }
+    if (graph_area(&body.centers))
+      for (s64 row = body.centers.top; row <= body.centers.bottom; ++row)
+        for (s64 col = body.centers.left; col <= body.centers.right; ++col) {
+          s64 dx = ox + col * step + step / 2 - body.x;
+          s64 dz = oz + row * step + step / 2 - body.z;
+          if (dx * 2 < body.clearance && dx * 2 > -body.clearance &&
+              dz * 2 < body.clearance && dz * 2 > -body.clearance)
+            bytes[row * width + col] = '#';
+        }
+    graph_mark(bytes + cells, width, &body.east);
+    graph_mark(bytes + 2 * cells, width, &body.south);
+  }
+  *result = output;
+  return result;
 }
 
 /* Enumerate one caller-selected, axis-aligned two-segment corridor. This is
@@ -74,6 +246,51 @@ s_tag *kc3rts_grid_corridor(const s_tag *width_tag, const s_tag *mask,
     }
   }
   return tag_init_plist(result, path);
+}
+
+/* The same caller-selected corridor, with explicit center/East/South planes.
+ * Keep the legacy API unchanged: it cannot infer N from a 3N mask. Borrow only
+ * the center prefix while constructing the legacy owned path, then reject any
+ * blocked edge. No alternate route, graph mutation or borrowed output. */
+s_tag *kc3rts_grid_graph_corridor(const s_tag *width_tag,
+                                 const s_tag *count_tag,
+                                 const s_tag *mask, s_tag *start_tag,
+                                 const s_tag *goal_tag,
+                                 const s_tag *horizontal, s_tag *result)
+{
+  s64 width, count, start, goal;
+  if (!grid_scalar(width_tag, &width) || width < 1 || width > 65535 ||
+      !grid_scalar(count_tag, &count) || count < 1 || count > 1048576 ||
+      count % width || mask->type != TAG_STR ||
+      mask->data.td_str.size != 3 * (uw) count ||
+      !grid_scalar(start_tag, &start) || !grid_scalar(goal_tag, &goal) ||
+      start < 0 || goal < 0 || start >= count || goal >= count ||
+      horizontal->type != TAG_BOOL)
+    return tag_init(result);
+  s_tag centers = {0}, path = {0};
+  tag_init_str(&centers, NULL, (uw) count, mask->data.td_str.ptr.p_pchar);
+  if (!kc3rts_grid_corridor(width_tag, &centers, start_tag, goal_tag,
+                            horizontal, &path))
+    return NULL;
+  if (path.type == TAG_VOID) return tag_init(result);
+  for (s_list *item = path.data.td_plist; item; item = list_next(item)) {
+    s_list *next = list_next(item);
+    if (!next) break;
+    s64 from, to;
+    if (!grid_scalar(&item->tag, &from) || !grid_scalar(&next->tag, &to)) {
+      tag_clean(&path);
+      return tag_init(result);
+    }
+    /* Comparing rows also handles width=1, where +/-1 is vertical. */
+    s64 edge = (from / width == to / width ? count : 2 * count) +
+      (from < to ? from : to);
+    if (mask->data.td_str.ptr.p_pchar[edge] == '#') {
+      tag_clean(&path);
+      return tag_init_plist(result, NULL);
+    }
+  }
+  *result = path;
+  return result;
 }
 
 /* Read one worker-local Facts bucket of {id, x, z, size} bounding boxes.

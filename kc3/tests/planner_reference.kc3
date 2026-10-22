@@ -1,10 +1,15 @@
 # Frozen 17bba18 planner: apply every completed job immediately with World.put.
+# Retry graph/entry/connector policy follows Navigation; this oracle freezes the
+# sequential job updates and budgets, not the old unsafe off-center entry.
 # Diagnostic only, never loaded by production workers.
 defmodule RTS.PlannerReference do
   def plan = fn (content, state, grid, pending) {
     nav = RTS.Data.share(RTS.Data.get(state, "navigation"))
     budget = 128
     jobs = 8
+    retry_index = void
+    retry_bodies = void
+    retry_layout = void
     List.do(pending, entry, do
       if budget > 0 && jobs > 0 do
         jobs = jobs - 1
@@ -14,13 +19,34 @@ defmodule RTS.PlannerReference do
         search = RTS.Data.get(nav, "search")
         before = 0
         if RTS.Data.get(nav, "entity_id") != id || search == void do
-          mask = RTS.Navigation.planner_mask(content, state, grid, RTS.Data.get(nav, "mask"), e)
-          start = RTS.Navigation.entry(grid, mask, e)
+          if RTS.Data.get(order, "attempt") > 0 do
+            if retry_index == void do
+              retry_layout = RTS.Map.layout(grid)
+              spatial = RTS.Spatial.build(content, retry_layout, RTS.Data.get(state, "entities"))
+              retry_index = RTS.Data.get(spatial, "index")
+              retry_bodies = List.map_filter(RTS.Data.get(spatial, "rows"), {entity, speed, body, cells}, do body end)
+            end
+            definition = RTS.World.definition(content, RTS.Data.get(e, "type_id"))
+            size = RTS.Data.get(definition, "footprint")
+            mask = RTS.Data.get(nav, "mask")
+            if size > 256 do mask = RTS.Navigation.clearance(content, retry_layout, mask, size) end
+            mask = RTS.Navigation.graph(retry_layout, mask, retry_bodies, size, id)
+            body = {id, RTS.Data.get(e, "x"), RTS.Data.get(e, "z"), size}
+            start = RTS.Navigation.entry_retry(grid, mask, RTS.Data.get(nav, "mask"), retry_index,
+              body, RTS.Data.get(definition, "speed"))
+          else
+            mask = RTS.Navigation.planner_mask(content, state, grid, RTS.Data.get(nav, "mask"), e)
+            start = RTS.Navigation.entry(grid, mask, e)
+          end
           goal = RTS.Data.get(order, "goal")
-          path = RTS.Search.direct(grid, mask, start, goal, true)
-          if path == [] do path = RTS.Search.direct(grid, mask, start, goal, false) end
-          search = if path != [] do %{"expanded" => 0, "status" => "ready", "path" => path} else
-            RTS.Data.put(RTS.Search.start(grid, start, goal, true), "mask", mask) end
+          if start == void do
+            search = %{"expanded" => 0, "status" => "unreachable", "path" => []}
+          else
+            path = RTS.Search.direct(grid, mask, start, goal, true)
+            if path == [] do path = RTS.Search.direct(grid, mask, start, goal, false) end
+            search = if path != [] do %{"expanded" => 0, "status" => "ready", "path" => path} else
+              RTS.Data.put(RTS.Search.start(grid, start, goal, true), "mask", mask) end
+          end
         else before = RTS.Data.get(search, "expanded") end
         if RTS.Data.get(search, "status") == "planning" do
           search = RTS.Search.run(grid, RTS.Data.get(search, "mask"), search, budget)
@@ -35,9 +61,16 @@ defmodule RTS.PlannerReference do
           nav = RTS.Data.merge(nav, %{"search" => void, "entity_id" => 0})
           if status == "ready" do
             path = RTS.Data.get(search, "path")
-            # The unit may be between centers after a collision. Moving back to
-            # its start center would trap it against the unit following behind.
-            if List.length(path) > 1 && List.first(path) == RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")) do path = List.next(path) end
+            # Share corrected retry connector retention with production while
+            # preserving immediate World.put and the original planner budgets.
+            if List.length(path) > 1 && List.first(path) == RTS.Map.cell(grid, RTS.Data.get(e, "x"), RTS.Data.get(e, "z")) do
+              if RTS.Data.get(order, "attempt") == 0 do path = List.next(path) else
+                point = RTS.Map.point(grid, List.first(path))
+                if RTS.Data.get(e, "x") == RTS.Data.get(point, "x") && RTS.Data.get(e, "z") == RTS.Data.get(point, "z") do
+                  path = List.next(path)
+                end
+              end
+            end
             e = RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "path", path), "status" => void})
           else
             if RTS.Data.get(order, "attempt") > 0 do

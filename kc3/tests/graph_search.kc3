@@ -1,0 +1,139 @@
+load!(__DIR__ + "check.kc3")
+dlopen("kc3rts.so")
+load!(__DIR__ + "../rts/data.kc3")
+load!(__DIR__ + "../rts/wire.kc3")
+load!(__DIR__ + "../rts/map.kc3")
+load!(__DIR__ + "../rts/search.kc3")
+defmodule RTS.GraphSearchCheck do
+  # An explicit undirected edge list is independent of Search's packed-grid
+  # adjacency/priority logic. This queue oracle has neither A* nor table writes.
+  def links = [{0, 1, 4}, {2, 3, 6}, {0, 2, 8}, {1, 3, 9}]
+  def distance = fn (mask, start, goal) {
+    pending = [{start, 0}]
+    seen = [start]
+    result = -1
+    while pending != [] && result < 0 do
+      {cell, depth} = List.first(pending)
+      pending = List.next(pending)
+      if cell == goal do result = ^ depth else
+        List.do(RTS.GraphSearchCheck.links, {a, b, offset}, do
+          next = if cell == a do b else if cell == b do a else -1 end end
+          if next >= 0 && Str.byte(mask, offset) != 35 && (! List.has?(seen, next)) do
+            pending = List.append(pending, [{next, depth + 1}])
+            seen = [next | seen]
+          end
+        end)
+      end
+    end
+    result
+  }
+  def path? = fn (mask, path, start, goal) {
+    valid = path != [] && List.first(path) == start
+    previous = ^ start
+    rest = List.next(path)
+    while rest != [] do
+      cell = List.first(rest)
+      linked = false
+      List.do(RTS.GraphSearchCheck.links, {a, b, offset}, do
+        if ((a == previous && b == cell) || (b == previous && a == cell)) &&
+          Str.byte(mask, offset) != 35 do linked = true end
+      end)
+      valid = valid && linked
+      previous = ^ cell
+      rest = List.next(rest)
+    end
+    valid && previous == goal
+  }
+end
+map = %{"width" => 2, "height" => 2}
+List.do([true, false], astar, do
+  List.do([{0, 3}, {3, 0}], {start, goal}, do
+    List.do([0, 1, 3, 128], budget, do
+      initial = RTS.Search.start(map, start, goal, astar)
+      legacy = RTS.Search.run(map, "....", initial, budget)
+      graph = RTS.Search.run(map, "............", initial, budget)
+      RTS.Check.that("open edge planes preserve exact legacy search state for every budget",
+        graph == legacy && RTS.Wire.encode(graph) == RTS.Wire.encode(legacy))
+    end)
+  end)
+end)
+pattern = 0
+scenes = 0
+valid = true
+while pattern < 16 do
+  mask = "............"
+  bits = ^ pattern
+  List.do(RTS.GraphSearchCheck.links, {a, b, offset}, do
+    if bits mod 2 == 1 do mask = RTS.Map.mark(mask, offset) end
+    bits = bits / 2
+  end)
+  List.do([0, 1, 2, 3], start, do
+    List.do([0, 1, 2, 3], goal, do
+      distance = RTS.GraphSearchCheck.distance(mask, start, goal)
+      List.do([true, false], astar, do
+        actual = RTS.Search.run(map, mask, RTS.Search.start(map, start, goal, astar), 128)
+        path = RTS.Data.get(actual, "path")
+        valid = valid && if distance < 0 do
+          RTS.Data.get(actual, "status") == "unreachable" && path == []
+        else
+          RTS.Data.get(actual, "status") == "ready" && List.length(path) == distance + 1 &&
+            RTS.GraphSearchCheck.path?(mask, path, start, goal)
+        end
+        scenes = scenes + 1
+      end)
+      List.do([true, false], horizontal, do
+        path = RTS.Search.direct(map, mask, start, goal, horizontal)
+        valid = valid && path == RTS.Search.direct_reference(map, mask, start, goal, horizontal) &&
+          (path == [] || RTS.GraphSearchCheck.path?(mask, path, start, goal))
+      end)
+    end)
+  end)
+  pattern = pattern + 1
+end
+RTS.Check.that("512 exhaustive small-graph searches match an independent shortest-path oracle", valid && scenes == 512)
+
+# A blocked direct edge still leaves a three-edge detour. Resume after every
+# single expansion, preserving all three graph planes in canonical JSON.
+mask = RTS.Map.mark("............", 4)
+List.do([true, false], astar, do
+  initial = RTS.Data.put(RTS.Search.start(map, 0, 1, astar), "mask", mask)
+  expected = RTS.Search.run(map, mask, initial, 128)
+  partial = ^ initial
+  chunks = 0
+  while RTS.Data.get(partial, "status") == "planning" && chunks < 16 do
+    partial = JSON.from_str(RTS.Wire.encode(partial))
+    partial = RTS.Search.run(map, RTS.Data.get(partial, "mask"), partial, 1)
+    chunks = chunks + 1
+  end
+  RTS.Check.that("budgeted JSON graph resumes retain exact state, edges and the shortest detour",
+    partial == expected && RTS.Wire.encode(partial) == RTS.Wire.encode(expected) &&
+    RTS.Data.get(partial, "path") == [0, 2, 3, 1] && RTS.Data.get(partial, "mask") == mask &&
+    RTS.Data.get(initial, "expanded") == 0 && chunks > 1 && chunks < 16)
+end)
+
+List.do([{1, 4}, {4, 1}], {width, height}, do
+  axis = %{"width" => width, "height" => height}
+  mask = "............"
+  blocked = RTS.Map.mark(mask, if width == 1 do 9 else 5 end)
+  List.do([{0, 3}, {3, 0}], {start, goal}, do
+    List.do([true, false], astar, do
+      clear = RTS.Search.run(axis, mask, RTS.Search.start(axis, start, goal, astar), 16)
+      sealed = RTS.Search.run(axis, blocked, RTS.Search.start(axis, start, goal, astar), 16)
+      RTS.Check.that("single-column and single-row searches use the correct shared edge in both directions",
+        RTS.Data.get(clear, "status") == "ready" && List.length(RTS.Data.get(clear, "path")) == 4 &&
+        RTS.Data.get(sealed, "status") == "unreachable" && RTS.Data.get(sealed, "path") == [])
+    end)
+    List.do([true, false], horizontal, do
+      RTS.Check.that("direct graph wrappers preserve degenerate-axis paths and blocked edges",
+        RTS.Search.direct(axis, mask, start, goal, horizontal) == RTS.Search.direct_reference(axis, mask, start, goal, horizontal) &&
+        RTS.Search.direct(axis, blocked, start, goal, horizontal) == [] &&
+        RTS.Search.direct_reference(axis, blocked, start, goal, horizontal) == [])
+    end)
+  end)
+end)
+blocked = RTS.Map.mark("............", 0)
+RTS.Check.that("graph search retains the legacy distinction between a blocked start and a blocked goal",
+  RTS.Data.get(RTS.Search.run(map, blocked, RTS.Search.start(map, 0, 3, true), 16), "status") == "ready" &&
+  RTS.Data.get(RTS.Search.run(map, blocked, RTS.Search.start(map, 3, 0, true), 16), "status") == "unreachable" &&
+  RTS.Data.get(RTS.Search.run(map, blocked, RTS.Search.start(map, 0, 0, true), 16), "status") == "unreachable" &&
+  RTS.Search.direct(map, blocked, 0, 0, true) == [0])

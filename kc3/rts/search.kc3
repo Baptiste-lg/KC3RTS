@@ -21,13 +21,32 @@ defmodule RTS.Search do
   }
   # Check the two shortest axis-aligned corridors before allocating A* state.
   def direct_native = cfn Tag "kc3rts_grid_corridor" (Tag, Tag, Tag, Tag, Tag, Result)
+  def graph_direct_native = cfn Tag "kc3rts_grid_graph_corridor" (Tag, Tag, Tag, Tag, Tag, Tag, Result)
   def direct = fn (map, mask, start, goal, horizontal_first) {
-    path = RTS.Search.direct_native(RTS.Data.get(map, "width"), mask, start, goal, horizontal_first)
+    width = RTS.Data.get(map, "width")
+    height = RTS.Data.get(map, "height")
+    # Width-only diagnostic maps retain the historical corridor API/fallback.
+    graph = height != void && Str.size(mask) == width * height * 3
+    path = if graph do RTS.Search.graph_direct_native(width, width * height, mask, start, goal, horizontal_first) else
+      RTS.Search.direct_native(width, mask, start, goal, horizontal_first) end
     if path != void do path else RTS.Search.direct_reference(map, mask, start, goal, horizontal_first) end
+  }
+  # Undirected grid links share their left/top endpoint's East/South byte.
+  # Vertical checks come first: on a one-column grid +/-1 is vertical.
+  def edge? = fn (width, count, mask, cell, neighbor) {
+    offset = if neighbor == cell + width do count * 2 + cell else
+      if neighbor == cell - width do count * 2 + neighbor else
+        count + if neighbor > cell do cell else neighbor end
+      end
+    end
+    Str.byte(mask, offset) != 35
   }
   # Preserve the original KC3 algorithm for unsupported geometry and parity.
   def direct_reference = fn (map, mask, start, goal, horizontal_first) {
     width = RTS.Data.get(map, "width")
+    height = RTS.Data.get(map, "height")
+    count = if height == void do 0 else width * height end
+    graph = height != void && Str.size(mask) == count * 3
     dx = goal mod width - start mod width
     dz = goal / width - start / width
     horizontal = [if dx < 0 do -1 else 1 end, if dx < 0 do 0 - dx else dx end]
@@ -39,8 +58,10 @@ defmodule RTS.Search do
     List.do(steps, step, do
       remaining = access(step, [1])
       while remaining > 0 && valid do
+        previous = ^ cell
         cell = cell + access(step, [0])
-        if Str.byte(mask, cell) == 35 do valid = false else path = [cell | path] end
+        if Str.byte(mask, cell) == 35 || (graph && (! RTS.Search.edge?(width, count, mask, previous, cell))) do
+          valid = false else path = [cell | path] end
         remaining = remaining - 1
       end
     end)
@@ -63,7 +84,10 @@ defmodule RTS.Search do
   }
   def run = fn (map, mask, search, budget) {
     search = RTS.Data.share(search)
-    stride = RTS.Data.get(map, "width") * RTS.Data.get(map, "height") + 1
+    width = RTS.Data.get(map, "width")
+    count = width * RTS.Data.get(map, "height")
+    stride = count + 1
+    graph = Str.size(mask) == count * 3
     goal = RTS.Data.get(search, "goal")
     start = RTS.Data.get(search, "start")
     reverse = RTS.Search.reverse_ties?(map, start, goal)
@@ -92,7 +116,18 @@ defmodule RTS.Search do
             status = "ready"
           else
             List.do(RTS.Map.neighbors(map, cell), neighbor, do
-              if Str.byte(mask, neighbor) != 35 do
+              clear = Str.byte(mask, neighbor) != 35
+              if clear && graph do
+                # Inline the adjacent-link lookup here: a KC3 helper would
+                # copy the complete three-plane string for every expansion.
+                offset = if neighbor == cell + width do count * 2 + cell else
+                  if neighbor == cell - width do count * 2 + neighbor else
+                    count + if neighbor > cell do cell else neighbor end
+                  end
+                end
+                clear = Str.byte(mask, offset) != 35
+              end
+              if clear do
                 old = RTS.Search.read(costs, neighbor)
                 if cost + 1 < old do
                   costs = RTS.Search.write(costs, neighbor, cost + 1)

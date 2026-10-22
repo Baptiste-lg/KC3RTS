@@ -82,6 +82,56 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
     valid = put_in(@fixture, ["state", "navigation"], navigation)
     assert {:ok, ^valid} = decode(valid)
 
+    edges = "#" <> String.duplicate(".", count - 1)
+    graph = search["mask"] <> edges <> edges
+    retry = put_in(valid, ["state", "navigation", "search", "mask"], graph)
+    assert {:ok, ^retry} = decode(retry)
+
+    assert {:ok, ^retry} =
+             KC3Protocol.decode_reply(
+               Jason.encode!(retry),
+               request(1, "snapshot"),
+               retry["state"]
+             )
+
+    # A restored graph retains every edge byte, not merely its center mask.
+    changed_edge =
+      put_in(retry, ["state", "navigation", "search", "mask"], String.duplicate(".", count * 3))
+
+    assert {:error, :invalid_worker_reply} ==
+             KC3Protocol.decode_reply(
+               Jason.encode!(changed_edge),
+               request(1, "snapshot"),
+               retry["state"]
+             )
+
+    for size <- [0, count - 1, count + 1, count * 2, count * 3 - 1, count * 3 + 1, count * 4] do
+      assert {:error, :invalid_worker_reply} =
+               decode(
+                 put_in(
+                   valid,
+                   ["state", "navigation", "search", "mask"],
+                   String.duplicate(".", size)
+                 )
+               )
+    end
+
+    for offset <- [0, count - 1, count, count * 2 - 1, count * 2, count * 3 - 1] do
+      bad_graph =
+        String.duplicate(".", offset) <> "?" <> String.duplicate(".", count * 3 - offset - 1)
+
+      assert {:error, :invalid_worker_reply} =
+               decode(put_in(valid, ["state", "navigation", "search", "mask"], bad_graph))
+    end
+
+    for mask <- [nil, 0, [], String.duplicate("#", count - 1) <> "\n"] do
+      assert {:error, :invalid_worker_reply} =
+               decode(put_in(valid, ["state", "navigation", "search", "mask"], mask))
+    end
+
+    assert {:error, :invalid_worker_reply} =
+             decode(put_in(valid, ["state", "navigation", "mask"], graph))
+
     for {path, value} <- [
           {["revision"], 0},
           {["entity_id"], 0},

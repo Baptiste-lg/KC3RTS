@@ -331,16 +331,24 @@ defmodule KC3RTS.Game.KC3Protocol do
 
     fields?(s, ~w(goal start astar open parents costs path status expanded mask)) and
       integer?(s["goal"], 0, count - 1) and integer?(s["start"], 0, count - 1) and
-      search_status?(s, map) and
+      search_status?(s, count) and
       search_table?(s["parents"], count) and search_table?(s["costs"], count) and
       is_list(s["open"]) and length(s["open"]) <= count * 4 and
       Enum.all?(s["open"], &integer?(&1, 0, (count * 2 + 1) * (count + 1) * (count + 1)))
   end
 
-  defp search_status?(s, map),
+  defp search_status?(s, count),
     do:
       s["astar"] == true and s["status"] == "planning" and s["path"] == [] and
-        integer?(s["expanded"], 0, grid_count(map) * 4) and mask?(s["mask"], map)
+        integer?(s["expanded"], 0, count * 4) and search_mask?(s["mask"], count)
+
+  # Historical searches store centers only. Retry graphs additionally persist
+  # East and South edge planes so serialization cannot lose blocked passages.
+  # The static navigation mask above remains exactly one center plane.
+  defp search_mask?(mask, count),
+    do:
+      is_binary(mask) and byte_size(mask) in [count, count * 3] and
+        Regex.match?(~r/\A[.#]+\z/, mask)
 
   defp search_table?(table, count) do
     is_binary(table) and byte_size(table) == count * 3 and

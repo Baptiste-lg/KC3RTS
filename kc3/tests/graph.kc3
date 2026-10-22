@@ -1,0 +1,212 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+defmodule RTS.GraphCheck do
+  def native = cfn Tag "kc3rts_grid_graph" (Tag, Tag, Tag, Tag, Tag, Result)
+  # Independent oracle: inspect every cell and project each body center onto
+  # each closed segment. No Map.cells, native range enumeration or graph helper.
+  # The historical center rule is intentionally stricter for odd combined sizes
+  # than the integer-half collision box used for the unit-only edge planes.
+  def oracle = fn ({width, height, ox, oz, step}, mask, bodies, inflate, excluded) {
+    centers = ""
+    east = ""
+    south = ""
+    cell = 0
+    while cell < width * height do
+      col = cell mod width
+      row = cell / width
+      x = ox + col * step + step / 2
+      z = oz + row * step + step / 2
+      center_blocked = Str.byte(mask, cell) == 35
+      east_blocked = false
+      south_blocked = false
+      List.do(bodies, {id, bx, bz, size}, do
+        if id != excluded do
+          clearance = inflate + size
+          distance = clearance / 2
+          left = bx - distance - ox
+          right = bx + distance - 1 - ox
+          top = bz - distance - oz
+          bottom = bz + distance - 1 - oz
+          # Map.cells' upper-bound division truncates toward zero: row/column
+          # zero can survive a negative upper bound greater than -step.
+          in_col = (col + 1) * step > left &&
+            if col == 0 do right > (0 - step) else right >= col * step end
+          in_row = (row + 1) * step > top &&
+            if row == 0 do bottom > (0 - step) else bottom >= row * step end
+          dx = x - bx
+          dz = z - bz
+          if in_col && in_row && dx * 2 < clearance && dx * 2 > (0 - clearance) &&
+            dz * 2 < clearance && dz * 2 > (0 - clearance) do center_blocked = true end
+          if col + 1 < width do
+            nearest_x = if bx < x do x else if bx > x + step do x + step else bx end end
+            ex = nearest_x - bx
+            if ex < distance && ex > (0 - distance) && dz < distance && dz > (0 - distance) do
+              east_blocked = true
+            end
+          end
+          if row + 1 < height do
+            nearest_z = if bz < z do z else if bz > z + step do z + step else bz end end
+            sz = nearest_z - bz
+            if dx < distance && dx > (0 - distance) && sz < distance && sz > (0 - distance) do
+              south_blocked = true
+            end
+          end
+        end
+      end)
+      centers = centers + if center_blocked do "#" else "." end
+      east = east + if east_blocked do "#" else "." end
+      south = south + if south_blocked do "#" else "." end
+      cell = cell + 1
+    end
+    centers + east + south
+  }
+end
+
+# Complete cross product: 2 layouts, 3x3 actor/neighbor sizes, 9x7 positions,
+# and 2 terrain masks. Flatten the matrix to keep macro setup costs bounded.
+sample = 0
+valid = true
+while sample < 2268 do
+  choice = ^ sample
+  mask = if choice mod 2 == 0 do "......" else "#..#.." end
+  choice = choice / 2
+  xi = choice mod 9
+  choice = choice / 9
+  zi = choice mod 7
+  choice = choice / 7
+  size = choice mod 3 + 1
+  choice = choice / 3
+  inflate = choice mod 3 + 1
+  step = if choice / 3 == 0 do 1 else 3 end
+  ox = -3
+  oz = 5
+  x = ox + access([0 - step - 2, 0 - step, -1, 0, 1, step - 1,
+    step, step * 2, step * 3 + 1], [xi])
+  z = oz + access([0 - step - 1, -1, 0, 1, step, step * 2, step * 2 + 1], [zi])
+  layout = {3, 2, ox, oz, step}
+  bodies = [{2, x, z, size}]
+  expected = RTS.GraphCheck.oracle(layout, mask, bodies, inflate, 1)
+  actual = RTS.GraphCheck.native(layout, mask, bodies, inflate, 1)
+  valid = valid && actual == expected && Str.size(actual) == 18 &&
+    RTS.Navigation.graph_reference(layout, mask, bodies, inflate, 1) == expected
+  sample = sample + 1
+end
+RTS.Check.that("2268 exact graphs agree with independent center and segment projection geometry", valid && sample == 2268)
+
+RTS.Check.that("an East crossing is blocked while its tangent center endpoints remain clear",
+  RTS.GraphCheck.native({2, 1, 0, 0, 256}, "..", [{2, 256, 128, 128}], 128, 1) == "..#...")
+RTS.Check.that("a South crossing is blocked while its tangent center endpoints remain clear",
+  RTS.GraphCheck.native({1, 2, 0, 0, 256}, "..", [{2, 128, 256, 128}], 128, 1) == "....#.")
+RTS.Check.that("parallel edge tangency does not falsely block a clear route",
+  RTS.GraphCheck.native({2, 1, 0, 0, 256}, "..", [{2, 256, 256, 128}], 128, 1) == "......")
+RTS.Check.that("odd center clearance remains distinct from strict integer-half edge collision",
+  RTS.GraphCheck.native({2, 1, 0, 0, 2}, "..", [{2, 1, 2, 2}], 1, 1) == "#.....")
+RTS.Check.that("tiny historical center clipping is not replaced by unbounded point overlap",
+  RTS.GraphCheck.native({2, 1, 0, 0, 1}, "..", [{2, -1, 0, 2}], 1, 1) == "......")
+
+List.do([{8, 5, -1024, 768, 256}, {7, 3, -21, 14, 7}, {1, 1, 0, 0, 1}], layout, do
+  {width, height, ox, oz, step} = ^ layout
+  terrain = RTS.Map.mark(RTS.Map.repeat(".", width * height), width * height - 1)
+  List.do([1, 2, 3, 127, 128, 129, 257, 1024], inflate, do
+    bodies = [{1, ox, oz, 1024}, {2, ox - 1, oz + step, 1},
+      {3, ox + step, oz + step, 127},
+      {4, ox + width * step, oz + height * step, 129},
+      {5, ox + step / 2, oz - 1, 257}, {6, ox, oz, 1024}]
+    before = inspect({terrain, bodies})
+    expected = RTS.GraphCheck.oracle(layout, terrain, bodies, inflate, 1)
+    actual = RTS.GraphCheck.native(layout, terrain, bodies, inflate, 1)
+    RTS.Check.that("graph planes preserve clipping, odd footprints, terrain, ordering and immutable inputs",
+      actual == expected && RTS.Navigation.graph_reference(layout, terrain, bodies, inflate, 1) == expected &&
+      inspect({terrain, bodies}) == before &&
+      RTS.GraphCheck.native(layout, terrain, List.reverse(bodies), inflate, 1) == expected &&
+      RTS.GraphCheck.native(layout, terrain, List.append(bodies, bodies), inflate, 1) == expected)
+  end)
+end)
+
+layout = {3, 2, 0, 0, 256}
+List.do([1, (S64) 1, (Uw) 1, "unit", :unit, {"unit", 1}, %{"id" => 1}, void], id, do
+  bodies = [{id, 128, 128, 128}, {"other", 640, 384, 127}]
+  RTS.Check.that("opaque IDs retain KC3 equality without integer narrowing or Facts hashing",
+    RTS.GraphCheck.native(layout, "......", bodies, 128, id) ==
+      RTS.GraphCheck.oracle(layout, "......", bodies, 128, id))
+end)
+RTS.Check.that("equal numeric ID widths exclude every matching body",
+  RTS.GraphCheck.native(layout, "......", [{(S64) 1, 128, 128, 128}, {(Uw) 1, 384, 128, 128}], 128, 1) == RTS.Map.repeat(".", 18))
+RTS.Check.that("excluded bodies' unused geometry is not interpreted",
+  RTS.GraphCheck.native(layout, "......", [{"self", void, "unused", -1}], 128, "self") == RTS.Map.repeat(".", 18))
+List.do([(S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1,
+  (U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1], integer, do
+  RTS.Check.that("all bounded integer widths work for grid, coordinates, sizes and inflation",
+    RTS.GraphCheck.native({integer, integer, integer, integer, integer}, ".",
+      [{"body", integer, integer, integer}], integer, "excluded") == "#..")
+end)
+List.do([{3, 2, -2147483648, 2147483647, 256},
+  {3, 2, 2147483647, -2147483648, 2147483647}], layout, do
+  bodies = [{2, 2147483647, -2147483648, 2147483647}]
+  RTS.Check.that("signed-32-bit extremes retain safe signed-64-bit geometry",
+    RTS.GraphCheck.native(layout, "......", bodies, 2147483647, 1) ==
+      RTS.GraphCheck.oracle(layout, "......", bodies, 2147483647, 1))
+end)
+
+layout = {3, 2, 0, 0, 256}
+good = {2, 128, 128, 128}
+List.do([void, [], {2, 128}, {2, 128, 128, 0}, {2, 128, 128, -1},
+  {2, 128.0, 128, 128}, {2, "128", 128, 128}, {2, true, 128, 128},
+  {2, 2147483648, 128, 128}, {2, 128, 128, (U64) 18446744073709551615}], bad, do
+  mask = "......"
+  RTS.Check.that("late invalid geometry declines before partial output or source mutation",
+    RTS.GraphCheck.native(layout, mask, [good, bad], 128, 1) == void && mask == "......")
+end)
+RTS.Check.that("improper body lists decline before allocation",
+  RTS.GraphCheck.native(layout, "......", [good | true], 128, 1) == void)
+List.do([void, [], {3, 2}, {0, 2, 0, 0, 256}, {3, -1, 0, 0, 256},
+  {3, 2, 0, 0, 0}, {3, 2, 0, 0, -1}, {65536, 1, 0, 0, 1},
+  {3, 2, 2147483648, 0, 256}, {3, 2, 0, 0, 256.0}], bad_layout, do
+  RTS.Check.that("unsupported layouts decline before allocation",
+    RTS.GraphCheck.native(bad_layout, "......", [good], 128, 1) == void)
+end)
+List.do([void, [], "", ".....", ".......", "...?..", RTS.Map.repeat(".", 18)], bad_mask, do
+  RTS.Check.that("input center planes require exact grid length and ASCII flags",
+    RTS.GraphCheck.native(layout, bad_mask, [good], 128, 1) == void)
+end)
+List.do([void, false, 0, -1, 1.0, "1", 2147483648, (U64) 18446744073709551615], inflate, do
+  RTS.Check.that("unsupported inflation declines without coercion",
+    RTS.GraphCheck.native(layout, "......", [good], inflate, 1) == void)
+end)
+
+bodies = [good]
+doublings = 12
+while doublings > 0 do bodies = List.append(bodies, bodies); doublings = doublings - 1 end
+RTS.Check.that("4096 input bodies are accepted and 4097 decline before allocation",
+  RTS.GraphCheck.native(layout, "......", bodies, 128, 2) == RTS.Map.repeat(".", 18) &&
+  RTS.GraphCheck.native(layout, "......", [good | bodies], 128, 2) == void)
+mask = RTS.Map.repeat(".", 1048576)
+full = {2, 512, 512, 2048}
+filled = RTS.GraphCheck.native({1024, 1024, 0, 0, 1}, mask, [full], 1, 1)
+expected = RTS.Map.repeat("#", 1048576) +
+  RTS.Map.repeat(RTS.Map.repeat("#", 1023) + ".", 1024) +
+  RTS.Map.repeat("#", 1047552) + RTS.Map.repeat(".", 1024)
+RTS.Check.that("one-MiB center plane has exact edge bounds and bounded raster work",
+  filled == expected &&
+  RTS.GraphCheck.native({1024, 1024, 0, 0, 1}, mask, [full, full], 1, 1) == void)
+RTS.Check.that("oversized allocation declines even without any bodies",
+  RTS.GraphCheck.native({1025, 1024, 0, 0, 1}, RTS.Map.repeat(".", 1049600), [], 1, 1) == void)
+mask = RTS.Map.repeat(".", 65535)
+RTS.Check.that("maximum bounded dimension remains supported",
+  RTS.GraphCheck.native({65535, 1, 0, 0, 1}, mask, [], 1, 1) == RTS.Map.repeat(".", 196605))
+
+List.do([{3, 2, -9007199254730000, 9007199254730000, 256}, {3, 2, 0, 0, 256}], layout, do
+  {width, height, ox, oz, step} = ^ layout
+  bodies = [{2, ox + 128, oz + 128, 0}]
+  RTS.Check.that("valid wide/zero-footprint inputs retain the exact KC3 fallback",
+    RTS.GraphCheck.native(layout, "......", bodies, 1, 1) == void &&
+    RTS.Navigation.graph(layout, "......", bodies, 1, 1) ==
+      RTS.GraphCheck.oracle(layout, "......", bodies, 1, 1))
+end)
+source = "......"
+first = RTS.GraphCheck.native({3, 2, 0, 0, 256}, source, [{2, 128, 128, 128}], 128, 1)
+second = RTS.GraphCheck.native({3, 2, 0, 0, 256}, source, [{2, 640, 384, 128}], 128, 1)
+source = void
+RTS.Check.that("returned graphs own independent bytes after later calls and input release",
+  first == "#.....#.....#....." && second == ".....#....#...#...")

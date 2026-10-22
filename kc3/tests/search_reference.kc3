@@ -1,0 +1,56 @@
+# Frozen insertion-sort Search.run before sorted-tail optimization.
+# Source: fe5fcfe499481fc95b502c7d537791289eff390b, kc3/rts/search.kc3.
+# Keep this independent of the candidate run function for resumable-state parity.
+defmodule RTS.SearchReference do
+  def run = fn (map, mask, search, budget) {
+    search = RTS.Data.share(search)
+    stride = RTS.Data.get(map, "width") * RTS.Data.get(map, "height") + 1
+    goal = RTS.Data.get(search, "goal")
+    start = RTS.Data.get(search, "start")
+    reverse = RTS.Search.reverse_ties?(map, start, goal)
+    astar = RTS.Data.get(search, "astar")
+    open = RTS.Data.get(search, "open")
+    parents = RTS.Data.get(search, "parents")
+    costs = RTS.Data.get(search, "costs")
+    expanded = RTS.Data.get(search, "expanded")
+    path = []
+    status = RTS.Data.get(search, "status")
+    if Str.byte(mask, goal) == 35 do status = "unreachable" end
+    while budget > 0 && status == "planning" do
+      if open == [] do status = "unreachable" else
+        entry = List.first(open)
+        open = List.next(open)
+        cost = stride - 1 - (entry / stride mod stride)
+        cell = entry mod stride
+        if reverse do cell = stride - 1 - cell end
+        if cost == RTS.Search.read(costs, cell) do
+          if cell == goal do
+            path = [cell]
+            while cell != start do
+              cell = RTS.Search.read(parents, cell)
+              path = [cell | path]
+            end
+            status = "ready"
+          else
+            List.do(RTS.Map.neighbors(map, cell), neighbor, do
+              if Str.byte(mask, neighbor) != 35 do
+                old = RTS.Search.read(costs, neighbor)
+                if cost + 1 < old do
+                  costs = RTS.Search.write(costs, neighbor, cost + 1)
+                  parents = RTS.Search.write(parents, neighbor, cell)
+                  h = if astar do RTS.Search.distance(map, neighbor, goal) else 0 end
+                  open = [RTS.Search.priority(map, neighbor, cost + 1, h, reverse) | open]
+                end
+              end
+            end)
+            open = List.sort(open)
+          end
+          expanded = expanded + 1
+        end
+        budget = budget - 1
+      end
+    end
+    Map.merge(RTS.Data.unshare(search), %{"goal" => goal, "start" => start, "astar" => astar, "open" => open,
+      "parents" => parents, "costs" => costs, "path" => path, "status" => status, "expanded" => expanded})
+  }
+end

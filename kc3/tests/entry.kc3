@@ -1,0 +1,394 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+defmodule RTS.EntryCheck do
+  def snapshot = fn (index) {
+    List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) {
+      {fact.subject, fact.predicate, fact.object}
+    }))
+  }
+  def world = fn (content, positions) {
+    state = RTS.World.opening(content, "entry", 1234, ["kiln.concord", "lantern.synod"])
+    entities = []
+    id = 1
+    List.do(positions, {x, z}, do
+      entities = [RTS.World.entity(content, "kiln.concord", id, "core.worker", 1, x, z, void) | entities]
+      id = id + 1
+    end)
+    state = RTS.Map.cache(content, RTS.Data.merge(state, %{"nodes" => [],
+      "entities" => List.reverse(entities), "next_entity_id" => id,
+      "map" => %{"width" => 2, "height" => 2, "cell_size" => 1024,
+        "origin_x" => 0, "origin_z" => 0, "blocked" => []}}))
+    order = RTS.Data.merge(RTS.Navigation.order(25, RTS.Data.get(RTS.Data.get(state, "navigation"), "revision")),
+      %{"attempt" => 1, "wait" => 20})
+    RTS.World.put(state, RTS.Data.merge(RTS.World.find(state, 1), %{"order" => order, "status" => "planning"}))
+  }
+  def plan = fn (content, state) {
+    {state, active, pending} = RTS.Navigation.prepare(state)
+    RTS.Navigation.plan(content, state, RTS.Map.grid(RTS.Data.get(state, "map")), pending)
+  }
+  def clear? = fn (content, state) {
+    layout = RTS.Map.layout(RTS.Map.grid(RTS.Data.get(state, "map")))
+    spatial = RTS.Spatial.build(content, layout, RTS.Data.get(state, "entities"))
+    index = RTS.Data.get(spatial, "index")
+    terrain = RTS.Data.get(RTS.Data.get(state, "navigation"), "mask")
+    valid = true
+    List.do(RTS.Data.get(spatial, "rows"), {e, speed, body, cells}, do
+      if body != void && RTS.Spatial.available(layout, terrain, index, body) == [] do valid = false end
+    end)
+    valid
+  }
+end
+content = RTS.Content.compile(RTS.Core.catalog())
+world = RTS.EntryCheck.world(content, [{384, 256}, {384, 384}, {384, 128}])
+grid = RTS.Map.grid(RTS.Data.get(world, "map"))
+layout = RTS.Map.layout(grid)
+terrain = RTS.Data.get(RTS.Data.get(world, "navigation"), "mask")
+actor = RTS.World.find(world, 1)
+body = {1, 384, 256, 128}
+mask = RTS.Navigation.planner_mask(content, world, grid, terrain, actor)
+spatial = RTS.Spatial.build(content, layout, RTS.Data.get(world, "entities"))
+index = RTS.Data.get(spatial, "index")
+before = RTS.EntryCheck.snapshot(index)
+RTS.Check.that("entry trap starts with valid non-overlapping physical footprints", RTS.EntryCheck.clear?(content, world))
+RTS.Check.that("legacy center-only entry demonstrates the parked-unit trap",
+  RTS.Navigation.entry(grid, mask, actor) == 17 &&
+  (! RTS.Navigation.connector?(layout, terrain, index, body, 64, 17)))
+List.do([1, 64, 128, 256], speed, do
+  RTS.Check.that("retry selects the first reachable equal-distance lateral entry at speed " + (Str) speed,
+    RTS.Navigation.entry_retry(grid, mask, terrain, index, body, speed) == 10)
+end)
+RTS.Check.that("retry queries leave every original reservation and the input body unchanged",
+  RTS.EntryCheck.snapshot(index) == before && body == {1, 384, 256, 128})
+Facts.add_tags(index, 0, :sentinel, "cursor closed")
+RTS.Check.that("retry geometry closes every read cursor before returning",
+  Facts.remove_tags(index, 0, :sentinel, "cursor closed") && RTS.EntryCheck.snapshot(index) == before)
+RTS.Check.that("zero or negative speed cannot claim a nonempty connector",
+  RTS.Navigation.entry_retry(grid, mask, terrain, index, body, 0) == void &&
+  RTS.Navigation.entry_retry(grid, mask, terrain, index, body, -1) == void)
+RTS.Check.that("off-map retry has no entry rather than a negative search start",
+  RTS.Navigation.entry_retry(grid, mask, terrain, index, {1, -1, 256, 128}, 64) == void)
+
+# A connector must validate later steps, not just its first clear proposal.
+obstacles = Facts.database()
+RTS.Spatial.reserve(obstacles, [0], {1, 128, 128, 128}, true)
+RTS.Spatial.reserve(obstacles, [1], {2, 384, 128, 128}, true)
+{first, reached, cells} = RTS.Navigation.probe(layout, terrain, obstacles, {1, 128, 128, 128}, 64, 2, true)
+RTS.Check.that("a later physical blocker invalidates a connector whose first step is clear",
+  cells != [] && (! RTS.Navigation.connector?(layout, terrain, obstacles, {1, 128, 128, 128}, 64, 2)))
+List.do([{2, {2, 384, 128, 127}}, {16, {2, 128, 384, 127}}], {goal, neighbor}, do
+  odd_index = Facts.database()
+  {id, x, z, size} = ^ neighbor
+  RTS.Spatial.reserve(odd_index, RTS.Map.cover(layout, x, z, size), neighbor, true)
+  {next, reached, cells} = RTS.Navigation.probe(layout, terrain, odd_index, {1, 128, 128, 128}, 512, goal, true)
+  RTS.Check.that("fast retry connector rejects tunneling through an odd footprint on either axis",
+    cells != [] && (! RTS.Navigation.connector?(layout, terrain, odd_index, {1, 128, 128, 128}, 512, goal)))
+end)
+RTS.Check.that("connector does not escape an initially overlapping body and claim a clear start",
+  (! RTS.Navigation.connector?(layout, terrain, obstacles, {1, 384, 128, 128}, 64, 2)))
+empty = Facts.database()
+wall = RTS.Map.mark(terrain, 1)
+RTS.Check.that("static terrain between clear endpoints invalidates the whole connector",
+  Str.byte(wall, 2) != 35 && (! RTS.Navigation.connector?(layout, wall, empty, {1, 128, 128, 128}, 64, 2)))
+RTS.Check.that("already-centered zero-speed entry is valid without an artificial movement step",
+  RTS.Navigation.connector?(layout, terrain, empty, {1, 128, 128, 128}, 0, 0))
+
+# Replay the ordinary alternate-axis policy without reserving trial positions.
+alternate = Facts.database()
+neighbor = {2, 256, 128, 128}
+RTS.Spatial.reserve(alternate, RTS.Map.cover(layout, 256, 128, 128), neighbor, true)
+before = RTS.EntryCheck.snapshot(alternate)
+RTS.Check.that("connector can take the same safe alternate-axis steps as movement",
+  RTS.Navigation.connector?(layout, terrain, alternate, {1, 128, 128, 128}, 64, 9) &&
+  RTS.EntryCheck.snapshot(alternate) == before)
+valid = true
+List.do([1, 127, 128, 255, 256, 384, 512, 1024], size, do
+  List.do([1, 64, 512], speed, do
+    valid = valid && RTS.Navigation.connector?(layout, terrain, empty, {1, 900, 900, size}, speed, 27)
+  end)
+end)
+RTS.Check.that("slow, odd-sized and large-footprint connectors terminate at their exact target", valid)
+RTS.Check.that("footprint one retains exact grid-boundary rejection during a fast connector",
+  (! RTS.Navigation.connector?(layout, terrain, empty, {1, 1025, 900, 1}, 512, 27)))
+
+# Plain and packed planners must not borrow or mutate the retained spatial
+# cache, even when a caller has already prepared it for this exact snapshot.
+List.do([world, RTS.World.pack(world)], state, do
+  before = RTS.Wire.encode(state)
+  saved = RTS.Spatial.build(content, layout, RTS.Data.get(state, "entities"))
+  saved_facts = RTS.EntryCheck.snapshot(RTS.Data.get(saved, "index"))
+  RTS.Spatial.remember(content, saved)
+  planned = RTS.EntryCheck.plan(content, state)
+  retained = RTS.Data.slot_take(RTS.Data.get(content, "spatial_cache"))
+  RTS.Check.that("retry planner leaves source state and retained spatial cache intact",
+    RTS.Wire.encode(state) == before && retained == saved &&
+    RTS.EntryCheck.snapshot(RTS.Data.get(retained, "index")) == saved_facts)
+  RTS.Spatial.remember(content, retained)
+  order = RTS.Data.get(RTS.World.find(planned, 1), "order")
+  RTS.Check.that("retry path begins with the checked lateral entry and keeps its wait budget",
+    RTS.Data.first(order, "path") == 10 && RTS.Data.get(order, "wait") == 20 &&
+    RTS.Data.get(order, "attempt") == 1 && RTS.Data.get(RTS.World.find(planned, 1), "status") == void)
+  frames = 0
+  valid = true
+  result = ^ state
+  while RTS.Data.get(RTS.World.find(result, 1), "order") != void && frames < 64 do
+    result = RTS.World.tick(content, result)
+    valid = valid && RTS.EntryCheck.clear?(content, result)
+    frames = frames + 1
+  end
+  final = RTS.World.find(result, 1)
+  RTS.Check.that("three-unit parked trap reaches the exact goal without moving blockers or consuming RNG",
+    valid && RTS.Data.get(final, "x") == 384 && RTS.Data.get(final, "z") == 896 &&
+    RTS.Data.get(final, "order") == void && RTS.Data.get(final, "status") == void &&
+    RTS.World.find(result, 2) == RTS.World.find(state, 2) && RTS.World.find(result, 3) == RTS.World.find(state, 3) &&
+    RTS.Data.get(result, "rng_state") == RTS.Data.get(state, "rng_state"))
+end)
+
+off_center = RTS.EntryCheck.world(content, [{384, 320}])
+planned = RTS.EntryCheck.plan(content, off_center)
+RTS.Check.that("off-center retry retains the checked current-cell connector before the grid route",
+  RTS.Data.first(RTS.Data.get(RTS.World.find(planned, 1), "order"), "path") == 9)
+centered = RTS.EntryCheck.world(content, [{384, 384}])
+planned = RTS.EntryCheck.plan(content, centered)
+RTS.Check.that("already-centered retry avoids a redundant zero-length connector waypoint",
+  RTS.Data.first(RTS.Data.get(RTS.World.find(planned, 1), "order"), "path") == 17)
+
+# Reduced 150-unit regression: one unit occupies the other's goal, while its
+# neighbor waits exactly between two otherwise clear grid centers. A center-only
+# mask gives the second unit a straight route through that neighbor forever.
+dependency = RTS.EntryCheck.world(content, [{512, 384}, {384, 384}])
+revision = RTS.Data.get(RTS.Data.get(dependency, "navigation"), "revision")
+List.do([{1, 9}, {2, 11}], {id, goal}, do
+  order = RTS.Data.merge(RTS.Navigation.order(goal, revision), %{"attempt" => 1, "wait" => 20})
+  dependency = RTS.World.put(dependency, RTS.Data.merge(RTS.World.find(dependency, id),
+    %{"order" => order, "status" => "planning"}))
+end)
+List.do([dependency, RTS.World.pack(dependency)], state, do
+  before = RTS.Wire.encode(state)
+  result = ^ state
+  frames = 0
+  active = true
+  valid = true
+  while active && frames < 64 do
+    result = RTS.World.tick(content, result)
+    valid = valid && RTS.EntryCheck.clear?(content, result)
+    active = RTS.Data.get(RTS.World.find(result, 1), "order") != void || RTS.Data.get(RTS.World.find(result, 2), "order") != void
+    frames = frames + 1
+  end
+  first = RTS.World.find(result, 1)
+  second = RTS.World.find(result, 2)
+  RTS.Check.that("two-unit grid-edge dependency detours and reaches both distinct goals",
+    valid && (! active) && RTS.Data.get(first, "status") == void && RTS.Data.get(second, "status") == void &&
+    RTS.Data.get(first, "x") == 384 && RTS.Data.get(first, "z") == 384 &&
+    RTS.Data.get(second, "x") == 896 && RTS.Data.get(second, "z") == 384 &&
+    RTS.Wire.encode(state) == before && RTS.Data.get(result, "rng_state") == RTS.Data.get(state, "rng_state"))
+end)
+
+# A mobile can occupy a retry's previously checked entry before its connector
+# finishes. This reduces the 56/47 face-to-face from the 150-unit scene: both
+# start with valid connectors and advance alongside each other. The second
+# reaches their shared entry first, then wants to pass through the first unit
+# still finishing its connector. Neither may gain a fresh cancellation budget.
+face = RTS.EntryCheck.world(content, [{384, 256}, {384, 384}])
+revision = RTS.Data.get(RTS.Data.get(face, "navigation"), "revision")
+first_order = RTS.Data.merge(RTS.Navigation.order(3, revision),
+  %{"attempt" => 1, "wait" => 20, "path" => [10, 2, 3]})
+second_order = RTS.Data.merge(RTS.Navigation.order(2, revision),
+  %{"attempt" => 1, "wait" => 20, "path" => [10, 2]})
+face = RTS.World.put(face, RTS.Data.merge(RTS.World.find(face, 1), %{"order" => first_order, "status" => void}))
+face = RTS.World.put(face, RTS.Data.put(RTS.World.find(face, 2), "order", second_order))
+face_grid = RTS.Map.grid(RTS.Data.get(face, "map"))
+face_layout = RTS.Map.layout(face_grid)
+face_terrain = RTS.Data.get(RTS.Data.get(face, "navigation"), "mask")
+face_index = RTS.Data.get(RTS.Spatial.build(content, face_layout, RTS.Data.get(face, "entities")), "index")
+RTS.Check.that("both future facing units initially have physically valid connectors to their shared entry",
+  RTS.Navigation.connector?(face_layout, face_terrain, face_index, {1, 384, 256, 128}, 64, 10) &&
+  RTS.Navigation.connector?(face_layout, face_terrain, face_index, {2, 384, 384, 128}, 64, 10))
+List.do([face, RTS.World.pack(face)], state, do
+  before = RTS.Wire.encode(state)
+  result = ^ state
+  frames = 0
+  active = true
+  valid = true
+  while active && frames < 48 do
+    result = RTS.World.tick(content, result)
+    first = RTS.World.find(result, 1)
+    order = RTS.Data.get(first, "order")
+    frames = frames + 1
+    valid = valid && RTS.EntryCheck.clear?(content, result)
+    if frames <= 4 do
+      valid = valid && RTS.Data.get(first, "x") == 384 + frames * 64 && RTS.Data.get(first, "z") == 256 &&
+        RTS.Data.get(RTS.World.find(result, 2), "x") == 384 + frames * 64 &&
+        RTS.Data.get(order, "wait") == 20 && RTS.Data.get(order, "attempt") == 1
+    end
+    if frames > 4 && frames < 14 do
+      valid = valid && RTS.Data.get(first, "x") == 640 && RTS.Data.get(first, "z") == 256 &&
+        RTS.Data.get(first, "status") == void && RTS.Data.get(order, "wait") == 16 + frames &&
+        RTS.Data.get(order, "attempt") == 1 && RTS.Data.get(order, "path") == [10, 2, 3]
+    end
+    if frames == 14 do
+      valid = valid && RTS.Data.get(first, "status") == "planning" &&
+        RTS.Data.get(order, "wait") == 30 && RTS.Data.get(order, "attempt") == 1 && RTS.Data.get(order, "path") == []
+    end
+    if frames == 15 do
+      valid = valid && RTS.Data.get(first, "z") == 192 && RTS.Data.get(order, "wait") == 30 &&
+        RTS.Data.get(order, "attempt") == 1
+    end
+    active = order != void || RTS.Data.get(RTS.World.find(result, 2), "order") != void
+  end
+  first = RTS.World.find(result, 1)
+  second = RTS.World.find(result, 2)
+  RTS.Check.that("a newly occupied retry connector replans at wait 30 and both facing units reach their goals",
+    valid && (! active) && RTS.Data.get(first, "status") == void && RTS.Data.get(second, "status") == void &&
+    RTS.Data.get(first, "x") == 896 && RTS.Data.get(first, "z") == 128 &&
+    RTS.Data.get(second, "x") == 640 && RTS.Data.get(second, "z") == 128 &&
+    RTS.Data.get(result, "rng_state") == RTS.Data.get(state, "rng_state") && RTS.Wire.encode(state) == before)
+end)
+
+# A long wall leaves a real route around its far end but forces this retry's
+# A* beyond one 128-expansion slice. The parked unit blocks only an East edge,
+# not either endpoint, so the serialized graph must retain more than centers.
+resumable = RTS.EntryCheck.world(content, [{640, 640}, {2816, 640}])
+blocked = []
+row = 0
+while row < 23 do blocked = [row * 24 + 12 | blocked]; row = row + 1 end
+resumable = RTS.Map.cache(content, RTS.Data.put(resumable, "map",
+  %{"width" => 24, "height" => 24, "cell_size" => 256,
+    "origin_x" => 0, "origin_z" => 0, "blocked" => List.reverse(blocked)}))
+revision = RTS.Data.get(RTS.Data.get(resumable, "navigation"), "revision")
+order = RTS.Data.merge(RTS.Navigation.order(62, revision), %{"attempt" => 1, "wait" => 20})
+resumable = RTS.World.put(resumable, RTS.Data.merge(RTS.World.find(resumable, 1),
+  %{"order" => order, "status" => "planning"}))
+List.do([resumable, RTS.World.pack(resumable)], state, do
+  before = RTS.Wire.encode(state)
+  first = RTS.EntryCheck.plan(content, state)
+  nav = RTS.Data.get(first, "navigation")
+  search = RTS.Data.get(nav, "search")
+  RTS.Check.that("retry graph suspends with the unchanged 128-expansion budget and all three planes",
+    RTS.Data.get(nav, "entity_id") == 1 && RTS.Data.get(search, "status") == "planning" &&
+    RTS.Data.get(search, "expanded") > 0 && RTS.Data.get(search, "expanded") <= 128 &&
+    Str.size(RTS.Data.get(search, "mask")) == 1728 &&
+    Str.byte(RTS.Data.get(search, "mask"), 576 + 58) == 35 &&
+    Str.byte(RTS.Data.get(search, "mask"), 58) == 46 && Str.byte(RTS.Data.get(search, "mask"), 59) == 46 &&
+    RTS.Data.get(RTS.Data.get(RTS.World.find(first, 1), "order"), "attempt") == 1 &&
+    RTS.Wire.encode(state) == before)
+  serialized = RTS.Wire.encode(first)
+  restored = JSON.from_str(serialized)
+  if type(first) == RTS.Shared do restored = RTS.World.pack(restored) end
+  # A separately compiled catalog has no retained geometry/cache from planning.
+  # The original gets a deliberately warm spatial snapshot for the same input.
+  restored_content = RTS.Content.compile(RTS.Core.catalog())
+  layout = RTS.Map.layout(RTS.Map.grid(RTS.Data.get(first, "map")))
+  RTS.Spatial.remember(content, RTS.Spatial.build(content, layout, RTS.Data.get(first, "entities")))
+  actual = ^ first
+  frames = 0
+  valid = RTS.Wire.encode(restored) == serialized
+  while RTS.Data.get(RTS.World.find(actual, 1), "order") != void && frames < 256 do
+    actual = RTS.World.tick(content, actual)
+    restored = RTS.World.tick(restored_content, restored)
+    valid = valid && RTS.Wire.encode(actual) == RTS.Wire.encode(restored) &&
+      RTS.EntryCheck.clear?(content, actual)
+    frames = frames + 1
+  end
+  actor = RTS.World.find(actual, 1)
+  RTS.Check.that("serialized retry graph resumes every complete state identically and reaches its goal with cold caches",
+    valid && RTS.Data.get(actor, "order") == void && RTS.Data.get(actor, "status") == void &&
+    RTS.Data.get(actor, "x") == 3712 && RTS.Data.get(actor, "z") == 640 &&
+    RTS.World.find(actual, 2) == RTS.World.find(state, 2) &&
+    RTS.Data.get(actual, "rng_state") == RTS.Data.get(state, "rng_state") &&
+    RTS.Wire.encode(first) == serialized && RTS.Wire.encode(state) == before)
+end)
+
+# Every possible first movement is blocked. A free center behind a blocker
+# must become waiting, never a ready path from a fabricated or negative start.
+sealed = RTS.EntryCheck.world(content, [{384, 256}, {384, 384}, {384, 128}, {256, 256}, {512, 256}])
+planned = RTS.EntryCheck.plan(content, sealed)
+actor = RTS.World.find(planned, 1)
+RTS.Check.that("no reachable connector produces ordinary retry waiting with unchanged budget",
+  RTS.Data.get(actor, "status") == "waiting" && RTS.Data.get(RTS.Data.get(actor, "order"), "wait") == 20 &&
+  RTS.Data.get(RTS.Data.get(actor, "order"), "path") == [] &&
+  RTS.Data.get(RTS.Data.get(planned, "navigation"), "search") == void)
+waited = 20
+valid = true
+while waited < 69 do
+  planned = RTS.World.tick(content, planned)
+  waited = waited + 1
+  actor = RTS.World.find(planned, 1)
+  order = RTS.Data.get(actor, "order")
+  valid = valid && RTS.Data.get(order, "wait") == waited && RTS.Data.get(order, "attempt") == 1 &&
+    RTS.Data.get(actor, "x") == 384 && RTS.Data.get(actor, "z") == 256 &&
+    RTS.Data.get(actor, "status") == if waited mod 10 == 0 do "planning" else "waiting" end
+end
+RTS.Check.that("connector failure preserves the existing ten-tick retry cadence through wait 69", valid)
+planned = RTS.World.tick(content, planned)
+actor = RTS.World.find(planned, 1)
+RTS.Check.that("connector failure still cancels at wait 70 without extending retry policy",
+  RTS.Data.get(actor, "status") == "blocked" && RTS.Data.get(actor, "order") == void &&
+  RTS.Data.get(actor, "task") == void && RTS.Data.get(actor, "x") == 384 && RTS.Data.get(actor, "z") == 256)
+
+# Integrated retry clearance: a large actor must detour around a real hall and
+# a parked worker. The hall is static terrain, never a dynamic body/Void entry.
+large_catalog = RTS.Core.catalog()
+large_definition = RTS.Data.put(RTS.Core.entity("test.large", "unit", "Large", 40, ["move"]), "footprint", 512)
+large_catalog = RTS.Data.put(large_catalog, "definitions", [large_definition | RTS.Data.get(large_catalog, "definitions")])
+large_content = RTS.Content.compile(large_catalog)
+large_world = RTS.World.opening(large_content, "large-entry", 1234, ["kiln.concord", "lantern.synod"])
+large_world = RTS.Map.cache(large_content, RTS.Data.merge(large_world, %{"nodes" => [],
+  "entities" => [RTS.World.entity(large_content, "kiln.concord", 1, "test.large", 1, 640, 1408, void),
+    RTS.World.entity(large_content, "kiln.concord", 2, "core.hall", 1, 2048, 1536, void),
+    RTS.World.entity(large_content, "kiln.concord", 3, "core.worker", 1, 1152, 640, void)],
+  "next_entity_id" => 4,
+  "map" => %{"width" => 16, "height" => 12, "cell_size" => 256,
+    "origin_x" => 0, "origin_z" => 0, "blocked" => []}}))
+large_revision = RTS.Data.get(RTS.Data.get(large_world, "navigation"), "revision")
+large_order = RTS.Data.merge(RTS.Navigation.order(93, large_revision), %{"attempt" => 1, "wait" => 20})
+large_world = RTS.World.put(large_world, RTS.Data.merge(RTS.World.find(large_world, 1),
+  %{"order" => large_order, "status" => "planning"}))
+large_grid = RTS.Map.grid(RTS.Data.get(large_world, "map"))
+large_layout = RTS.Map.layout(large_grid)
+large_terrain = RTS.Data.get(RTS.Data.get(large_world, "navigation"), "mask")
+large_static = RTS.Navigation.clearance(large_content, large_layout, large_terrain, 512)
+large_cache = RTS.Data.slot_take(RTS.Data.get(large_content, "clearance_cache"))
+RTS.Data.slot_put(RTS.Data.get(large_content, "clearance_cache"), large_cache)
+large_spatial = RTS.Spatial.build(large_content, large_layout, RTS.Data.get(large_world, "entities"))
+large_rows = RTS.Data.get(large_spatial, "rows")
+large_bodies = RTS.Data.column(large_rows, 2)
+large_graph = RTS.Navigation.graph(large_layout, large_static, large_bodies, 512, 1)
+RTS.Check.that("large retry separates building terrain, extra footprint clearance and worker-only graph bodies",
+  large_bodies == [{1, 640, 1408, 512}, {3, 1152, 640, 128}] &&
+  large_terrain != RTS.Map.repeat(".", 192) && large_static != large_terrain &&
+  Str.slice(large_graph, 0, 192) != large_static &&
+  RTS.Data.get(large_cache, "mask") == large_terrain && RTS.Data.get(large_cache, "clearance") == large_static &&
+  RTS.EntryCheck.clear?(large_content, large_world))
+List.do([large_world, RTS.World.pack(large_world)], state, do
+  before = RTS.Wire.encode(state)
+  planned = RTS.EntryCheck.plan(large_content, state)
+  saved = RTS.Data.slot_take(RTS.Data.get(large_content, "clearance_cache"))
+  RTS.Check.that("large retry planning leaves static clearance cache and source state unchanged",
+    saved == large_cache && RTS.Data.get(RTS.Data.get(planned, "navigation"), "mask") == large_terrain &&
+    RTS.Wire.encode(state) == before)
+  RTS.Data.slot_put(RTS.Data.get(large_content, "clearance_cache"), saved)
+  result = ^ planned
+  frames = 0
+  valid = true
+  detoured = false
+  while RTS.Data.get(RTS.World.find(result, 1), "order") != void && frames < 128 do
+    result = RTS.World.tick(large_content, result)
+    actor = RTS.World.find(result, 1)
+    x = RTS.Data.get(actor, "x")
+    z = RTS.Data.get(actor, "z")
+    # Independent physical rectangle separation, including exact tangencies.
+    valid = valid && (x <= 1280 || x >= 2816 || z <= 768 || z >= 2304) &&
+      (x <= 832 || x >= 1472 || z <= 320 || z >= 960) && RTS.EntryCheck.clear?(large_content, result)
+    if z >= 2304 do detoured = true end
+    frames = frames + 1
+  end
+  actor = RTS.World.find(result, 1)
+  saved = RTS.Data.slot_take(RTS.Data.get(large_content, "clearance_cache"))
+  RTS.Check.that("large retry reaches its goal around the hall and worker without collisions or cache contamination",
+    valid && detoured && RTS.Data.get(actor, "x") == 3456 && RTS.Data.get(actor, "z") == 1408 &&
+    RTS.Data.get(actor, "order") == void && RTS.Data.get(actor, "status") == void && saved == large_cache &&
+    RTS.World.find(result, 2) == RTS.World.find(state, 2) && RTS.World.find(result, 3) == RTS.World.find(state, 3) &&
+    RTS.Data.get(result, "rng_state") == RTS.Data.get(state, "rng_state") && RTS.Wire.encode(state) == before)
+  RTS.Data.slot_put(RTS.Data.get(large_content, "clearance_cache"), saved)
+end)

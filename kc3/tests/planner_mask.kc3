@@ -43,6 +43,29 @@ end)
 RTS.Check.that("432 planner masks preserve terrain, retries, clipping, odd footprints and wide origins",
   valid && cases == 432)
 
+# The historical center plane deliberately leaves tangent centers available.
+# Retry graph edges, tested separately, reject crossing BETWEEN these centers.
+edge_grid = %{"width" => 8, "height" => 8, "origin_x" => 0, "origin_z" => 0, "cell_size" => 256}
+edge_terrain = RTS.Map.repeat(".", 64)
+List.do([{128, 128}, {1, 1}, {127, 1}, {128, 127}, {255, 127}], {size, other_size}, do
+  entity = %{"id" => 1, "type_id" => "test.body" + (Str) size, "order" => %{"attempt" => 1}}
+  List.do([{256, 128, 0, 1}, {257, 128, 0, 1}, {128, 256, 0, 8}, {128, 257, 0, 8}],
+    {x, z, first, second}, do
+    state = %{"entities" => [%{"id" => 2, "type_id" => "test.body" + (Str) other_size, "x" => x, "z" => z}]}
+    before = RTS.Wire.encode(state)
+    mask = RTS.Navigation.planner_mask(content, state, edge_grid, edge_terrain, entity)
+    graph = RTS.Navigation.graph(RTS.Map.layout(edge_grid), edge_terrain, [{2, x, z, other_size}], size, 1)
+    edge = if second == first + 1 do 64 + first else 128 + first end
+    RTS.Check.that("retry graphs preserve historical centers and block crossing edges for small and odd bodies",
+      Str.slice(graph, 0, 64) == mask && Str.byte(graph, edge) == 35 &&
+      mask == RTS.NavigationReference.planner_mask(content, state, edge_grid, edge_terrain, entity) &&
+      RTS.Wire.encode(state) == before && edge_terrain == RTS.Map.repeat(".", 64))
+    fresh = Map.put(entity, "order", %{"attempt" => 0})
+    RTS.Check.that("fresh small-unit planning does not inherit dynamic graph blockers",
+      RTS.Navigation.planner_mask(content, state, edge_grid, edge_terrain, fresh) == edge_terrain)
+  end)
+end)
+
 # Reuse, terrain changes and restored geometry must agree with a fresh scan.
 grid = RTS.Data.share(%{"width" => 8, "height" => 8, "origin_x" => -1024, "origin_z" => -1024, "cell_size" => 256})
 mask = RTS.Map.repeat(".", 64)

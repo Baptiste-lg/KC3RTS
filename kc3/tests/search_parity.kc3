@@ -1,0 +1,67 @@
+load!(__DIR__ + "check.kc3")
+dlopen("kc3rts.so")
+load!(__DIR__ + "../rts/data.kc3")
+load!(__DIR__ + "../rts/wire.kc3")
+load!(__DIR__ + "../rts/map.kc3")
+load!(__DIR__ + "../rts/search.kc3")
+load!(__DIR__ + "search_reference.kc3")
+defmodule RTS.SearchParity do
+  def chunk = fn (map, mask, original, budget) {
+    before = inspect(original)
+    expected = RTS.SearchReference.run(map, mask, original, budget)
+    actual = RTS.Search.run(map, mask, original, budget)
+    RTS.Check.that("each search budget preserves the complete state and exact canonical bytes",
+      actual == expected && inspect(actual) == inspect(expected) &&
+      RTS.Wire.encode(actual) == RTS.Wire.encode(expected) && inspect(original) == before)
+    actual
+  }
+  def scene = fn (map, mask, start, goal, astar, budget) {
+    current = RTS.Search.start(map, start, goal, astar)
+    steps = 0
+    while RTS.Data.get(current, "status") == "planning" && steps < 256 do
+      current = RTS.SearchParity.chunk(map, mask, current, budget)
+      # Independently serialize and resume every third chunk.
+      if steps mod 3 == 0 do current = JSON.from_str(RTS.Wire.encode(current)) end
+      steps = steps + 1
+    end
+    RTS.Check.that("bounded parity scene completes without changing frontier policy",
+      RTS.Data.get(current, "status") != "planning")
+    current
+  }
+end
+map = %{"width" => 8, "height" => 8, "cell_size" => 256, "origin_x" => 0, "origin_z" => 0, "blocked" => []}
+mask = RTS.Map.repeat(".", 64)
+List.do([true, false], astar, do
+  List.do([{0, 63}, {63, 0}, {0, 56}, {56, 0}], {start, goal}, do
+    List.do([1, 3, 17], budget, do
+      RTS.SearchParity.scene(map, mask, start, goal, astar, budget)
+    end)
+  end)
+end)
+initial = RTS.Search.start(map, 0, 63, true)
+RTS.SearchParity.chunk(map, mask, initial, 0)
+sealed = RTS.Map.mark(RTS.Map.mark(mask, 1), 8)
+RTS.SearchParity.scene(map, sealed, 0, 63, true, 3)
+RTS.SearchParity.chunk(map, RTS.Map.mark(mask, 63), initial, 8)
+# The public protocol accepts an unsorted resumed frontier. Keep its first pop
+# and stale-priority behavior; only fall back to full sort at the old sort site.
+partial = RTS.SearchReference.run(map, mask, initial, 3)
+open = RTS.Data.get(partial, "open")
+List.do([List.reverse(open), List.append(open, open),
+  [RTS.Search.priority(map, 0, 7, 14, false) | open]], restored_open, do
+  restored = RTS.Data.put(partial, "open", restored_open)
+  List.do([0, 1, 3, 128], budget, do RTS.SearchParity.chunk(map, mask, restored, budget) end)
+end)
+seed = 9173
+scene = 0
+while scene < 12 do
+  blocked = ^ mask
+  i = 0
+  while i < 12 do
+    seed = RTS.Data.random_next(seed)
+    blocked = RTS.Map.mark(blocked, 1 + seed mod 62)
+    i = i + 1
+  end
+  RTS.SearchParity.scene(map, blocked, 0, 63, scene mod 2 == 0, 3)
+  scene = scene + 1
+end
