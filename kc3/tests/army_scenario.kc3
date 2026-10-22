@@ -4,10 +4,14 @@ defmodule RTS.ArmyScenario do
     entities = []
     side = 1
     while side * side < count do side = side + 1 end
+    # The 300-unit stress scene needs four destination regions. Start on grid
+    # vertices so parked spawn bodies do not displace their separately issued
+    # formation slots into another group's region. Keep 50/100/150 unchanged.
+    offset = if count == 300 do 128 else 0 end
     i = 1
     while i <= count do
       entities = [RTS.World.entity(content, "kiln.concord", i, "core.worker", 1,
-        -5504 + ((i - 1) mod side) * 256, -3968 + ((i - 1) / side) * 256, void) | entities]
+        -5504 + offset + ((i - 1) mod side) * 256, -3968 + offset + ((i - 1) / side) * 256, void) | entities]
       i = i + 1
     end
     RTS.Map.cache(content, Map.merge(RTS.World.unpack(world), %{"entities" => List.reverse(entities), "nodes" => [], "next_entity_id" => count + 1}))

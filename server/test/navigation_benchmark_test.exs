@@ -2,6 +2,7 @@ Code.require_file("../scripts/support/navigation_benchmark.exs", __DIR__)
 
 defmodule KC3RTS.NavigationBenchmarkTest do
   use ExUnit.Case, async: false
+  alias KC3RTS.Game.KC3Protocol
   alias KC3RTS.NavigationBenchmark, as: Benchmark
 
   test "paired requests alternate and can reverse the initial leader" do
@@ -45,6 +46,30 @@ defmodule KC3RTS.NavigationBenchmarkTest do
     end
   end
 
+  test "scaling uses legal disjoint selections without changing historical commands" do
+    for count <- [50, 100, 150, 300] do
+      commands = Benchmark.commands(count)
+      assert Enum.flat_map(commands, & &1["entity_ids"]) == Enum.to_list(1..count)
+      assert Enum.all?(commands, &KC3Protocol.command_payload?/1)
+      assert length(Enum.uniq_by(commands, &{&1["x"], &1["z"]})) == length(commands)
+
+      if count <= 100 do
+        assert commands == [
+                 %{
+                   "type" => "move",
+                   "entity_ids" => Enum.to_list(1..count),
+                   "x" => 3072,
+                   "z" => 0
+                 }
+               ]
+      else
+        assert Enum.all?(commands, &(length(&1["entity_ids"]) == 75))
+      end
+    end
+
+    assert_raise ArgumentError, fn -> Benchmark.commands(101) end
+  end
+
   @tag skip: is_nil(System.get_env("KC3RTS_KC3S"))
   @tag timeout: 300_000
   test "identical real KC3 workers preserve every frame and release both ports" do
@@ -78,6 +103,27 @@ defmodule KC3RTS.NavigationBenchmarkTest do
       Benchmark.pair(root, Path.join(root, "missing-benchmark-checkout"), 50, 2000)
     end
 
+    assert kc3_ports() == ports
+  end
+
+  @tag skip: is_nil(System.get_env("KC3RTS_KC3S"))
+  @tag timeout: 300_000
+  test "150 workers complete two legal group orders through the production protocol" do
+    root = Path.expand("../..", __DIR__)
+    ports = kc3_ports()
+    result = Benchmark.run(root, 150, 2000)
+    assert result.arrived == 150
+    assert result.ticks == 329
+
+    assert result.trajectory_hash ==
+             "7de05fc203b9d7271fb2fcd73367555d3c13bf2d8e843ed4c2ac0e8653278a9e"
+
+    assert result.command_count == 2
+    assert length(result.command_ack_us) == 2
+    assert result.ack_us == Enum.max(result.command_ack_us)
+    assert result.command_total_us == Enum.sum(result.command_ack_us)
+    assert result.ticks <= 450
+    assert result.production_timeout_met
     assert kc3_ports() == ports
   end
 

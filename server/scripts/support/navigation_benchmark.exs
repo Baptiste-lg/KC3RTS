@@ -53,6 +53,26 @@ defmodule KC3RTS.NavigationBenchmark do
     :ok
   end
 
+  # Keep historical 50/100 trajectories unchanged. Larger stress scenes use
+  # disjoint destination regions and multiple legal selections, never a raised
+  # production command limit. These are moving workers, not a combat fixture.
+  def commands(count) when count in [50, 100],
+    do: [move_command(Enum.to_list(1..count), {3072, 0})]
+
+  def commands(count) when count in [150, 300] do
+    destinations = [{3072, -2304}, {3072, 2304}, {-3072, -2304}, {-3072, 2304}]
+
+    1..count
+    |> Enum.chunk_every(75)
+    |> Enum.zip(destinations)
+    |> Enum.map(fn {ids, destination} -> move_command(ids, destination) end)
+  end
+
+  def commands(_), do: raise(ArgumentError, "fixture count must be 50, 100, 150 or 300")
+
+  defp move_command(ids, {x, z}),
+    do: %{"type" => "move", "entity_ids" => ids, "x" => x, "z" => z}
+
   defp run_single(scene, timeout) do
     Enum.reduce_while(1..450, scene, fn tick, previous ->
       {elapsed, state} = request_tick(previous, tick, timeout)
@@ -105,8 +125,9 @@ defmodule KC3RTS.NavigationBenchmark do
   end
 
   defp validate_options!(count, timeout) do
-    unless count in [50, 100] and timeout in 1..30_000 do
-      raise ArgumentError, "fixture count must be 50 or 100 and timeout must be 1..30000 ms"
+    unless count in [50, 100, 150, 300] and timeout in 1..30_000 do
+      raise ArgumentError,
+            "fixture count must be 50, 100, 150 or 300 and timeout must be 1..30000 ms"
     end
   end
 
@@ -131,23 +152,31 @@ defmodule KC3RTS.NavigationBenchmark do
       {startup_us, {:ok, %{"state" => opening}}} =
         :timer.tc(fn -> KC3Worker.request(worker, opening_request) end)
 
-      command =
-        request(2, "command", 1)
-        |> Map.merge(%{
-          "actor_slot" => 1,
-          "command" => %{
-            "type" => "move",
-            "entity_ids" => Enum.to_list(1..count),
-            "x" => 3072,
-            "z" => 0
-          }
-        })
+      unless length(opening["entities"]) == count,
+        do: raise("worker fixture size differs from requested count #{count}")
 
-      {ack_us, {:ok, %{"accepted" => true, "state" => moving}}} =
-        :timer.tc(fn -> KC3Worker.request(worker, command, timeout) end)
+      {moving, acks} =
+        count
+        |> commands()
+        |> Enum.with_index(2)
+        |> Enum.reduce({opening, []}, fn {command, id}, {state, acks} ->
+          payload =
+            request(id, "command", state["revision"])
+            |> Map.merge(%{"actor_slot" => 1, "command" => command})
+
+          {elapsed, {:ok, %{"accepted" => true, "state" => updated}}} =
+            :timer.tc(fn -> KC3Worker.request(worker, payload, timeout) end)
+
+          {updated, acks ++ [elapsed]}
+        end)
 
       goals =
         Map.new(moving["entities"], &{&1["id"], goal_point(&1["order"]["goal"], moving["map"])})
+
+      unless map_size(goals) == count and length(Enum.uniq(Map.values(goals))) == count,
+        do: raise("fixture commands must assign a distinct goal to every unit")
+
+      geometry!(opening)
 
       action.(%{
         worker: worker,
@@ -156,7 +185,9 @@ defmodule KC3RTS.NavigationBenchmark do
         state: moving,
         goals: goals,
         startup_us: startup_us,
-        ack_us: ack_us,
+        ack_us: Enum.max(acks),
+        command_ack_us: acks,
+        last_setup_request_id: 1 + length(acks),
         times: [],
         bytes: [],
         digest: :crypto.hash_init(:sha256)
@@ -171,7 +202,7 @@ defmodule KC3RTS.NavigationBenchmark do
       :timer.tc(fn ->
         KC3Worker.request(
           scene.worker,
-          request(tick + 2, "tick", scene.state["revision"]),
+          request(tick + scene.last_setup_request_id, "tick", scene.state["revision"]),
           timeout
         )
       end)
@@ -205,7 +236,14 @@ defmodule KC3RTS.NavigationBenchmark do
       end)
 
     unless arrived == scene.count and length(scene.state["entities"]) == scene.count,
-      do: raise("navigation fixture did not finish with all units at their goals")
+      do:
+        raise(
+          "navigation fixture did not finish: #{arrived}/#{scene.count} arrived at tick " <>
+            "#{scene.state["tick"]}; " <>
+            inspect(Enum.frequencies_by(scene.state["entities"], & &1["status"])) <>
+            "; diagnostic p95_us=#{percentile(scene.times, 0.95)} " <>
+            "p99_us=#{percentile(scene.times, 0.99)} max_ack_us=#{scene.ack_us}"
+        )
 
     %{
       units: scene.count,
@@ -214,6 +252,10 @@ defmodule KC3RTS.NavigationBenchmark do
       arrived: arrived,
       startup_us: scene.startup_us,
       ack_us: scene.ack_us,
+      command_ack_us: scene.command_ack_us,
+      command_count: length(scene.command_ack_us),
+      command_total_us: Enum.sum(scene.command_ack_us),
+      workload: "moving workers; 300 is stress only, not supported capacity",
       p50_us: percentile(scene.times, 0.50),
       p95_us: percentile(scene.times, 0.95),
       p99_us: percentile(scene.times, 0.99),
