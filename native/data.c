@@ -54,7 +54,7 @@ s_tag *kc3rts_find_field(s_tag *values, const s_tag *key,
  * Invalid rows/indices decline as a whole, cleaning any partial owned result. */
 s_tag *kc3rts_tuple_column(s_tag *rows, s_tag *index, s_tag *result)
 {
-  s_tag zero, limit;
+  s_tag zero = {0}, limit = {0};
   tag_init_u8(&zero, 0);
   tag_init_u32(&limit, 65535);
   const s_sym *type = &g_sym_Uw;

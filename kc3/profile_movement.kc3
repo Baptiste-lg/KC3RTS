@@ -1,0 +1,61 @@
+# Diagnostic pairs only, not whole-game capacity. Run without other tests.
+require Time
+load!(__DIR__ + "load.kc3")
+RTS.Loader.world(__DIR__)
+defmodule RTS.MovementProfile do
+  def separate = fn (layout, mask, index, occupied, body, speed, cell, horizontal) {
+    {next, reached, cells} = RTS.Navigation.probe(layout, mask, index, body, speed, cell, horizontal)
+    if cells != [] do RTS.Spatial.relocate(index, occupied, body, cells, next) end
+    {next, reached, cells}
+  }
+  # Both measured branches have one diagnostic wrapper, so the reference is
+  # not charged for an extra KC3 function call absent from the candidate.
+  def combined = fn (layout, mask, index, occupied, body, speed, cell, horizontal) {
+    RTS.Navigation.probe_move(layout, mask, index, occupied, body, speed, cell, horizontal)
+  }
+  def paired = fn (name, layout, mask, body, speed, cell, horizontal, neighbors) {
+    {id, x, z, size} = ^ body
+    occupied = RTS.Map.cover(layout, x, z, size)
+    old = []
+    fresh = []
+    expected = void
+    List.do([1, 2, 3, 4, 5, 6, 7, 8, 9], iteration, do
+      actions = if iteration mod 2 == 1 do [false, true] else [true, false] end
+      List.do(actions, optimized, do
+        index = Facts.database()
+        RTS.Spatial.reserve(index, occupied, body, true)
+        List.do(neighbors, neighbor, do
+          {other_id, other_x, other_z, other_size} = ^ neighbor
+          RTS.Spatial.reserve(index, RTS.Map.cover(layout, other_x, other_z, other_size), neighbor, true)
+        end)
+        start = Time.uptime()
+        result = if optimized do
+          RTS.MovementProfile.combined(layout, mask, index, occupied, body, speed, cell, horizontal)
+        else RTS.MovementProfile.separate(layout, mask, index, occupied, body, speed, cell, horizontal) end
+        finish = Time.uptime()
+        elapsed = (finish.tv_sec - start.tv_sec) * 1000000 + (finish.tv_nsec - start.tv_nsec) / 1000
+        snapshot = List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) {
+          {fact.subject, fact.predicate, fact.object}
+        }))
+        if expected == void do expected = {result, snapshot} else
+          if expected != {result, snapshot} do puts("FAIL: movement profile parity"); exit(1) end
+        end
+        if optimized do fresh = [elapsed | fresh] else old = [elapsed | old] end
+      end)
+    end)
+    puts(RTS.Wire.encode(%{"phase" => name, "samples" => 9,
+      "reference_median_us" => access(List.sort(old), [4]),
+      "candidate_median_us" => access(List.sort(fresh), [4]),
+      "reference_us" => List.reverse(old), "candidate_us" => List.reverse(fresh)}))
+  }
+end
+layout = {16, 16, -2048, -2048, 256}
+mask = RTS.Map.repeat(".", 256)
+RTS.MovementProfile.paired("partial_step", layout, mask, {1, -1920, -1920, 128}, 64, 1, true, [])
+RTS.MovementProfile.paired("cross_cell", layout, mask, {1, -1856, -1920, 128}, 64, 1, true, [])
+RTS.MovementProfile.paired("waypoint", layout, mask, {1, -1728, -1920, 128}, 64, 1, true, [])
+RTS.MovementProfile.paired("large_body", layout, mask, {1, -1536, -1536, 512}, 64, 18, true, [])
+RTS.MovementProfile.paired("blocked_unit", layout, mask, {1, -1920, -1920, 128}, 64, 1, true,
+  [{2, -1792, -1920, 128}])
+RTS.MovementProfile.paired("blocked_terrain", layout, "#" + RTS.Map.repeat(".", 255),
+  {1, -1920, -1920, 128}, 64, 1, true, [])

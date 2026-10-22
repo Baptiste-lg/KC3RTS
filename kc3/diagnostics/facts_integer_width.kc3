@@ -1,0 +1,14 @@
+# Standalone upstream-runtime reproducer; NOT a passing application test.
+# Run with the pinned kc3s, no RTS bridge or project modules required.
+# Numerically equal typed subjects can duplicate a fact in the hash table
+# while the sorted index treats them as equal. Removing both can report
+# "facts_remove_fact_local: skiplist_remove index_spo" (or assert in debug).
+# Runtime sources are intentionally untouched. Do not use mixed-width aliases
+# of the same subject/object in game data; geometry produces reduced integers.
+require Facts
+db = Facts.database()
+Facts.add_tags(db, (S64) 0, :body, {1, 128, 128, 128})
+Facts.add_tags(db, (Uw) 0, :body, {1, 128, 128, 128})
+Facts.remove_tags(db, (S64) 0, :body, {1, 128, 128, 128})
+Facts.remove_tags(db, (Uw) 0, :body, {1, 128, 128, 128})
+puts("Reproducer completed; inspect stderr as well as exit status.")

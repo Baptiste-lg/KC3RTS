@@ -94,7 +94,7 @@ s_tag *kc3rts_cell_clear(const s_tag *index, s_tag *cell,
       !grid_scalar(query + 3, &size) || size < 0)
     return tag_init(result);
 
-  s_tag predicate;
+  s_tag predicate = {0};
   tag_init_psym(&predicate, sym_1("body"));
   s_fact start = {.subject = cell, .predicate = &predicate,
                   .object = TAG_FIRST};
@@ -171,7 +171,7 @@ s_tag *kc3rts_grid_step(const s_tag *layout, const s_tag *body,
     z = delta > speed ? z + speed : delta < -speed ? z - speed : tz;
   }
 
-  s_tag output = {0}, coordinate;
+  s_tag output = {0}, coordinate = {0};
   if (!tag_init_ptuple(&output, 2)) return NULL;
   s_tag *pair = output.data.td_ptuple->tag;
   if (!tag_init_ptuple(pair, 4)) goto failed;
@@ -293,4 +293,44 @@ s_tag *kc3rts_grid_probe(const s_tag *layout, const s_tag *mask,
   tag_clean(&cells);
   tag_clean(&output);
   return NULL;
+}
+
+/* The caller explicitly requests reservation of this one candidate, only if
+ * clear. Reuse the read-only probe and ordered Facts exchange; all read cursors
+ * are closed before writes. KC3 still chooses the axis, retries, priorities and
+ * entity/order updates. Preflight every removable subject before ANY write.
+ * Unsupported inputs decline without mutation. Runtime write errors are fatal,
+ * never a request to retry a partially applied exchange through the fallback. */
+s_tag *kc3rts_facts_exchange(s_tag *, s_tag *, s_tag *, s_tag *,
+                            s_tag *, s_tag *, s_tag *);
+
+s_tag *kc3rts_grid_probe_reserve(s_tag *layout, s_tag *mask, s_tag *index,
+                                s_tag *old_cells, s_tag *body, s_tag *speed,
+                                s_tag *cell, s_tag *horizontal, s_tag *result)
+{
+  if (index->type != TAG_PFACTS || !index->data.td_pfacts ||
+      old_cells->type != TAG_PLIST) return tag_init(result);
+  for (s_list *item = old_cells->data.td_plist; item; item = list_next(item))
+    if (item->next.type != TAG_PLIST || !tag_is_integer(&item->tag))
+      return tag_init(result);
+  s_tag output = {0};
+  if (!kc3rts_grid_probe(layout, mask, index, body, speed, cell, horizontal,
+                         &output)) return NULL;
+  if (output.type == TAG_VOID) return tag_init(result);
+  s_tag *parts = output.data.td_ptuple->tag;
+  if (parts[2].data.td_plist) {
+    /* Typed tag initializers do not initialize hash/refcount metadata. */
+    s_tag predicate = {0}, exchanged = {0};
+    tag_init_psym(&predicate, sym_1("body"));
+    if (!kc3rts_facts_exchange(index, &predicate, old_cells, body,
+                               parts + 2, parts, &exchanged) ||
+        exchanged.type != TAG_BOOL || !exchanged.data.td_bool_) {
+      tag_clean(&exchanged);
+      tag_clean(&output);
+      return NULL;
+    }
+    tag_clean(&exchanged);
+  }
+  *result = output;
+  return result;
 }

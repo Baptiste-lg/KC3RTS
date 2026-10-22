@@ -1,0 +1,144 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "spatial_reference.kc3")
+defmodule RTS.ReservationCheck do
+  def snapshot = fn (index) {
+    List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) {
+      {fact.subject, fact.predicate, fact.object}
+    }))
+  }
+  def reference = fn (layout, mask, index, occupied, body, speed, cell, horizontal) {
+    {next, reached} = RTS.Navigation.propose_reference(layout, body, speed, cell, horizontal)
+    cells = RTS.SpatialReference.available(layout, mask, index, next)
+    if cells != [] do RTS.SpatialReference.relocate(index, occupied, body, cells, next) end
+    {next, reached, cells}
+  }
+  def fixture = fn (layout, occupied, body) {
+    index = Facts.database()
+    RTS.Spatial.reserve(index, occupied, body, true)
+    List.do([{2, 256, 256, 255}, {3, 640, 384, 384}], neighbor, do
+      {id, x, z, size} = ^ neighbor
+      RTS.Spatial.reserve(index, RTS.Map.cover(layout, x, z, size), neighbor, true)
+    end)
+    Facts.add_tags(index, 0, :sentinel, "keep")
+    Facts.add_tags(index, 15, :body, {4, 1000, 1000, 64})
+    index
+  }
+end
+layout = {4, 4, 0, 0, 256}
+mask = "................"
+positions = [{-1, 128}, {64, 128}, {128, 128}, {192, 256}, {384, 384}, {640, 640}]
+terrains = [mask, "#...............", ".....#..........", "################"]
+valid = true
+cases = 0
+# Same ordered writes and final Facts for clear, terrain-blocked, overlapping,
+# off-map, odd-sized, zero-speed and already-arrived steps on both axes.
+while cases < 864 do
+  choice = ^ cases
+  terrain = access(terrains, [choice mod 4])
+  choice = choice / 4
+  horizontal = choice mod 2 == 0
+  choice = choice / 2
+  speed = access([0, 64, 256], [choice mod 3])
+  choice = choice / 3
+  {x, z} = access(positions, [choice mod 6])
+  size = access([2, 127, 128, 255, 384, 512], [choice / 6])
+  body = {1, x, z, size}
+  occupied = RTS.Map.cover(layout, x, z, size)
+  reference = RTS.ReservationCheck.fixture(layout, occupied, body)
+  candidate = RTS.ReservationCheck.fixture(layout, occupied, body)
+  expected = RTS.ReservationCheck.reference(layout, terrain, reference, occupied, body, speed, 5, horizontal)
+  actual = RTS.Navigation.probe_move_native(layout, terrain, candidate, occupied, body, speed, 5, horizontal)
+  same = actual == expected && RTS.ReservationCheck.snapshot(candidate) == RTS.ReservationCheck.snapshot(reference)
+  if (! same) do
+    puts("FAIL: reservation case " + (Str) cases)
+    puts(inspect({body, occupied, terrain, horizontal, speed, actual, expected}))
+    puts(inspect(RTS.ReservationCheck.snapshot(candidate)))
+    puts(inspect(RTS.ReservationCheck.snapshot(reference)))
+    exit(1)
+  end
+  valid = valid && same
+  cases = cases + 1
+end
+RTS.Check.that("864 bounded probe/reservation pairs preserve results and complete Facts", valid && cases == 864)
+
+body = {1, 128, 128, 128}
+index = RTS.ReservationCheck.fixture(layout, [0], body)
+before = RTS.ReservationCheck.snapshot(index)
+List.do([void, false, 0, [0 | 1], [0, 1 | 2], [0, "bad"], [0, false], [0, 0.5]], occupied, do
+  RTS.Check.that("old subjects are fully validated before any write, even after a valid prefix",
+    RTS.Navigation.probe_move_native(layout, mask, index, occupied, body, 64, 1, true) == void &&
+    RTS.ReservationCheck.snapshot(index) == before)
+end)
+List.do([{void, mask, body, 64, 1, true}, {layout, "", body, 64, 1, true},
+  {layout, mask, {1, 128}, 64, 1, true}, {layout, mask, body, -1, 1, true},
+  {layout, mask, body, 64, 16, true}, {layout, mask, body, 64, 1, void}],
+  {grid, terrain, unit, speed, cell, horizontal}, do
+  RTS.Check.that("unsupported inputs decline before mutation",
+    RTS.Navigation.probe_move_native(grid, terrain, index, [0], unit, speed, cell, horizontal) == void &&
+    RTS.ReservationCheck.snapshot(index) == before)
+end)
+RTS.Check.that("invalid index declines even when terrain would reject the step",
+  RTS.Navigation.probe_move_native(layout, "################", void, [0], body, 64, 1, true) == void)
+
+# Caller-provided old subjects are not recomputed/deduplicated/clipped.
+# Do not insert the SAME fact with numerically equal but differently typed
+# subjects: the pinned runtime's hash/skiplist inconsistency is documented in
+# diagnostics/facts_integer_width.kc3. Exercise each width independently here.
+List.do([[], [0, 0, 15], [-1, 18446744073709551616], [(S64) 0], [(Uw) 0]], occupied, do
+  reference = RTS.ReservationCheck.fixture(layout, occupied, body)
+  candidate = RTS.ReservationCheck.fixture(layout, occupied, body)
+  expected = RTS.ReservationCheck.reference(layout, mask, reference, occupied, body, 0, 0, true)
+  actual = RTS.Navigation.probe_move_native(layout, mask, candidate, occupied, body, 0, 0, true)
+  RTS.Check.that("duplicates, missing reservations and arbitrary integer subjects retain exact exchange order",
+    actual == expected && RTS.ReservationCheck.snapshot(candidate) == RTS.ReservationCheck.snapshot(reference))
+end)
+
+# Unsupported but valid geometry must perform exactly one fallback exchange.
+List.do([{layout, {1, 128, 128, 1}},
+  {{4, 4, 9007199254730000, -9007199254730000, 256},
+    {1, 9007199254730128, -9007199254729872, 128}}], {grid, unit}, do
+  reference = Facts.database()
+  candidate = Facts.database()
+  RTS.Spatial.reserve(reference, [0], unit, true)
+  RTS.Spatial.reserve(candidate, [0], unit, true)
+  before = RTS.ReservationCheck.snapshot(candidate)
+  RTS.Check.that("unsupported valid geometry declines without changing existing reservations",
+    RTS.Navigation.probe_move_native(grid, mask, candidate, [0], unit, 64, 1, true) == void &&
+    RTS.ReservationCheck.snapshot(candidate) == before)
+  expected = RTS.ReservationCheck.reference(grid, mask, reference, [0], unit, 64, 1, true)
+  actual = RTS.Navigation.probe_move(grid, mask, candidate, [0], unit, 64, 1, true)
+  RTS.Check.that("KC3 fallback preserves proposal and complete index",
+    actual == expected && RTS.ReservationCheck.snapshot(candidate) == RTS.ReservationCheck.snapshot(reference))
+end)
+
+reference = Facts.database()
+candidate = Facts.database()
+wide = {2, 9007199254730000, 128, 128}
+List.do([reference, candidate], db, do
+  RTS.Spatial.reserve(db, [0], body, true)
+  RTS.Spatial.reserve(db, [0], wide, true)
+end)
+before = RTS.ReservationCheck.snapshot(candidate)
+RTS.Check.that("unsupported neighbor closes its read cursor and declines before writes",
+  RTS.Navigation.probe_move_native(layout, mask, candidate, [0], body, 64, 1, true) == void &&
+  RTS.ReservationCheck.snapshot(candidate) == before)
+expected = RTS.ReservationCheck.reference(layout, mask, reference, [0], body, 64, 1, true)
+actual = RTS.Navigation.probe_move(layout, mask, candidate, [0], body, 64, 1, true)
+RTS.Check.that("fallback can immediately mutate the same Facts after a declined cursor query",
+  actual == expected && RTS.ReservationCheck.snapshot(candidate) == RTS.ReservationCheck.snapshot(reference))
+Facts.add_tags(candidate, 0, :sentinel, "writable")
+
+# The second mover must observe the first mover's newly reserved position.
+index = Facts.database()
+RTS.Spatial.reserve(index, [0], body, true)
+other = {2, 384, 128, 128}
+RTS.Spatial.reserve(index, [1], other, true)
+first = RTS.Navigation.probe_move(layout, mask, index, [0], body, 128, 1, true)
+second = RTS.Navigation.probe_move(layout, mask, index, [1], other, 128, 0, false)
+RTS.Check.that("sequential movers observe accepted reservations without stale reads",
+  first == {{1, 256, 128, 128}, false, [0, 1]} && second == {{2, 256, 128, 128}, false, []})
+index = void
+RTS.Check.that("results own their storage after the index is released",
+  first == {{1, 256, 128, 128}, false, [0, 1]} && second == {{2, 256, 128, 128}, false, []})
