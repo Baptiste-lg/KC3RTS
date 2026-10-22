@@ -54,3 +54,34 @@ export function waitForBrowserPort(child, profile, timeout = 60_000) {
     void poll();
   });
 }
+
+// Attach to an inert page first. The game navigation happens only after CDP
+// observation is enabled; an advertised target URL is not proof of a load.
+export async function findBlankPage(port, timeout = 15_000, fetchPage = fetch) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const controller = new AbortController();
+    let timer;
+    try {
+      const entries = await Promise.race([
+        (async () => {
+          const response = await fetchPage(`http://127.0.0.1:${port}/json/list`, { signal: controller.signal });
+          if (!response.ok) throw new Error("Chrome target endpoint failed");
+          return response.json();
+        })(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            controller.abort();
+            reject(new Error("Chrome target endpoint timed out"));
+          }, Math.min(1_000, deadline - Date.now()));
+        }),
+      ]);
+      const page = entries.find((entry) => entry.type === "page" && entry.url === "about:blank" && typeof entry.webSocketDebuggerUrl === "string");
+      if (page) return page;
+    } catch { /* The next bounded poll may observe a newly created target. */ }
+    finally { clearTimeout(timer); }
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await new Promise((done) => setTimeout(done, Math.min(200, remaining)));
+  }
+  throw new Error("Timed out waiting for blank browser tab");
+}

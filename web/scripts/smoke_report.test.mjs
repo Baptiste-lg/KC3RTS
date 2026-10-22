@@ -15,4 +15,8 @@ describe("smoke failure annotations", () => {
     expect(smokeFailureAnnotation("50%\r\n::warning::text", { notice: "20%" }))
       .toBe('::error title=Browser smoke failure::50%25%0D%0A::warning::text%0ABrowser state: {"notice":"20%25"}');
   });
+  it("includes the allowlisted navigation diagnostics in the public annotation", () => {
+    expect(smokeFailureAnnotation("navigation failed", null, { events: [{ code: "net::ERR_FAILED" }] }))
+      .toBe('::error title=Browser smoke failure::navigation failed%0ABrowser navigation: {"events":[{"code":"net::ERR_FAILED"}]}');
+  });
 });

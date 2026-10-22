@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { waitForBrowserPort } from "./smoke_browser.mjs";
+import { findBlankPage, waitForBrowserPort } from "./smoke_browser.mjs";
 
 vi.mock("node:fs/promises", () => ({ readFile: vi.fn() }));
 
@@ -12,6 +12,29 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.mocked(readFile).mockReset().mockRejectedValue({ code: "ENOENT" });
   child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null });
+});
+
+describe("bounded blank target discovery", () => {
+  const blank = { type: "page", url: "about:blank", webSocketDebuggerUrl: "ws://127.0.0.1/page" };
+  it("selects only an attachable blank page and clears the fetch deadline", async () => {
+    const fetchPage = vi.fn(async () => ({ ok: true, json: async () => [{ ...blank, url: "http://game/" }, blank] }));
+    await expect(findBlankPage(1234, 15_000, fetchPage)).resolves.toEqual(blank);
+    expect(fetchPage.mock.calls[0][1].signal.aborted).toBe(false);
+  });
+  it("polls a failed endpoint or missing target without navigating", async () => {
+    const fetchPage = vi.fn().mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValue({ ok: true, json: async () => [blank] });
+    const result = findBlankPage(1234, 15_000, fetchPage);
+    await vi.advanceTimersByTimeAsync(400); await expect(result).resolves.toEqual(blank);
+  });
+  it.each([false, true])("aborts and bounds a stalled fetch/body: %s", async (body) => {
+    const stalled = new Promise(() => {});
+    const fetchPage = vi.fn(() => body ? Promise.resolve({ ok: true, json: () => stalled }) : stalled);
+    const result = expect(findBlankPage(1234, 1_000, fetchPage)).rejects.toThrow("Timed out waiting for blank browser tab");
+    await vi.advanceTimersByTimeAsync(1_000); await result;
+    expect(fetchPage.mock.calls[0][1].signal.aborted).toBe(true);
+  });
 });
 afterEach(() => {
   expect(child.listenerCount("exit")).toBe(0);

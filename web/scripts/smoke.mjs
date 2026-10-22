@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { smokeFailureAnnotation } from "./smoke_report.mjs";
 import { checkIdleWorkers } from "./smoke_idle_workers.mjs";
-import { waitForBrowserPort } from "./smoke_browser.mjs";
+import { findBlankPage, waitForBrowserPort } from "./smoke_browser.mjs";
+import { DevTools } from "./smoke_devtools.mjs";
+import { BrowserNavigation } from "./smoke_navigation.mjs";
 
 const webDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDirectory = resolve(webDirectory, "../server");
@@ -78,60 +80,6 @@ function browserExecutable() {
   return found;
 }
 
-class DevTools {
-  constructor(url) {
-    this.socket = new WebSocket(url);
-    this.nextId = 1;
-    this.pending = new Map();
-    this.socket.addEventListener("message", (event) => {
-      const message = JSON.parse(event.data);
-      const pending = this.pending.get(message.id);
-      if (!pending) return;
-      this.pending.delete(message.id);
-      clearTimeout(pending.timer);
-      if (message.error) pending.reject(new Error(message.error.message));
-      else pending.resolve(message.result);
-    });
-  }
-
-  async ready() {
-    if (this.socket.readyState === WebSocket.OPEN) return;
-    await new Promise((resolveOpen, rejectOpen) => {
-      this.socket.addEventListener("open", resolveOpen, { once: true });
-      this.socket.addEventListener("error", rejectOpen, { once: true });
-    });
-  }
-
-  send(method, params = {}) {
-    const id = this.nextId++;
-    return new Promise((resolveResult, rejectResult) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        rejectResult(new Error(`Chrome did not respond to ${method}`));
-      }, 30_000);
-      this.pending.set(id, { resolve: resolveResult, reject: rejectResult, timer });
-      this.socket.send(JSON.stringify({ id, method, params }));
-    });
-  }
-
-  async click(x, y, button = "left") {
-    await this.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: 1 });
-    await this.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button, clickCount: 1 });
-  }
-
-  async evaluate(expression) {
-    const reply = await this.send("Runtime.evaluate", {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    });
-    if (reply.exceptionDetails) throw new Error(`Browser evaluation failed: ${expression}`);
-    return reply.result.value;
-  }
-
-  close() { this.socket.close(); }
-}
-
 const STATE = `(() => ({
   mode: document.getElementById("connection")?.dataset.state,
   canvas: !!document.querySelector("#scene canvas"),
@@ -167,6 +115,7 @@ function project(point, rect, y = 0, radius = 52) {
 
 let profile;
 let devtools;
+let navigation;
 
 try {
   if (!pagesMode) start("Phoenix", "mix", ["run", "--no-halt"], serverDirectory);
@@ -198,17 +147,15 @@ try {
     "--remote-allow-origins=*",
     "--remote-debugging-port=0",
     "--window-size=1100,700",
-    pageUrl,
+    "about:blank",
   ], webDirectory);
 
   const port = await waitForBrowserPort(browser, profile);
-  const pages = await until(async () => {
-    const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-    const entries = await response.json();
-    return entries.find((entry) => entry.type === "page" && entry.url.startsWith(pageUrl));
-  }, 15_000, "game browser tab");
+  const pages = await findBlankPage(port);
   devtools = new DevTools(pages.webSocketDebuggerUrl);
   await devtools.ready();
+  navigation = new BrowserNavigation(devtools, pageUrl);
+  await navigation.open();
 
   if (process.env.KC3RTS_VIEWPORT_WIDTH && process.env.KC3RTS_VIEWPORT_HEIGHT) {
     await devtools.send("Emulation.setDeviceMetricsOverride", {
@@ -388,10 +335,13 @@ try {
       console.error("Browser state:", failedState);
     } catch { /* tab closed */ }
   }
-  if (process.env.GITHUB_ACTIONS === "true") console.error(smokeFailureAnnotation(error, failedState));
+  const diagnostics = navigation?.snapshot();
+  if (diagnostics) console.error("Browser navigation:", diagnostics);
+  if (process.env.GITHUB_ACTIONS === "true") console.error(smokeFailureAnnotation(error, failedState, diagnostics));
   for (const process of processes) console.error(`${process.name} log:\n${process.logs()}`);
   process.exitCode = 1;
 } finally {
+  navigation?.dispose();
   devtools?.close();
   for (const running of processes.reverse()) await stop(running.child);
   if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 12, retryDelay: 250 });
