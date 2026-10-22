@@ -218,14 +218,25 @@ static s_tag *wrap_map(const s_tag *source, s_map *map, s_tag *result)
     return result;
   }
   /* RTS.Shared has exactly one Map field. Fail if that storage contract changes. */
-  if (source->data.td_pstruct->pstruct_type->size != sizeof(s_map)) {
+  if (source->type != TAG_PSTRUCT || !source->data.td_pstruct ||
+      source->data.td_pstruct->pstruct_type->module != sym_1("RTS.Shared") ||
+      source->data.td_pstruct->pstruct_type->size != sizeof(s_map)) {
     map_clean(map);
     return NULL;
   }
   s_map *owned = alloc(sizeof *owned);
   if (owned) {
     *owned = *map;
-    if (tag_init_pstruct_with_data(result, sym_1("RTS.Shared"), owned, true)) return result;
+    /* Retain the validated source schema directly; avoid resolving the same
+     * immutable type through environment Facts on every map update. */
+    s_struct *shared = struct_new_with_type(source->data.td_pstruct->pstruct_type);
+    if (shared) {
+      shared->data = owned;
+      shared->free_data = true;
+      result->type = TAG_PSTRUCT;
+      result->data.td_pstruct = shared;
+      return result;
+    }
     alloc_free(owned);
   }
   map_clean(map);

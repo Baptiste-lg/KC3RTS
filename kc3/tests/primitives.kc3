@@ -199,3 +199,28 @@ RTS.Check.that("shared and plain updates have identical values", RTS.Data.unshar
 RTS.Check.that("shared storage has the same canonical wire representation",
   RTS.Wire.native_encode(%{"nested" => [shared, nested]}) ==
   RTS.Wire.reference_encode(%{"nested" => [RTS.Data.unshare(shared), RTS.Data.unshare(nested)]}))
+source = RTS.Data.share(%{"items" => [%{"x" => 1}, 2], "hp" => 40})
+first_version = RTS.Data.put(source, "hp", 30)
+last_version = RTS.Data.merge(source, %{"hp" => 20, "new" => false})
+RTS.Check.that("shared update branches own separate immutable map payloads",
+  RTS.Data.get(source, "hp") == 40 && RTS.Data.get(first_version, "hp") == 30 &&
+  RTS.Data.get(last_version, "hp") == 20 && RTS.Data.get(source, "new") == void)
+source = void
+first_version = void
+RTS.Check.that("last shared update retains its schema and nested data after sources are released",
+  RTS.Data.unshare(last_version) == %{"items" => [%{"x" => 1}, 2], "hp" => 20, "new" => false})
+iteration = 0
+while iteration < 100 do
+  last_version = RTS.Data.put(last_version, "hp", iteration)
+  iteration = iteration + 1
+end
+RTS.Check.that("replacing old shared versions repeatedly preserves ownership and exact bytes",
+  type(last_version) == RTS.Shared && RTS.Data.get(last_version, "hp") == 99 &&
+  RTS.Wire.encode(last_version) == RTS.Wire.reference_encode(%{"items" => [%{"x" => 1}, 2], "hp" => 99, "new" => false}))
+List.do([%{}, %{"only" => [1, 2]}], plain, do
+  shared = RTS.Data.share(plain)
+  RTS.Check.that("empty singleton and plain updates retain their respective storage kinds",
+    type(RTS.Data.put(plain, "only", 3)) == Map &&
+    type(RTS.Data.merge(shared, %{"only" => 3})) == RTS.Shared &&
+    RTS.Data.unshare(RTS.Data.merge(shared, %{"only" => 3})) == Map.merge(plain, %{"only" => 3}))
+end)
