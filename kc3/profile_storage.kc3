@@ -29,7 +29,10 @@ List.do([1, 50, 100, 150, 300], count, do
   rows = []
   i = ^ count
   while i > 0 do
-    entity = RTS.Data.share(%{"id" => i, "order" => RTS.Data.share(%{"path" => [1, 2, 3, 4, 5]})})
+    entity = RTS.Data.share(%{"id" => i, "hp" => if i mod 5 == 0 do 0 else 40 end,
+      "task" => if i mod 10 == 0 do %{"kind" => "work"} else void end,
+      "queue" => if i mod 20 == 0 do [1, 2] else [] end,
+      "order" => RTS.Data.share(%{"path" => [1, 2, 3, 4, 5]})})
     entities = [entity | entities]
     rows = [{entity, 64, {i, i * 256, 0, 128}, [i, i + 1]} | rows]
     i = i - 1
@@ -42,4 +45,15 @@ List.do([1, 50, 100, 150, 300], count, do
   RTS.StorageProfile.paired("column_" + (Str) count,
     fn () { List.map_filter(rows, {e, speed, body, cells}, do e end) },
     fn () { RTS.Data.column(rows, 0) })
+  # Frozen pre-selection expressions, not the generic reference dispatcher:
+  # measure the exact former call sites and equal diagnostic wrappers.
+  RTS.StorageProfile.paired("alive_" + (Str) count,
+    fn () { List.map_filter(entities, e, do if RTS.Data.get(e, "hp") > 0 do e else void end end) },
+    fn () { RTS.Data.select(entities, "hp", :gt, 0) })
+  RTS.StorageProfile.paired("tasks_" + (Str) count,
+    fn () { List.map_filter(entities, e, do if RTS.Data.get(e, "task") != void do e else void end end) },
+    fn () { RTS.Data.select(entities, "task", :ne, void) })
+  RTS.StorageProfile.paired("queues_" + (Str) count,
+    fn () { List.map_filter(entities, e, do if RTS.Data.get(e, "queue") != [] do e else void end end) },
+    fn () { RTS.Data.select(entities, "queue", :ne, []) })
 end)

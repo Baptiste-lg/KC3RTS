@@ -155,9 +155,7 @@ defmodule RTS.Production do
     RTS.World.result(state, reason)
   }
   def tick = fn (content, state) {
-    pending = List.map_filter(RTS.Data.get(state, "entities"), e, do
-      if RTS.Data.get(e, "queue") != [] do e else void end
-    end)
+    pending = RTS.Data.select(RTS.Data.get(state, "entities"), "queue", :ne, [])
     while pending != [] do
       e = RTS.World.find(state, RTS.Data.get(List.first(pending), "id"))
       if RTS.Data.get(e, "queue") != [] && RTS.Data.get(e, "construction") == void do

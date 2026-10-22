@@ -84,5 +84,22 @@ defmodule RTS.Data do
     found
   }
 
+  # Generic ordered field selection. Criteria and game scheduling stay in KC3.
+  def select_native = cfn Tag "kc3rts_select_field" (Tag, Tag, Tag, Tag, Result)
+  def select = fn (values, key, relation, expected) {
+    selected = RTS.Data.select_native(values, key, relation, expected)
+    if selected == void do RTS.Data.select_reference(values, key, relation, expected) else selected end
+  }
+  def select_reference = fn (values, key, relation, expected) {
+    if relation != :eq && relation != :ne && relation != :gt do void else
+      List.map_filter(values, item, do
+        value = RTS.Data.get(item, key)
+        keep = if relation == :eq do value == expected else
+          if relation == :ne do value != expected else value > expected end end
+        if keep do item else void end
+      end)
+    end
+  }
+
   def random_next = fn (seed) { seed * 48271 mod 2147483647 }
 end

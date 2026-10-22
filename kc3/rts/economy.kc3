@@ -76,9 +76,7 @@ defmodule RTS.Economy do
     RTS.World.put(state, RTS.Data.merge(e, %{"order" => RTS.Data.get(nearest, "order"), "status" => if nearest == void do "unreachable" else "planning" end}))
   }
   def tick = fn (content, state) {
-    pending = List.map_filter(RTS.Data.get(state, "entities"), e, do
-      if RTS.Data.get(e, "task") != void do e else void end
-    end)
+    pending = RTS.Data.select(RTS.Data.get(state, "entities"), "task", :ne, void)
     while pending != [] do
       e = RTS.World.find(state, RTS.Data.get(List.first(pending), "id"))
       task = RTS.Data.get(e, "task")

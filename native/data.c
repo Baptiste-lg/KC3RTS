@@ -49,6 +49,42 @@ s_tag *kc3rts_find_field(s_tag *values, const s_tag *key,
   return tag_init_plist(result, NULL);
 }
 
+/* Ordered map-field selection with KC3's own comparison semantics. The
+ * caller supplies both field and predicate; no game schema or policy here.
+ * Skip Void input rows just like List.map_filter, but retain false/0/[] rows
+ * when their missing field matches. Every selected item is an owned copy.
+ * Invalid list tails or operators decline the whole selection. */
+s_tag *kc3rts_select_field(s_tag *values, const s_tag *key,
+                          const s_tag *relation, const s_tag *expected,
+                          s_tag *result)
+{
+  if (values->type != TAG_PLIST || relation->type != TAG_PSYM)
+    return tag_init(result);
+  const s_sym *op = relation->data.td_psym;
+  bool equal = op == sym_1("eq"), unequal = op == sym_1("ne");
+  if (!equal && !unequal && op != sym_1("gt")) return tag_init(result);
+  const s_tag missing = {.type = TAG_VOID};
+  s_list *selected = NULL, **tail = &selected;
+  for (s_list *item = values->data.td_plist; item; item = list_next(item)) {
+    if (item->next.type != TAG_PLIST) {
+      list_delete_all(selected);
+      return tag_init(result);
+    }
+    if (item->tag.type == TAG_VOID) continue;
+    const s_tag *value = field(&item->tag, key);
+    s8 comparison = compare_tag(value ? value : &missing, expected);
+    bool keep = equal ? comparison == 0 : unequal ? comparison != 0 : comparison > 0;
+    if (keep) {
+      if (!(*tail = list_new_tag_copy(&item->tag, NULL))) {
+        list_delete_all(selected);
+        return NULL;
+      }
+      tail = &(*tail)->next.data.td_plist;
+    }
+  }
+  return tag_init_plist(result, selected);
+}
+
 /* Project a tuple column in order, omitting Void just like List.map_filter.
  * Only selected values are copied; unrelated columns are never materialized.
  * Invalid rows/indices decline as a whole, cleaning any partial owned result. */

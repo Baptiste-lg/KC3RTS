@@ -189,7 +189,7 @@ defmodule RTS.World do
     plain = type(state) != RTS.Shared
     state = RTS.World.pack(state)
     before = RTS.Data.get(state, "entities")
-    alive = List.map_filter(before, e, do if RTS.Data.get(e, "hp") > 0 do e else void end end)
+    alive = RTS.Data.select(before, "hp", :gt, 0)
     state = RTS.Data.put(state, "entities", alive)
     if List.length(alive) != List.length(before) do state = RTS.World.refresh(content, state) end
     state = RTS.Navigation.tick(content, state)

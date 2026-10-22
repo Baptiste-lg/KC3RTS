@@ -1,0 +1,46 @@
+dlopen("kc3rts.so")
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../rts/data.kc3")
+load!(__DIR__ + "../rts/wire.kc3")
+rows = [void, false, 0, [], "plain", %{}, %{"hp" => -1},
+  %{"id" => 1, "hp" => 0, "task" => void, "queue" => []},
+  RTS.Data.share(%{"id" => 2, "hp" => 40, "task" => %{"kind" => "work"}, "queue" => []}),
+  %{"id" => 1, "hp" => 40, "task" => false, "queue" => [1, 2]}]
+List.do([:eq, :ne, :gt], relation, do
+  List.do([void, false, [], 0, 1, 40, "text", %{"kind" => "work"}, [1, 2]], expected, do
+    List.do(["hp", "task", "queue", "missing"], key, do
+      reference = RTS.Data.select_reference(rows, key, relation, expected)
+      actual = RTS.Data.select(rows, key, relation, expected)
+      RTS.Check.that("field selection preserves ordered duplicates, heterogeneous values and missing fields",
+        actual == reference && RTS.Wire.encode(actual) == RTS.Wire.encode(reference))
+    end)
+  end)
+end)
+List.do([(S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1,
+  (U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1, 18446744073709551616], key, do
+  values = [%{}, RTS.Data.share(RTS.Data.put(%{}, key, 18446744073709551616))]
+  RTS.Check.that("selection accepts arbitrary numeric keys and wide integer comparisons",
+    RTS.Data.select(values, key, :gt, 9007199254740991) ==
+      RTS.Data.select_reference(values, key, :gt, 9007199254740991) &&
+    RTS.Data.select(values, key, :eq, 18446744073709551616) == [List.last(values)])
+end)
+List.do([void, false, %{}, [1 | 2], [%{"hp" => 1}, %{"hp" => 2} | 3]], values, do
+  RTS.Check.that("invalid input/tails decline and clean any partial selected list",
+    RTS.Data.select_native(values, "hp", :ne, void) == void)
+end)
+List.do([void, false, 1, "eq", :unknown], relation, do
+  RTS.Check.that("unknown comparisons decline without coercion",
+    RTS.Data.select_native(rows, "hp", relation, 1) == void &&
+    RTS.Data.select(rows, "hp", relation, 1) == void)
+end)
+RTS.Check.that("empty results differ from unsupported inputs; only Void rows are skipped",
+  RTS.Data.select([], "hp", :gt, 0) == [] &&
+  RTS.Data.select([void, void], "missing", :eq, void) == [] &&
+  RTS.Data.select([void, false, 0, []], "missing", :eq, void) == [false, 0, []])
+before = RTS.Wire.encode(rows)
+selected = RTS.Data.select(rows, "hp", :eq, 40)
+RTS.Check.that("selection never mutates the source list or payloads", RTS.Wire.encode(rows) == before)
+rows = void
+RTS.Check.that("selected plain and shared items own nested data after source release",
+  RTS.Data.get(List.first(selected), "task") == %{"kind" => "work"} &&
+  RTS.Data.get(List.last(selected), "queue") == [1, 2])
