@@ -1,0 +1,158 @@
+load!(__DIR__ + "check.kc3")
+dlopen("kc3rts.so")
+load!(__DIR__ + "../rts/data.kc3")
+load!(__DIR__ + "../rts/map.kc3")
+load!(__DIR__ + "../rts/search.kc3")
+
+# Independent original KC3 expressions: neither oracle calls a native codec
+# nor the production wrapper/reference, so a shared helper cannot hide drift.
+defmodule RTS.PackedTableCheck do
+  def bytes_equal? = fn (a, b) {
+    valid = Str.size(a) == Str.size(b)
+    i = 0
+    while valid && i < Str.size(a) do
+      valid = Str.byte(a, i) == Str.byte(b, i)
+      i = i + 1
+    end
+    valid
+  }
+  def read = fn (table, cell) {
+    offset = cell * 3
+    (Str.byte(table, offset) - 48) * 4096 +
+      (Str.byte(table, offset + 1) - 48) * 64 + Str.byte(table, offset + 2) - 48
+  }
+  def write = fn (table, cell, value) {
+    offset = cell * 3
+    digits = (Str) (Character) (48 + value / 4096) +
+      (Str) (Character) (48 + value / 64 mod 64) + (Str) (Character) (48 + value mod 64)
+    Str.slice_cfn(table, (Sw) 0, (Sw) offset) + digits +
+      Str.slice_cfn(table, (Sw) (offset + 3), (Sw) Str.size(table))
+  }
+end
+
+List.do([1, 2, 64, 1920, 9216], count, do
+  source = RTS.Map.repeat("ooo", count)
+  before = inspect(source)
+  List.do([0, count / 2, count - 1], cell, do
+    List.do([0, 1, 63, 64, 255, 256, 4095, 4096, 65535, 65536, 262142, 262143], value, do
+      expected = RTS.PackedTableCheck.write(source, cell, value)
+      actual = RTS.Search.write_native(source, cell, value)
+      decoded = RTS.Search.read_native(actual, cell)
+      reference = RTS.PackedTableCheck.read(expected, cell)
+      RTS.Check.that("packed table preserves bytes, reduced integer types and source ownership",
+        actual == expected && inspect(actual) == inspect(expected) &&
+        decoded == reference && type(decoded) == type(reference) &&
+        inspect(decoded) == inspect(reference) && decoded == value &&
+        RTS.Search.write(source, cell, value) == expected &&
+        RTS.Search.read(actual, cell) == reference && inspect(source) == before)
+    end)
+  end)
+end)
+
+# Exercise every supported scalar tag, plus the exact KC3 fallback for Integer.
+List.do([(U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1,
+  (S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1], cell, do
+  RTS.Check.that("all bounded signed and unsigned scalar tags agree",
+    RTS.Search.read_native("000ooo", cell) == 262143 &&
+    RTS.Search.write_native("000ooo", cell, cell) == "000001")
+end)
+List.do([{(Integer) 1, 17}, {1, (Integer) 17}], {cell, value}, do
+  RTS.Check.that("valid Integer operands retain the original fallback",
+    RTS.Search.write_native("000ooo", cell, value) == void &&
+    RTS.Search.write("000ooo", cell, value) == RTS.PackedTableCheck.write("000ooo", cell, value))
+end)
+RTS.Check.that("Integer reader fallback retains its exact value and type",
+  RTS.Search.read_native("000ooo", (Integer) 1) == void &&
+  RTS.Search.read("000ooo", (Integer) 1) == RTS.PackedTableCheck.read("000ooo", (Integer) 1))
+
+List.do([void, [], {}, %{}, true, 12, "", "oo", "oooo"], source, do
+  RTS.Check.that("unsupported table shape declines",
+    RTS.Search.read_native(source, 0) == void && RTS.Search.write_native(source, 0, 0) == void)
+end)
+List.do([-1, 1, 999999, true, "0", (F64) 0.5, 18446744073709551616], cell, do
+  RTS.Check.that("unsupported index declines",
+    RTS.Search.read_native("ooo", cell) == void && RTS.Search.write_native("ooo", cell, 0) == void)
+end)
+List.do([-1, 262144, true, "0", (F64) 0.5, 18446744073709551616], value, do
+  RTS.Check.that("unsupported encoded value declines", RTS.Search.write_native("ooo", 0, value) == void)
+end)
+List.do(["/00", "0/0", "00/", "p00", "0p0", "00p"], malformed, do
+  RTS.Check.that("selected malformed digits decline while explicit replacement is valid",
+    RTS.Search.read_native(malformed, 0) == void && RTS.Search.write_native(malformed, 0, 0) == "000" &&
+    RTS.Search.read(malformed, 0) == RTS.PackedTableCheck.read(malformed, 0))
+end)
+List.do([-1, 262144], value, do
+  RTS.Check.that("out-of-codec values preserve defined original KC3 writes",
+    RTS.Search.write("ooo", 0, value) == RTS.PackedTableCheck.write("ooo", 0, value))
+end)
+RTS.Check.that("partial tables use the original KC3 fallback",
+  RTS.Search.read("oooo", 0) == RTS.PackedTableCheck.read("oooo", 0) &&
+  RTS.Search.write("oooo", 0, 0) == "000o")
+prefix = "a" + (Str) (Character) 0 + "b"
+List.do(["p00", "é0", prefix], untouched, do
+  source = untouched + "ooo"
+  alias = ^ source
+  expected = RTS.PackedTableCheck.write(source, 1, 0)
+  actual = RTS.Search.write_native(source, 1, 0)
+  result_alias = ^ actual
+  overwritten = RTS.Search.write_native(actual, 0, 17)
+  RTS.Check.that("aligned malformed, Unicode and NUL prefixes match the independent oracle",
+    RTS.Search.read_native(source, 1) == 262143 &&
+    actual == expected && actual == untouched + "000" &&
+    RTS.Search.write(source, 1, 0) == expected &&
+    source == alias && alias == untouched + "ooo" &&
+    actual == result_alias && result_alias == expected &&
+    overwritten == RTS.PackedTableCheck.write(expected, 0, 17))
+end)
+# Historical byte slicing may split a UTF-8 character. Preserve exact bytes,
+# including invalid UTF-8 results; do not serialize/inspect these as Unicode.
+source = "aaéoo"
+alias = ^ source
+List.do([0, 1], cell, do
+  expected = RTS.PackedTableCheck.write(source, cell, 0)
+  actual = RTS.Search.write_native(source, cell, 0)
+  wrapped = RTS.Search.write(source, cell, 0)
+  RTS.Check.that("triplets splitting UTF-8 preserve independent byte-slice semantics",
+    RTS.PackedTableCheck.bytes_equal?(actual, expected) &&
+    RTS.PackedTableCheck.bytes_equal?(wrapped, expected) &&
+    RTS.PackedTableCheck.bytes_equal?(source, alias) &&
+    RTS.Search.read_native(source, cell) == void &&
+    RTS.Search.read(source, cell) == RTS.PackedTableCheck.read(source, cell))
+end)
+# 1 MiB is not divisible by three: 1,048,575 is the greatest supported length,
+# 1,048,576 is malformed, and 1,048,578 is a well-shaped oversized table.
+limit = RTS.Map.repeat("ooo", 349525)
+limit_alias = ^ limit
+written_limit = RTS.Search.write_native(limit, 349524, 0)
+RTS.Check.that("largest supported complete table includes its last triplet",
+  Str.size(limit) == 1048575 && Str.size(written_limit) == 1048575 &&
+  RTS.Search.read_native(limit, 349524) == 262143 &&
+  RTS.Search.read_native(written_limit, 349524) == 0 &&
+  written_limit == RTS.PackedTableCheck.write(limit, 349524, 0) &&
+  limit == limit_alias && RTS.Search.read_native(limit_alias, 349524) == 262143 &&
+  RTS.Search.read_native(limit, 349525) == void && RTS.Search.write_native(limit, 349525, 0) == void)
+partial_limit = limit + "o"
+oversized = limit + "ooo"
+RTS.Check.that("exact malformed and oversized boundaries decline before allocation",
+  Str.size(partial_limit) == 1048576 && Str.size(oversized) == 1048578 &&
+  RTS.Search.read_native(partial_limit, 0) == void && RTS.Search.write_native(partial_limit, 0, 0) == void &&
+  RTS.Search.read_native(oversized, 0) == void && RTS.Search.write_native(oversized, 0, 0) == void)
+
+source = RTS.Map.repeat("ooo", 9)
+seed = 9173
+valid = true
+i = 0
+while i < 512 do
+  seed = RTS.Data.random_next(seed)
+  cell = seed mod 9
+  value = seed mod 262144
+  expected = RTS.PackedTableCheck.write(source, cell, value)
+  actual = RTS.Search.write(source, cell, value)
+  decoded = RTS.Search.read(actual, cell)
+  reference = RTS.PackedTableCheck.read(expected, cell)
+  valid = valid && actual == expected && decoded == reference &&
+    type(decoded) == type(reference) && inspect(decoded) == inspect(reference)
+  source = ^ actual
+  i = i + 1
+end
+RTS.Check.that("512 deterministic overwrites preserve exact complete table and decoded tags", valid)

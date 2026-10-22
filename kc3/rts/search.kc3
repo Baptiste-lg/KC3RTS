@@ -10,11 +10,23 @@ defmodule RTS.Search do
   }
   # Three printable base-64 digits per cell avoid copying a tree of Map entries
   # on every expansion. 262143 is the unseen sentinel; map cells stay below 9216.
+  # Generic immutable storage helpers; all search policy remains below in KC3.
+  # Unusual integer/table inputs retain the exact original KC3 expressions.
+  def read_native = cfn Tag "kc3rts_packed_u18_read" (Tag, Tag, Result)
+  def write_native = cfn Tag "kc3rts_packed_u18_write" (Tag, Tag, Tag, Result)
   def read = fn (table, cell) {
+    value = RTS.Search.read_native(table, cell)
+    if value != void do value else RTS.Search.read_reference(table, cell) end
+  }
+  def write = fn (table, cell, value) {
+    written = RTS.Search.write_native(table, cell, value)
+    if written != void do written else RTS.Search.write_reference(table, cell, value) end
+  }
+  def read_reference = fn (table, cell) {
     offset = cell * 3
     (Str.byte(table, offset) - 48) * 4096 + (Str.byte(table, offset + 1) - 48) * 64 + Str.byte(table, offset + 2) - 48
   }
-  def write = fn (table, cell, value) {
+  def write_reference = fn (table, cell, value) {
     offset = cell * 3
     digits = (Str) (Character) (48 + value / 4096) + (Str) (Character) (48 + value / 64 mod 64) + (Str) (Character) (48 + value mod 64)
     Str.slice_cfn(table, (Sw) 0, (Sw) offset) + digits + Str.slice_cfn(table, (Sw) (offset + 3), (Sw) Str.size(table))

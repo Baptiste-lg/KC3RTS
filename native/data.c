@@ -1,6 +1,7 @@
 /* Read a field without copying an entire RTS.Shared payload first.
  * This is a storage primitive; game rules remain in KC3. */
 #include "libkc3/kc3.h"
+#include <stdint.h>
 
 static const s_map *payload(const s_tag *value)
 {
@@ -400,4 +401,74 @@ s_tag *kc3rts_encode(s_tag *value, s_tag *result)
   s_tag *encoded = valid ? tag_init_str_alloc_copy(result, w.used, w.bytes) : tag_init(result);
   free(w.bytes);
   return encoded;
+}
+
+/* Immutable 18-bit storage codec: three radix-64 digits biased by 48.
+ * This is not RFC base64 and contains no search policy. Inputs are borrowed;
+ * writes return one owned copy, with only the selected three bytes replaced.
+ * Unsupported inputs decline before allocation. Other bytes remain opaque.
+ * The caller's KC3 fallback retains unusual integers and partial-table cases.
+ * Ordinary Cfn argument evaluation may still copy a raw Str before entry. */
+static bool packed_u18_scalar(const s_tag *tag, uw maximum, uw *out)
+{
+  u64 value;
+  switch (tag->type) {
+  case TAG_U8: value = tag->data.td_u8; break;
+  case TAG_U16: value = tag->data.td_u16; break;
+  case TAG_U32: value = tag->data.td_u32; break;
+  case TAG_U64: value = tag->data.td_u64; break;
+  case TAG_UW: value = tag->data.td_uw; break;
+  case TAG_S8: if (tag->data.td_s8 < 0) return false; value = tag->data.td_s8; break;
+  case TAG_S16: if (tag->data.td_s16 < 0) return false; value = tag->data.td_s16; break;
+  case TAG_S32: if (tag->data.td_s32 < 0) return false; value = tag->data.td_s32; break;
+  case TAG_S64: if (tag->data.td_s64 < 0) return false; value = tag->data.td_s64; break;
+  case TAG_SW: if (tag->data.td_sw < 0) return false; value = tag->data.td_sw; break;
+  default: return false;
+  }
+  if (value > maximum) return false;
+  *out = (uw) value;
+  return true;
+}
+
+static const s_str *packed_u18_table(const s_tag *tag, const s_tag *cell,
+                                   uw *offset)
+{
+  if (tag->type != TAG_STR) return NULL;
+  const s_str *table = &tag->data.td_str;
+  if (!table->size || table->size > 1048576 || table->size % 3 ||
+      !packed_u18_scalar(cell, table->size / 3 - 1, offset)) return NULL;
+  *offset *= 3;
+  return table;
+}
+
+s_tag *kc3rts_packed_u18_read(const s_tag *source, const s_tag *cell,
+                            s_tag *result)
+{
+  uw offset;
+  const s_str *table = packed_u18_table(source, cell, &offset);
+  if (!table) return tag_init(result);
+  const u8 *bytes = (const u8 *) table->ptr.p_pchar + offset;
+  if (bytes[0] < 48 || bytes[0] > 111 || bytes[1] < 48 || bytes[1] > 111 ||
+      bytes[2] < 48 || bytes[2] > 111) return tag_init(result);
+  u32 value = (bytes[0] - 48) * 4096 + (bytes[1] - 48) * 64 + bytes[2] - 48;
+  if (value <= UINT8_MAX) return tag_init_u8(result, value);
+  if (value <= UINT16_MAX) return tag_init_u16(result, value);
+  return tag_init_u32(result, value);
+}
+
+s_tag *kc3rts_packed_u18_write(const s_tag *source, const s_tag *cell,
+                            const s_tag *value, s_tag *result)
+{
+  uw offset, encoded;
+  const s_str *table = packed_u18_table(source, cell, &offset);
+  if (!table || !packed_u18_scalar(value, 262143, &encoded)) return tag_init(result);
+  s_tag copy = {0};
+  copy.type = TAG_STR;
+  if (!str_init_copy(&copy.data.td_str, table)) return NULL;
+  char *bytes = copy.data.td_str.free.p_pchar + offset;
+  bytes[0] = 48 + encoded / 4096;
+  bytes[1] = 48 + encoded / 64 % 64;
+  bytes[2] = 48 + encoded % 64;
+  *result = copy;
+  return result;
 }

@@ -1,7 +1,17 @@
 # Frozen insertion-sort Search.run before sorted-tail optimization.
 # Source: fe5fcfe499481fc95b502c7d537791289eff390b, kc3/rts/search.kc3.
-# Keep this independent of the candidate run function for resumable-state parity.
+# Keep run and packed-table operations independent of the candidate for full
+# resumable-state parity. Both table expressions come from the same source.
 defmodule RTS.SearchReference do
+  def read = fn (table, cell) {
+    offset = cell * 3
+    (Str.byte(table, offset) - 48) * 4096 + (Str.byte(table, offset + 1) - 48) * 64 + Str.byte(table, offset + 2) - 48
+  }
+  def write = fn (table, cell, value) {
+    offset = cell * 3
+    digits = (Str) (Character) (48 + value / 4096) + (Str) (Character) (48 + value / 64 mod 64) + (Str) (Character) (48 + value mod 64)
+    Str.slice_cfn(table, (Sw) 0, (Sw) offset) + digits + Str.slice_cfn(table, (Sw) (offset + 3), (Sw) Str.size(table))
+  }
   def run = fn (map, mask, search, budget) {
     search = RTS.Data.share(search)
     stride = RTS.Data.get(map, "width") * RTS.Data.get(map, "height") + 1
@@ -23,21 +33,21 @@ defmodule RTS.SearchReference do
         cost = stride - 1 - (entry / stride mod stride)
         cell = entry mod stride
         if reverse do cell = stride - 1 - cell end
-        if cost == RTS.Search.read(costs, cell) do
+        if cost == RTS.SearchReference.read(costs, cell) do
           if cell == goal do
             path = [cell]
             while cell != start do
-              cell = RTS.Search.read(parents, cell)
+              cell = RTS.SearchReference.read(parents, cell)
               path = [cell | path]
             end
             status = "ready"
           else
             List.do(RTS.Map.neighbors(map, cell), neighbor, do
               if Str.byte(mask, neighbor) != 35 do
-                old = RTS.Search.read(costs, neighbor)
+                old = RTS.SearchReference.read(costs, neighbor)
                 if cost + 1 < old do
-                  costs = RTS.Search.write(costs, neighbor, cost + 1)
-                  parents = RTS.Search.write(parents, neighbor, cell)
+                  costs = RTS.SearchReference.write(costs, neighbor, cost + 1)
+                  parents = RTS.SearchReference.write(parents, neighbor, cell)
                   h = if astar do RTS.Search.distance(map, neighbor, goal) else 0 end
                   open = [RTS.Search.priority(map, neighbor, cost + 1, h, reverse) | open]
                 end
