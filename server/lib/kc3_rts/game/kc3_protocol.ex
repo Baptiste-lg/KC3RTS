@@ -296,10 +296,10 @@ defmodule KC3RTS.Game.KC3Protocol do
 
   defp grid_count(map), do: map["width"] * map["height"] * div(map["cell_size"], 256) ** 2
 
-  defp cells?(list, map),
-    do:
-      is_list(list) and length(list) <= grid_count(map) and
-        Enum.all?(list, &integer?(&1, 0, grid_count(map) - 1))
+  defp cells?(list, map) do
+    count = grid_count(map)
+    is_list(list) and length(list) <= count and Enum.all?(list, &integer?(&1, 0, count - 1))
+  end
 
   defp mask?(mask, map),
     do:
@@ -402,7 +402,13 @@ defmodule KC3RTS.Game.KC3Protocol do
   end
 
   defp definition?(id, kinds), do: is_binary(id) and get_in(@definitions, [id, "kind"]) in kinds
-  defp fields?(map, keys), do: is_map(map) and Enum.sort(Map.keys(map)) == Enum.sort(keys)
+  # Every caller supplies a closed schema of distinct literal/catalog keys.
+  # Cardinality + membership checks exactly that schema without allocating and
+  # sorting two key lists for every entity, order, task and queue entry.
+  defp fields?(map, keys),
+    do:
+      is_map(map) and map_size(map) == length(keys) and
+        Enum.all?(keys, &is_map_key(map, &1))
 
   defp integer?(n, minimum, maximum \\ @safe_integer),
     do: is_integer(n) and n >= minimum and n <= maximum

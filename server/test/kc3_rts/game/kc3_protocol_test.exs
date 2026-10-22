@@ -300,6 +300,116 @@ defmodule KC3RTS.Game.KC3ProtocolTest do
     for reply <- invalid, do: assert({:error, :invalid_worker_reply} == decode(reply))
   end
 
+  test "every nested closed schema rejects missing, extra and substituted keys" do
+    valid = rich_reply()
+    assert {:ok, ^valid} = decode(valid)
+
+    for {path, map} <- nested_maps(valid), List.last(path) != "paid" do
+      # Paid amounts intentionally have an open set of valid resource keys;
+      # all other maps in this fixture have closed schemas.
+      assert {:error, :invalid_worker_reply} =
+               decode(replace_at(valid, path, Map.put(map, "unexpected_field", nil)))
+
+      for key <- Map.keys(map) do
+        missing = Map.delete(map, key)
+        substituted = Map.put(missing, "unexpected_field", map[key])
+
+        for changed <- [missing, substituted] do
+          assert {:error, :invalid_worker_reply} == decode(replace_at(valid, path, changed)),
+                 inspect({path, key})
+        end
+      end
+    end
+  end
+
+  test "path validation retains exact integer and length bounds with a precomputed grid size" do
+    valid = rich_reply()
+    path = ["state", "entities", 1, "order", "path"]
+    count = 1920
+
+    for cells <- [[], [0], [count - 1], [0, count - 1], List.duplicate(0, count)] do
+      reply = replace_at(valid, path, cells)
+      assert {:ok, ^reply} = decode(reply)
+    end
+
+    for cells <- [nil, %{}, [false], [0.0], ["0"], [-1], [count], List.duplicate(0, count + 1)] do
+      assert {:error, :invalid_worker_reply} = decode(replace_at(valid, path, cells))
+    end
+  end
+
+  defp rich_reply do
+    [hall, worker | rest] = @fixture["state"]["entities"]
+
+    hall =
+      Map.merge(hall, %{
+        "construction" => %{
+          "recipe_id" => "core.build_hall",
+          "remaining_ticks" => 1,
+          "paid" => %{"core.wood" => 1}
+        },
+        "queue" => [
+          %{
+            "id" => 1,
+            "recipe_id" => "core.train_worker",
+            "remaining_ticks" => 150,
+            "started" => false,
+            "paid" => %{"core.food" => 50}
+          }
+        ]
+      })
+
+    worker =
+      Map.merge(worker, %{
+        "order" => %{
+          "kind" => "move",
+          "path" => [0, 1919],
+          "goal" => 1919,
+          "wait" => 0,
+          "revision" => 1,
+          "attempt" => 0,
+          "priority" => 0
+        },
+        "task" => %{
+          "kind" => "gather",
+          "target_kind" => "node",
+          "target_id" => 39,
+          "resource_id" => "core.food",
+          "phase" => "gather",
+          "progress" => 0
+        },
+        "cargo" => %{"resource_id" => "core.food", "amount" => 10},
+        "rally" => %{"x" => 0, "z" => 0}
+      })
+
+    @fixture
+    |> put_in(["state", "entities"], [hall, worker | rest])
+    |> put_in(["state", "next_job_id"], 2)
+  end
+
+  defp nested_maps(value, path \\ [])
+
+  defp nested_maps(value, path) when is_map(value),
+    do: [
+      {path, value}
+      | Enum.flat_map(value, fn {key, child} -> nested_maps(child, path ++ [key]) end)
+    ]
+
+  defp nested_maps(value, path) when is_list(value),
+    do:
+      value
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {child, index} -> nested_maps(child, path ++ [index]) end)
+
+  defp nested_maps(_, _), do: []
+
+  defp replace_at(_value, [], replacement), do: replacement
+
+  defp replace_at(value, [index | rest], replacement) when is_integer(index),
+    do: List.update_at(value, index, &replace_at(&1, rest, replacement))
+
+  defp replace_at(value, [key | rest], replacement),
+    do: Map.update!(value, key, &replace_at(&1, rest, replacement))
+
   defp decode(reply),
     do: KC3Protocol.decode_reply(Jason.encode!(reply), request(1, "new_match"), nil)
 end
