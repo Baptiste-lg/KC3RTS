@@ -1,0 +1,13 @@
+# Manual upstream-runtime reproducer, intentionally NOT a passing game test.
+# Pinned runtime 4bdffa88b35a496ca0a856a9eb58486cf6e2029c on OpenBSD 8.0:
+# inspect reports "expected 65 got -1" and returns Void for this nested value.
+# No game modules or native bridge are loaded. Inspecting either list on its
+# own succeeds; a tuple containing both lists triggers the buffer-size failure.
+# Run from the pinned runtime directory with kc3s/kc3s --load <this file> --quit.
+value = {[(S64) 1, (U32) 1, (Uw) 1], [0, 1, 2]}
+rendered = inspect(value)
+if type(rendered) != Str do
+  puts("FAIL: runtime inspect should return Str for the nested typed lists")
+  exit(1)
+end
+puts(rendered)
