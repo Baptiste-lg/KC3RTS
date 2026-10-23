@@ -1,7 +1,7 @@
-# Frozen insertion-sort Search.run before sorted-tail optimization.
-# Source: fe5fcfe499481fc95b502c7d537791289eff390b, kc3/rts/search.kc3.
-# Keep run and packed-table operations independent of the candidate for full
-# resumable-state parity. Both table expressions come from the same source.
+# Frozen Search.run control flow including N/3N graph edges from 6720e27,
+# kc3/rts/search.kc3, before private packed buffers. Packed-table expressions
+# remain the independent KC3 oracle from fe5fcfe499481fc95b502c7d537791289eff390b;
+# neither read/write nor edge checks call the candidate's native helpers.
 defmodule RTS.SearchReference do
   def read = fn (table, cell) {
     offset = cell * 3
@@ -14,7 +14,10 @@ defmodule RTS.SearchReference do
   }
   def run = fn (map, mask, search, budget) {
     search = RTS.Data.share(search)
-    stride = RTS.Data.get(map, "width") * RTS.Data.get(map, "height") + 1
+    width = RTS.Data.get(map, "width")
+    count = width * RTS.Data.get(map, "height")
+    stride = count + 1
+    graph = Str.size(mask) == count * 3
     goal = RTS.Data.get(search, "goal")
     start = RTS.Data.get(search, "start")
     reverse = RTS.Search.reverse_ties?(map, start, goal)
@@ -43,7 +46,17 @@ defmodule RTS.SearchReference do
             status = "ready"
           else
             List.do(RTS.Map.neighbors(map, cell), neighbor, do
-              if Str.byte(mask, neighbor) != 35 do
+              clear = Str.byte(mask, neighbor) != 35
+              if clear && graph do
+                # Frozen inline branch: width=1 must select vertical first.
+                offset = if neighbor == cell + width do count * 2 + cell else
+                  if neighbor == cell - width do count * 2 + neighbor else
+                    count + if neighbor > cell do cell else neighbor end
+                  end
+                end
+                clear = Str.byte(mask, offset) != 35
+              end
+              if clear do
                 old = RTS.SearchReference.read(costs, neighbor)
                 if cost + 1 < old do
                   costs = RTS.SearchReference.write(costs, neighbor, cost + 1)

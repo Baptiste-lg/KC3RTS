@@ -50,7 +50,11 @@ open = RTS.Data.get(partial, "open")
 List.do([List.reverse(open), List.append(open, open),
   [RTS.Search.priority(map, 0, 7, 14, false) | open]], restored_open, do
   restored = RTS.Data.put(partial, "open", restored_open)
-  List.do([0, 1, 3, 128], budget, do RTS.SearchParity.chunk(map, mask, restored, budget) end)
+  graph = RTS.Map.mark(mask + RTS.Map.repeat(".", 128), 65)
+  List.do([0, 1, 3, 128], budget, do
+    RTS.SearchParity.chunk(map, mask, restored, budget)
+    RTS.SearchParity.chunk(map, graph, restored, budget)
+  end)
 end)
 seed = 9173
 scene = 0
@@ -65,3 +69,50 @@ while scene < 12 do
   RTS.SearchParity.scene(map, blocked, 0, 63, scene mod 2 == 0, 3)
   scene = scene + 1
 end
+
+# Empty frontier and already-ready inputs exercise the non-expansion exits,
+# including the historical clearing of the returned path on a ready re-entry.
+ready = RTS.SearchReference.run(map, mask, RTS.Search.start(map, 0, 0, true), 1)
+empty = RTS.Data.put(initial, "open", [])
+List.do([0, 1, 3], budget, do
+  returned = RTS.SearchParity.chunk(map, mask, ready, budget)
+  exhausted = RTS.SearchParity.chunk(map, mask, empty, budget)
+  RTS.Check.that("ready and empty-frontier exits retain their exact historical statuses",
+    RTS.Data.get(returned, "status") == "ready" && RTS.Data.get(returned, "path") == [] &&
+    RTS.Data.get(exhausted, "status") == if budget == 0 do "planning" else "unreachable" end)
+end)
+
+# Legal fine-grid shapes at/below the 9216-cell protocol limit. Only four
+# expansions per scene: never complete a 9k-cell BFS merely to test storage.
+List.do([{96, 96}, {512, 16}, {64, 144}, {1, 16}, {16, 1}], {width, height}, do
+  large = %{"width" => width, "height" => height}
+  count = width * height
+  legacy = RTS.Map.repeat(".", count)
+  graph = RTS.Map.repeat(".", count * 3)
+  start = if width > 1 && height > 1 do width + 1 else 0 end
+  goal = count - 1 - start
+  edges = if width == 1 do [count * 2 + 1, count * 3 - 3] else
+    if height == 1 do [count + 1, count * 2 - 3] else
+      [count + start, count * 2 + start, count + goal - 1, count * 2 + goal - width]
+    end
+  end
+  List.do(edges, edge, do graph = RTS.Map.mark(graph, edge) end)
+  List.do([{start, goal}, {goal, start}], {from, to}, do
+    List.do([true, false], astar, do
+      current = RTS.Search.start(large, from, to, astar)
+      # One legacy chunk additionally protects N-mask behavior at these sizes.
+      RTS.SearchParity.chunk(large, legacy, RTS.Data.share(current), 1)
+      current = RTS.Data.put(current, "mask", graph)
+      original = RTS.Data.share(current)
+      before = RTS.Wire.encode(original)
+      List.do([0, 1, 3], budget, do
+        current = JSON.from_str(RTS.Wire.encode(current))
+        current = RTS.SearchParity.chunk(large, RTS.Data.get(current, "mask"), current, budget)
+      end)
+      RTS.Check.that("large/aspect graph resumes preserve the original snapshot and all mask planes",
+        RTS.Wire.encode(original) == before && RTS.Data.get(current, "mask") == graph &&
+        RTS.Data.get(current, "expanded") <= 4 &&
+        type(RTS.Data.get(current, "parents")) == Str && type(RTS.Data.get(current, "costs")) == Str)
+    end)
+  end)
+end)
