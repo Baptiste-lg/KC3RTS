@@ -7,7 +7,7 @@ defmodule KC3RTS.Game.KC3ContentTest do
   @root Path.expand("../../../..", __DIR__)
 
   for suite <-
-        ~w(primitives lookup selection content world map rectangles formation planner_mask graph graph_corridor motion collision probe reservation corridor navigation entry planner packed_table search search_parity graph_search spatial economy production construction) do
+        ~w(primitives lookup selection content world map rectangles formation planner_mask graph graph_corridor motion collision probe reservation probe_context corridor navigation entry planner packed_table search search_parity graph_search spatial economy production construction) do
     @tag timeout: 120_000
     test "KC3 #{suite} contracts" do
       binary = System.fetch_env!("KC3RTS_KC3S") |> Path.expand()

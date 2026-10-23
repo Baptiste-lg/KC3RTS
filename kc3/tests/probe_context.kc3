@@ -1,0 +1,160 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "spatial_reference.kc3")
+defmodule RTS.ProbeContextCheck do
+  def snapshot = fn (index) {
+    List.sort(Facts.collect_with_tags(index, ?, ?, ?, fn (fact) {
+      {fact.subject, fact.predicate, fact.object}
+    }))
+  }
+  def reference = fn (layout, mask, index, occupied, body, speed, cell, horizontal) {
+    {next, reached} = RTS.Navigation.propose_reference(layout, body, speed, cell, horizontal)
+    cells = RTS.SpatialReference.available(layout, mask, index, next)
+    if cells != [] do RTS.SpatialReference.relocate(index, occupied, body, cells, next) end
+    {next, reached, cells}
+  }
+  def run = fn (context, index, occupied, body, speed, cell, horizontal) {
+    result = RTS.Navigation.probe_move_context_native(context, index, occupied, body, speed, cell, horizontal)
+    if result != void do result else
+      {layout, mask} = ^ context
+      RTS.Navigation.probe_move_fallback(layout, mask, index, occupied, body, speed, cell, horizontal)
+    end
+  }
+  def fixture = fn (layout, occupied, body) {
+    index = Facts.database()
+    RTS.Spatial.reserve(index, occupied, body, true)
+    List.do([{2, 256, 256, 255}, {3, 640, 384, 384}], neighbor, do
+      {id, x, z, size} = ^ neighbor
+      RTS.Spatial.reserve(index, RTS.Map.cover(layout, x, z, size), neighbor, true)
+    end)
+    Facts.add_tags(index, 0, :sentinel, "keep")
+    Facts.add_tags(index, 15, :body, {4, 1000, 1000, 64})
+    index
+  }
+end
+layout = {4, 4, 0, 0, 256}
+mask = "................"
+positions = [{-1, 128}, {64, 128}, {128, 128}, {192, 256}, {384, 384}, {640, 640}]
+terrains = [mask, "#...............", ".....#..........", "################"]
+cases = 0
+# Same bounded matrix as the reservation contract, but no nested suite load.
+while cases < 864 do
+  choice = ^ cases
+  terrain = access(terrains, [choice mod 4])
+  choice = choice / 4
+  horizontal = choice mod 2 == 0
+  choice = choice / 2
+  speed = access([0, 64, 256], [choice mod 3])
+  choice = choice / 3
+  {x, z} = access(positions, [choice mod 6])
+  size = access([2, 127, 128, 255, 384, 512], [choice / 6])
+  body = {1, x, z, size}
+  occupied = RTS.Map.cover(layout, x, z, size)
+  reference = RTS.ProbeContextCheck.fixture(layout, occupied, body)
+  candidate = RTS.ProbeContextCheck.fixture(layout, occupied, body)
+  context = {layout, terrain}
+  before = inspect(context)
+  expected = RTS.ProbeContextCheck.reference(layout, terrain, reference, occupied, body, speed, 5, horizontal)
+  actual = RTS.Navigation.probe_move_context_native(context, candidate, occupied, body, speed, 5, horizontal)
+  if actual != expected || RTS.ProbeContextCheck.snapshot(candidate) != RTS.ProbeContextCheck.snapshot(reference) || inspect(context) != before do
+    puts("FAIL: context reservation case " + (Str) cases)
+    puts(inspect({body, occupied, terrain, horizontal, speed, actual, expected}))
+    exit(1)
+  end
+  cases = cases + 1
+end
+RTS.Check.that("864 context probes preserve proposals, ordered cells, complete Facts and immutable inputs", cases == 864)
+
+body = {1, 128, 128, 128}
+index = RTS.ProbeContextCheck.fixture(layout, [0], body)
+before = RTS.ProbeContextCheck.snapshot(index)
+List.do([void, false, 0, [], {}, %{}, {layout}, {layout, mask, 0},
+  {void, mask}, {{4, 4}, mask}, {layout, void}, {layout, ""}, {layout, "..............."}], bad, do
+  RTS.Check.that("malformed contexts decline before any reservation changes",
+    RTS.Navigation.probe_move_context_native(bad, index, [0], body, 64, 1, true) == void &&
+    RTS.ProbeContextCheck.snapshot(index) == before)
+end)
+context = {layout, mask}
+List.do([void, [0 | 1], [0, 1 | 2], [0, "bad"], [0, false]], occupied, do
+  RTS.Check.that("context delegation preserves complete old-subject preflight",
+    RTS.Navigation.probe_move_context_native(context, index, occupied, body, 64, 1, true) == void &&
+    RTS.ProbeContextCheck.snapshot(index) == before)
+end)
+RTS.Check.that("even a terrain-blocked candidate rejects an invalid Facts index",
+  RTS.Navigation.probe_move_context_native({layout, "################"}, void, [0], body, 64, 1, true) == void)
+List.do([[], [0, 0, 15], [-1, 18446744073709551616]], occupied, do
+  reference = RTS.ProbeContextCheck.fixture(layout, occupied, body)
+  candidate = RTS.ProbeContextCheck.fixture(layout, occupied, body)
+  RTS.Check.that("context does not deduplicate, clip or recompute caller reservations",
+    RTS.Navigation.probe_move_context_native(context, candidate, occupied, body, 0, 0, true) ==
+      RTS.ProbeContextCheck.reference(layout, mask, reference, occupied, body, 0, 0, true) &&
+    RTS.ProbeContextCheck.snapshot(candidate) == RTS.ProbeContextCheck.snapshot(reference))
+end)
+
+# Tiny footprints and wide geometry must decline without mutation, then run
+# exactly the existing fallback, including its ordered remove/add operation.
+List.do([{layout, {1, 128, 128, 1}},
+  {{4, 4, 9007199254730000, -9007199254730000, 256},
+    {1, 9007199254730128, -9007199254729872, 128}}], {grid, unit}, do
+  reference = Facts.database()
+  candidate = Facts.database()
+  List.do([reference, candidate], db, do RTS.Spatial.reserve(db, [0], unit, true) end)
+  before = RTS.ProbeContextCheck.snapshot(candidate)
+  RTS.Check.that("unsupported geometry declines without writes through the context adapter",
+    RTS.Navigation.probe_move_context_native({grid, mask}, candidate, [0], unit, 64, 1, true) == void &&
+    RTS.ProbeContextCheck.snapshot(candidate) == before)
+  expected = RTS.ProbeContextCheck.reference(grid, mask, reference, [0], unit, 64, 1, true)
+  actual = RTS.ProbeContextCheck.run({grid, mask}, candidate, [0], unit, 64, 1, true)
+  RTS.Check.that("context fallback keeps exact proposal and complete reservations",
+    actual == expected && RTS.ProbeContextCheck.snapshot(candidate) == RTS.ProbeContextCheck.snapshot(reference))
+end)
+reference = Facts.database()
+candidate = Facts.database()
+List.do([reference, candidate], db, do
+  RTS.Spatial.reserve(db, [0], body, true)
+  RTS.Spatial.reserve(db, [0], {2, 9007199254730000, 128, 128}, true)
+end)
+before = RTS.ProbeContextCheck.snapshot(candidate)
+RTS.Check.that("unsupported neighbor closes its cursor and declines without writes",
+  RTS.Navigation.probe_move_context_native(context, candidate, [0], body, 64, 1, true) == void &&
+  RTS.ProbeContextCheck.snapshot(candidate) == before)
+expected = RTS.ProbeContextCheck.reference(layout, mask, reference, [0], body, 64, 1, true)
+actual = RTS.ProbeContextCheck.run(context, candidate, [0], body, 64, 1, true)
+RTS.Check.that("fallback may immediately mutate the same Facts after cursor cleanup",
+  actual == expected && RTS.ProbeContextCheck.snapshot(candidate) == RTS.ProbeContextCheck.snapshot(reference))
+Facts.add_tags(candidate, 0, :sentinel, "writable")
+
+index = Facts.database()
+other = {2, 384, 128, 128}
+RTS.Spatial.reserve(index, [0], body, true)
+RTS.Spatial.reserve(index, [1], other, true)
+first = RTS.ProbeContextCheck.run(context, index, [0], body, 128, 1, true)
+second = RTS.ProbeContextCheck.run(context, index, [1], other, 128, 0, false)
+RTS.Check.that("context reuse observes earlier movers and retains blocked proposals",
+  first == {{1, 256, 128, 128}, false, [0, 1]} && second == {{2, 256, 128, 128}, false, []})
+
+List.do(["p" + RTS.Map.repeat(".", 15),
+  (Str) (Character) 0 + RTS.Map.repeat(".", 15), "é" + RTS.Map.repeat(".", 14)], terrain, do
+  reference = Facts.database()
+  candidate = Facts.database()
+  List.do([reference, candidate], db, do RTS.Spatial.reserve(db, [0], body, true) end)
+  context = {layout, terrain}
+  before = inspect(context)
+  expected = RTS.ProbeContextCheck.reference(layout, terrain, reference, [0], body, 64, 1, true)
+  actual = RTS.Navigation.probe_move_context_native(context, candidate, [0], body, 64, 1, true)
+  RTS.Check.that("opaque non-blocking bytes, NUL and UTF-8 retain byte-sized mask semantics",
+    actual == expected && actual == {{1, 192, 128, 128}, false, [0]} &&
+    RTS.ProbeContextCheck.snapshot(candidate) == RTS.ProbeContextCheck.snapshot(reference) &&
+    inspect(context) == before)
+end)
+
+context = {{96, 96, 0, 0, 256}, RTS.Map.repeat(".", 9216)}
+owned = {%{"opaque" => [18446744073709551616]}, 128, 128, 128}
+index = Facts.database()
+result = RTS.Navigation.probe_move_context_native(context, index, [], owned, 64, 1, true)
+context = void
+owned = void
+index = void
+RTS.Check.that("owned output survives release of a large context, original metadata and index",
+  result == {{%{"opaque" => [18446744073709551616]}, 192, 128, 128}, false, [0]})

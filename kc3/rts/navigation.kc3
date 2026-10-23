@@ -181,13 +181,17 @@ defmodule RTS.Navigation do
   # Try one caller-selected step and reserve it if clear. Unsupported geometry
   # declines before mutation; the fallback keeps exactly the same operation order.
   def probe_move_native = cfn Tag "kc3rts_grid_probe_reserve" (Tag, Tag, Tag, Tag, Tag, Tag, Tag, Tag, Result)
+  def probe_move_context_native = cfn Tag "kc3rts_grid_probe_reserve_context" (Tag, Tag, Tag, Tag, Tag, Tag, Tag, Result)
   def probe_move = fn (layout, mask, index, occupied_cells, body, speed, cell, horizontal_first) {
     result = RTS.Navigation.probe_move_native(layout, mask, index, occupied_cells, body, speed, cell, horizontal_first)
     if result != void do result else
-      {next, reached, cells} = RTS.Navigation.probe(layout, mask, index, body, speed, cell, horizontal_first)
-      if cells != [] do RTS.Spatial.relocate(index, occupied_cells, body, cells, next) end
-      {next, reached, cells}
+      RTS.Navigation.probe_move_fallback(layout, mask, index, occupied_cells, body, speed, cell, horizontal_first)
     end
+  }
+  def probe_move_fallback = fn (layout, mask, index, occupied_cells, body, speed, cell, horizontal_first) {
+    {next, reached, cells} = RTS.Navigation.probe(layout, mask, index, body, speed, cell, horizontal_first)
+    if cells != [] do RTS.Spatial.relocate(index, occupied_cells, body, cells, next) end
+    {next, reached, cells}
   }
   def propose = fn (layout, body, speed, cell, horizontal_first) {
     next = RTS.Navigation.propose_native(layout, body, speed, cell, horizontal_first)
@@ -632,6 +636,8 @@ defmodule RTS.Navigation do
     buckets = RTS.Data.get(spatial, "index")
     rows = RTS.Data.get(spatial, "rows")
     mask = RTS.Data.get(nav, "mask")
+    # Tuple storage shares this immutable mask across every moving row.
+    context = {layout, mask}
     rows = List.map_filter(rows, {e, speed, body, occupied_cells}, do
       order = RTS.Data.get(e, "order")
       cell = RTS.Data.first(order, "path")
@@ -640,7 +646,11 @@ defmodule RTS.Navigation do
         if waited >= 70 do RTS.Data.merge(e, %{"order" => void, "task" => void, "status" => "blocked"}) else
           RTS.Data.merge(e, %{"order" => RTS.Data.put(order, "wait", waited), "status" => if waited mod 10 == 0 do "planning" else "waiting" end}) end
       else if cell == void do e else
-        {next, reached, cells} = RTS.Navigation.probe_move(layout, mask, buckets, occupied_cells, body, speed, cell, true)
+        proposal = RTS.Navigation.probe_move_context_native(context, buckets, occupied_cells, body, speed, cell, true)
+        if proposal == void do
+          proposal = RTS.Navigation.probe_move_fallback(layout, mask, buckets, occupied_cells, body, speed, cell, true)
+        end
+        {next, reached, cells} = ^ proposal
         if cells == [] do
           alternative = RTS.Navigation.alternate(layout, body, speed, cell, next)
           # No reservation changed since the first query. An identical

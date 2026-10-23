@@ -635,3 +635,18 @@ s_tag *kc3rts_grid_probe_reserve(s_tag *layout, s_tag *mask, s_tag *index,
   *result = output;
   return result;
 }
+
+/* An immutable tuple shares the tick-local layout/mask across Cfn calls.
+ * Borrow its fields for this call only; the existing helper owns validation,
+ * result storage and ordered reservations. Preserve fatal errors as NULL. */
+s_tag *kc3rts_grid_probe_reserve_context(const s_tag *context, s_tag *index,
+                                        s_tag *old_cells, s_tag *body,
+                                        s_tag *speed, s_tag *cell,
+                                        s_tag *horizontal, s_tag *result)
+{
+  if (context->type != TAG_PTUPLE || !context->data.td_ptuple ||
+      context->data.td_ptuple->count != 2) return tag_init(result);
+  s_tag *fields = context->data.td_ptuple->tag;
+  return kc3rts_grid_probe_reserve(fields, fields + 1, index, old_cells,
+                                   body, speed, cell, horizontal, result);
+}
