@@ -129,6 +129,9 @@ defmodule RTS.Map do
     {RTS.Data.get(map, "width"), RTS.Data.get(map, "height"),
       RTS.Data.get(map, "origin_x"), RTS.Data.get(map, "origin_z"), RTS.Data.get(map, "cell_size")}
   }
+  # Generic inclusive-rectangle union at grid-center samples; Void declines
+  # unsupported shapes/ranges without changing inputs. Callers own fallback.
+  def rectangle_mask_native = cfn Tag "kc3rts_grid_rectangles_mask" (Tag, Tag, Result)
   # Unlike cells (which clips static obstacles), cover rejects out-of-map bodies.
   # The bounded native primitive only enumerates integer geometry. Keep the
   # exact KC3 implementation for unsupported ranges and diagnostic parity.

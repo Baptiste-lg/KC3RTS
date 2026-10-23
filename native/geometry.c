@@ -199,6 +199,90 @@ s_tag *kc3rts_grid_graph(const s_tag *layout, const s_tag *mask,
   return result;
 }
 
+/* Union of inclusive integer rectangles sampled at grid centers.
+ * Rectangle construction and every game clearance decision remain in KC3.
+ * Read-only, owned output; unsupported inputs decline before allocation. */
+struct rect_span { s64 left, top, right, bottom; };
+
+static bool rect_span_init(struct rect_span *span, const s_tag *rectangle,
+                           s64 width, s64 height, s64 cx, s64 cz, s64 step)
+{
+  if (rectangle->type != TAG_PTUPLE || !rectangle->data.td_ptuple ||
+      rectangle->data.td_ptuple->count != 4)
+    return false;
+  const s_tag *parts = rectangle->data.td_ptuple->tag;
+  s64 left, top, right, bottom;
+  if (!grid_scalar(parts, &left) || !grid_scalar(parts + 1, &top) ||
+      !grid_scalar(parts + 2, &right) || !grid_scalar(parts + 3, &bottom))
+    return false;
+  if (left > right || top > bottom) {
+    *span = (struct rect_span) {1, 1, 0, 0};
+    return true;
+  }
+  *span = (struct rect_span) {
+    graph_ceil(left - cx, step), graph_ceil(top - cz, step),
+    graph_floor(right - cx, step), graph_floor(bottom - cz, step)
+  };
+  if (span->left < 0) span->left = 0;
+  if (span->top < 0) span->top = 0;
+  if (span->right >= width) span->right = width - 1;
+  if (span->bottom >= height) span->bottom = height - 1;
+  return true;
+}
+
+static uw rect_area(const struct rect_span *span)
+{
+  if (span->left > span->right || span->top > span->bottom) return 0;
+  return (uw) ((span->right - span->left + 1) *
+               (span->bottom - span->top + 1));
+}
+
+s_tag *kc3rts_grid_rectangles_mask(const s_tag *layout, const s_tag *rectangles,
+                                  s_tag *result)
+{
+  if (layout->type != TAG_PTUPLE || !layout->data.td_ptuple ||
+      layout->data.td_ptuple->count != 5 || rectangles->type != TAG_PLIST)
+    return tag_init(result);
+  const s_tag *grid = layout->data.td_ptuple->tag;
+  s64 width, height, ox, oz, step;
+  if (!grid_scalar(grid, &width) || !grid_scalar(grid + 1, &height) ||
+      !grid_scalar(grid + 2, &ox) || !grid_scalar(grid + 3, &oz) ||
+      !grid_scalar(grid + 4, &step) || width < 1 || width > 65535 ||
+      height < 1 || height > 65535 || step < 1 ||
+      width * height > 1048576)
+    return tag_init(result);
+  s64 cx = ox + step / 2, cz = oz + step / 2;
+  uw cells = (uw) (width * height), count = 0, work = 0;
+  /* Validate EVERY rectangle before allocation, even after full coverage.
+   * Bound duplicate write work as well as input count and allocation size. */
+  for (s_list *item = rectangles->data.td_plist; item; item = list_next(item)) {
+    struct rect_span span;
+    if (item->next.type != TAG_PLIST || ++count > 4096 ||
+        !rect_span_init(&span, &item->tag, width, height, cx, cz, step))
+      return tag_init(result);
+    uw area = rect_area(&span);
+    if (area > 4194304 - work) return tag_init(result);
+    work += area;
+  }
+  s_tag output = {0};
+  if (!tag_init_str_alloc(&output, cells)) return NULL;
+  char *bytes = output.data.td_str.free.p_pchar;
+  memset(bytes, '.', cells);
+  for (s_list *item = rectangles->data.td_plist; item; item = list_next(item)) {
+    struct rect_span span;
+    if (!rect_span_init(&span, &item->tag, width, height, cx, cz, step)) {
+      tag_clean(&output);
+      return tag_init(result);
+    }
+    if (rect_area(&span))
+      for (s64 row = span.top; row <= span.bottom; ++row)
+        memset(bytes + row * width + span.left, '#',
+               (size_t) (span.right - span.left + 1));
+  }
+  *result = output;
+  return result;
+}
+
 /* Enumerate one caller-selected, axis-aligned two-segment corridor. This is
  * not a planner: KC3 chooses axis priority, retries, clearance and A* budgets.
  * Only destination bytes are tested (the starting cell may be blocked).

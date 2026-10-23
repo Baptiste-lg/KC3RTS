@@ -1,0 +1,317 @@
+load!(__DIR__ + "check.kc3")
+load!(__DIR__ + "../load.kc3")
+RTS.Loader.world(__DIR__ + "../")
+load!(__DIR__ + "formation_reference.kc3")
+
+defmodule RTS.RectangleReference do
+  # Game overlap policy remains in KC3 and is evaluated ONCE per other body.
+  # Integer strict overlap is exactly membership in these inclusive rectangles.
+  def rectangles = fn (footprint, others) {
+    List.map(others, fn (other) {
+      distance = (footprint + access(other, [2])) / 2
+      x = access(other, [0])
+      z = access(other, [1])
+      {x - distance + 1, z - distance + 1,
+        x + distance - 1, z + distance - 1}
+    })
+  }
+  # Independent generic oracle: direct point-in-rectangle comparisons, no
+  # floor/ceiling, clipped ranges, Map.cells or formation collision shortcuts.
+  def mask = fn ({width, height, ox, oz, step}, rectangles) {
+    result = ""
+    cell = 0
+    while cell < width * height do
+      x = ox + (cell mod width) * step + step / 2
+      z = oz + (cell / width) * step + step / 2
+      blocked = false
+      List.do(rectangles, {left, top, right, bottom}, do
+        if left <= x && x <= right && top <= z && z <= bottom do blocked = true end
+      end)
+      result = result + if blocked do "#" else "." end
+      cell = cell + 1
+    end
+    result
+  }
+end
+
+# Frozen exact ff8da82 enumeration, before rectangle rasterization. The older
+# FormationReference uses fits?, whose mixed U16/S16 comparison exposes a
+# runtime defect on some wide grids. Keep that older oracle unchanged; use
+# this immediately preceding production path for wide-grid compatibility.
+defmodule RTS.FormationBeforeRaster do
+  def slots = fn (grid, mask, goal, footprint, others, count) {
+    layout = RTS.Map.layout(grid)
+    {width, height, ox, oz, cell_size} = ^ layout
+    stride = (footprint * 2 + 255) / 256 + 1
+    result = []
+    remaining = ^ count
+    side = 1
+    while side * side < count do side = side + 1 end
+    radius = side / 2
+    maximum = goal mod width / stride
+    if (width - 1 - goal mod width) / stride > maximum do maximum = (width - 1 - goal mod width) / stride end
+    if (goal / width) / stride > maximum do maximum = (goal / width) / stride end
+    if (height - 1 - goal / width) / stride > maximum do maximum = (height - 1 - goal / width) / stride end
+    # Fill a compact rectangle first; later rings compensate for obstacles.
+    first = true
+    while remaining > 0 && radius <= maximum do
+      dz = 0 - radius
+      while dz <= radius && remaining > 0 do
+        dx = 0 - radius
+        while dx <= radius && remaining > 0 do
+          included = if first do dx < side - radius && dz < side - radius else
+            dx == (0 - radius) || dx == radius || dz == (0 - radius) || dz == radius end
+          if included do
+            col = goal mod width + dx * stride
+            row = goal / width + dz * stride
+            if col >= 0 && row >= 0 && col < width && row < height do
+              cell = row * width + col
+              # Use the already-known row/column and scalar layout. Avoid
+              # per-slot point maps and repeated grid-field lookups.
+              x = ox + col * cell_size + cell_size / 2
+              z = oz + row * cell_size + cell_size / 2
+              # Preserve the zero-half-size geometry of footprint 1, even on
+              # tiny grids. Larger bodies use the existing bounded cover API.
+              valid = if footprint < 2 do RTS.Map.fits?(grid, mask, x, z, footprint) else
+                cells = RTS.Map.cover(layout, x, z, footprint)
+                clear = cells != []
+                List.do(cells, covered, do if Str.byte(mask, covered) == 35 do clear = false end end)
+                clear
+              end
+              List.do(others, other, do
+                distance = (footprint + access(other, [2])) / 2
+                dx_other = x - access(other, [0])
+                dz_other = z - access(other, [1])
+                if dx_other < distance && dx_other > (0 - distance) && dz_other < distance && dz_other > (0 - distance) do valid = false end
+              end)
+              if valid do
+                result = [cell | result]
+                remaining = remaining - 1
+              end
+            end
+          end
+          dx = dx + 1
+        end
+        dz = dz + 1
+      end
+      radius = radius + 1
+      first = false
+    end
+    List.reverse(result)
+  }
+end
+
+sample = 0
+valid = true
+while sample < 1260 do
+  choice = ^ sample
+  step = access([1, 2, 7, 256], [choice mod 4])
+  choice = choice / 4
+  xi = choice mod 7
+  choice = choice / 7
+  zi = choice mod 5
+  choice = choice / 5
+  dx = access([-1, 0, step], [choice mod 3])
+  dz = access([-1, 0, step], [choice / 3])
+  layout = {3, 2, -3, 5, step}
+  x = -3 + step / 2 + access([0 - step - 1, -1, 0, 1, step, 2 * step, 3 * step + 1], [xi])
+  z = 5 + step / 2 + access([0 - step - 1, -1, 0, 1, 2 * step + 1], [zi])
+  rectangles = [{x, z, x + dx, z + dz}]
+  valid = valid && RTS.Map.rectangle_mask_native(layout, rectangles) ==
+    RTS.RectangleReference.mask(layout, rectangles)
+  sample = sample + 1
+end
+RTS.Check.that("1260 rectangle masks match independent point-in-inclusive-rectangle geometry",
+  valid && sample == 1260)
+
+RTS.Check.that("unit collision rounding stays in KC3 and is not the historical graph-center policy",
+  RTS.Map.rectangle_mask_native({3, 1, 0, 0, 1},
+    RTS.RectangleReference.rectangles(2, [[1, 0, 1]])) == ".#.")
+RTS.Check.that("odd body pairs are not lost through disjoint Map.cover buckets",
+  RTS.Map.rectangle_mask_native({3, 3, 0, 0, 2},
+    RTS.RectangleReference.rectangles(3, [[3, 1, 3]])) == "######...")
+RTS.Check.that("off-map bodies still block in-map formation centers",
+  RTS.Map.rectangle_mask_native({2, 1, 0, 0, 256},
+    RTS.RectangleReference.rectangles(128, [[0, 128, 256]])) == "#.")
+RTS.Check.that("footprint-one exact point blockers survive empty physical cover buckets",
+  RTS.Map.rectangle_mask_native({3, 2, 0, 0, 1},
+    RTS.RectangleReference.rectangles(1, [[1, 1, 1]])) == "....#.")
+RTS.Check.that("zero or negative half-distance yields empty rectangles rather than collisions",
+  RTS.Map.rectangle_mask_native({3, 2, 0, 0, 1},
+    RTS.RectangleReference.rectangles(0, [[1, 1, 0], [1, 1, -2]])) == "......")
+
+List.do([(S8) 1, (S16) 1, (S32) 1, (S64) 1, (Sw) 1,
+  (U8) 1, (U16) 1, (U32) 1, (U64) 1, (Uw) 1], one, do
+  RTS.Check.that("all bounded integer widths are accepted without altering inclusive boundaries",
+    RTS.Map.rectangle_mask_native({one, one, one, one, one},
+      [{one, one, one, one}]) == "#")
+end)
+List.do([{3, 2, -2147483648, 2147483647, 256},
+  {3, 2, 2147483647, -2147483648, 2147483647}], layout, do
+  rectangles = [{-2147483648, -2147483648, 2147483647, 2147483647}]
+  RTS.Check.that("signed-32 input extremes use safe signed-64 sample coordinates and divisions",
+    RTS.Map.rectangle_mask_native(layout, rectangles) ==
+      RTS.RectangleReference.mask(layout, rectangles))
+end)
+layout = {3, 2, 0, 0, 256}
+rectangles = [{0, 0, 512, 512}, {400, -100, 800, 128}, {3, 3, 2, 2}]
+before = inspect(rectangles)
+expected = RTS.RectangleReference.mask(layout, rectangles)
+owned = RTS.Map.rectangle_mask_native(layout, rectangles)
+RTS.Check.that("union is ordered-input independent, idempotent and read-only",
+  owned == expected && inspect(rectangles) == before &&
+  RTS.Map.rectangle_mask_native(layout, List.reverse(rectangles)) == expected &&
+  RTS.Map.rectangle_mask_native(layout, List.append(rectangles, rectangles)) == expected)
+rectangles = void
+layout = void
+RTS.Check.that("returned center mask owns its bytes after input release", owned == expected)
+
+layout = {3, 2, 0, 0, 256}
+List.do([void, [], {1, 2}, {0, 0, 1, 1, 1}, {0, 0, 1.0, 1},
+  {0, 0, "1", 1}, {0, 0, true, 1}, {0, 0, 2147483648, 1},
+  {0, 0, (U64) 18446744073709551615, 1}], bad, do
+  RTS.Check.that("late malformed rectangles decline before partial output",
+    RTS.Map.rectangle_mask_native(layout, [{0, 0, 1000, 1000}, bad]) == void)
+end)
+List.do([void, true, %{}, [{0, 0, 1, 1} | true]], bad, do
+  RTS.Check.that("rectangle input must be a proper list",
+    RTS.Map.rectangle_mask_native(layout, bad) == void)
+end)
+List.do([void, [], {1, 1}, {0, 1, 0, 0, 1}, {1, -1, 0, 0, 1},
+  {1, 1, 0, 0, 0}, {65536, 1, 0, 0, 1}, {1, 1, 2147483648, 0, 1},
+  {1, 1, 0, 0, 1.0}, {1025, 1024, 0, 0, 1}], bad, do
+  RTS.Check.that("unsupported dimensions, coordinates and allocation bounds decline",
+    RTS.Map.rectangle_mask_native(bad, []) == void)
+end)
+rectangles = [{0, 0, 0, 0}]
+i = 12
+while i > 0 do rectangles = List.append(rectangles, rectangles); i = i - 1 end
+RTS.Check.that("4096 rectangles are accepted while 4097 decline before allocation",
+  RTS.Map.rectangle_mask_native({1, 1, 0, 0, 1}, rectangles) == "#" &&
+  RTS.Map.rectangle_mask_native({1, 1, 0, 0, 1}, [{0, 0, 0, 0} | rectangles]) == void)
+full = {0, 0, 1023, 1023}
+RTS.Check.that("one-MiB allocation and four-MiB duplicate-write work have explicit boundaries",
+  RTS.Map.rectangle_mask_native({1024, 1024, 0, 0, 1}, [full, full, full, full]) == RTS.Map.repeat("#", 1048576) &&
+  RTS.Map.rectangle_mask_native({1024, 1024, 0, 0, 1}, [full, full, full, full, full]) == void)
+
+# Exact ordered slots, including wide fallback and tiny terrain behavior.
+cases = 0
+valid = true
+List.do([{5, 4, 0, 0, 1}, {6, 5, -21, 14, 2},
+  {8, 8, -1024, -1024, 256}, {4, 5, -9007199254730000, 9007199254730000, 256}], layout, do
+  {width, height, ox, oz, step} = ^ layout
+  grid = RTS.Data.share(%{"width" => width, "height" => height,
+    "origin_x" => ox, "origin_z" => oz, "cell_size" => step})
+  open = RTS.Map.repeat(".", width * height)
+  others = [[ox + step / 2, oz + step / 2, 1],
+    [ox + step + step / 2, oz + step / 2, 3],
+    [ox - 1, oz + step, 257],
+    [ox + width * step, oz + height * step, 1024]]
+  before = inspect(others)
+  List.do([1, 2, 3, 127, 128, 384], footprint, do
+    List.do([0, 1, 2, 3, 4], count, do
+      List.do([0, width * height - 1], goal, do
+        List.do([open, RTS.Map.mark(open, width * height / 2)], mask, do
+          actual = RTS.Navigation.slots(grid, mask, goal, footprint, others, count)
+          expected = RTS.FormationReference.slots(grid, mask, goal, footprint, others, count)
+          valid = valid && actual == expected &&
+            RTS.Wire.encode(actual) == RTS.Wire.encode(expected) && inspect(others) == before
+          cases = cases + 1
+        end)
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("480 exact formation results preserve ordering, terrain, odd/tiny/off-map bodies and wide fallback",
+  valid && cases == 480)
+
+# The protocol bounds total fine-grid cells, not each side to 96. Exercise
+# square, maximum-aspect and maximum-area rectangular layouts at both guards.
+cases = 0
+valid = true
+List.do([{96, 96}, {512, 16}, {64, 144}], {width, height}, do
+  grid = RTS.Data.share(%{"width" => width, "height" => height,
+    "origin_x" => -6144, "origin_z" => -5120, "cell_size" => 256})
+  before_grid = RTS.Wire.encode(grid)
+  open = RTS.Map.repeat(".", width * height)
+  goal = (height / 2) * width + width / 2
+  x = -6144 + (goal mod width) * 256 + 128
+  z = -5120 + (goal / width) * 256 + 128
+  candidates = [[x - 512, z - 512, 128], [x, z - 512, 3],
+    [x - 256, z + 256, 257], [-6145, z, 1024]]
+  List.do([0, 1, 2, 3, 4], other_count, do
+    others = []
+    i = 0
+    while i < other_count do
+      others = [access(candidates, [i]) | others]
+      i = i + 1
+    end
+    before_others = RTS.Wire.encode(others)
+    List.do([0, 1, 2, 3, 4], count, do
+      List.do([open, RTS.Map.mark(open, goal)], mask, do
+        actual = RTS.Navigation.slots(grid, mask, goal, 128, others, count)
+        expected = RTS.FormationBeforeRaster.slots(grid, mask, goal, 128, others, count)
+        same = actual == expected && RTS.Wire.encode(actual) == RTS.Wire.encode(expected) &&
+          RTS.Wire.encode(grid) == before_grid && RTS.Wire.encode(others) == before_others
+        if (! same) && valid do
+          puts(RTS.Wire.encode(%{"width" => width, "height" => height, "count" => count,
+            "other_count" => other_count, "blocked_goal" => Str.byte(mask, goal) == 35,
+            "actual" => actual, "expected" => expected,
+            "grid_unchanged" => RTS.Wire.encode(grid) == before_grid,
+            "others_unchanged" => RTS.Wire.encode(others) == before_others}))
+        end
+        valid = valid && same
+        cases = cases + 1
+      end)
+    end)
+  end)
+end)
+RTS.Check.that("150 maximum-grid formations preserve exact ordered results, guard boundaries and source ownership",
+  valid && cases == 150)
+
+# Independent concrete geometry for the case that exposes the historical
+# fits? oracle's runtime U16/S16 comparison defect. Do not require that defect
+# to persist: only assert the mathematically clear cell and baseline parity.
+grid = RTS.Data.share(%{"width" => 512, "height" => 16,
+  "origin_x" => -6144, "origin_z" => -5120, "cell_size" => 256})
+mask = RTS.Map.mark(RTS.Map.repeat(".", 8192), 4352)
+RTS.Check.that("wide-grid first available center is independently cell3326 and preserves ff8da82",
+  RTS.Map.cover_reference({512, 16, -6144, -5120, 256}, 59008, -3456, 128) == [3326] &&
+  Str.byte(mask, 3326) == 46 &&
+  RTS.FormationBeforeRaster.slots(grid, mask, 4352, 128, [], 1) == [3326] &&
+  RTS.Navigation.slots(grid, mask, 4352, 128, [], 1) == [3326])
+
+# Large selections must exercise the native path, additional rings and
+# exhaustion; the existing formation suite has too few others for this guard.
+valid = true
+cases = 0
+List.do([{8, 8}, {16, 12}], {width, height}, do
+  grid = RTS.Data.share(%{"width" => width, "height" => height,
+    "origin_x" => -1024, "origin_z" => -1024, "cell_size" => 256})
+  goal = (height / 2) * width + width / 2
+  x = -1024 + (goal mod width) * 256 + 128
+  z = -1024 + (goal / width) * 256 + 128
+  others = [[x - 512, z - 512, 128], [x, z, 257], [x + 512, z, 128], [-1025, z, 1024]]
+  before = RTS.Wire.encode(others)
+  open = RTS.Map.repeat(".", width * height)
+  List.do([9, 25, 50], count, do
+    List.do([open, RTS.Map.mark(RTS.Map.mark(open, goal), 0)], mask, do
+      actual = RTS.Navigation.slots(grid, mask, goal, 128, others, count)
+      expected = RTS.FormationBeforeRaster.slots(grid, mask, goal, 128, others, count)
+      valid = valid && actual == expected && actual == RTS.FormationReference.slots(grid, mask, goal, 128, others, count) &&
+        RTS.Wire.encode(actual) == RTS.Wire.encode(expected) && RTS.Wire.encode(others) == before
+      cases = cases + 1
+    end)
+  end)
+end)
+RTS.Check.that("12 large native formations preserve ordered rings, terrain, exhaustion and source ownership",
+  valid && cases == 12)
+
+grid = RTS.Data.share(%{"width" => 16, "height" => 12,
+  "origin_x" => -1024, "origin_z" => -1024, "cell_size" => 256})
+mask = RTS.Map.repeat(".", 192)
+others = [[128, 128, 128], [640, 128, 128], [128, 640, 257], [9007199254730000, 128, 128]]
+before = RTS.Wire.encode(others)
+RTS.Check.that("a wide neighbor with a bounded grid declines the entire native raster without mutation",
+  RTS.Navigation.slots(grid, mask, 104, 128, others, 9) ==
+    RTS.FormationBeforeRaster.slots(grid, mask, 104, 128, others, 9) && RTS.Wire.encode(others) == before)

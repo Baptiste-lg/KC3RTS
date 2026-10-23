@@ -81,6 +81,20 @@ defmodule RTS.Navigation do
     if (height - 1 - goal / width) / stride > maximum do maximum = (height - 1 - goal / width) / stride end
     # Fill a compact rectangle first; later rings compensate for obstacles.
     first = true
+    centers = void
+    # Measured guard: one selected unit regressed; four already wins.
+    # Tiny selections/neighbor sets retain the original scan, with no raster.
+    if count >= 4 && remaining > 0 && radius <= maximum && others != [] && List.length(others) >= 4 do
+      # Strict half-sum collision policy stays in KC3, once per other body.
+      rectangles = List.map(others, fn (other) {
+        distance = (footprint + access(other, [2])) / 2
+        x = access(other, [0])
+        z = access(other, [1])
+        {x - distance + 1, z - distance + 1,
+          x + distance - 1, z + distance - 1}
+      })
+      centers = RTS.Map.rectangle_mask_native(layout, rectangles)
+    end
     while remaining > 0 && radius <= maximum do
       dz = 0 - radius
       while dz <= radius && remaining > 0 do
@@ -105,12 +119,16 @@ defmodule RTS.Navigation do
                 List.do(cells, covered, do if Str.byte(mask, covered) == 35 do clear = false end end)
                 clear
               end
-              List.do(others, other, do
-                distance = (footprint + access(other, [2])) / 2
-                dx_other = x - access(other, [0])
-                dz_other = z - access(other, [1])
-                if dx_other < distance && dx_other > (0 - distance) && dz_other < distance && dz_other > (0 - distance) do valid = false end
-              end)
+              if centers == void do
+                List.do(others, other, do
+                  distance = (footprint + access(other, [2])) / 2
+                  dx_other = x - access(other, [0])
+                  dz_other = z - access(other, [1])
+                  if dx_other < distance && dx_other > (0 - distance) && dz_other < distance && dz_other > (0 - distance) do valid = false end
+                end)
+              else
+                if Str.byte(centers, cell) == 35 do valid = false end
+              end
               if valid do
                 result = [cell | result]
                 remaining = remaining - 1
