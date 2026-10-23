@@ -1,0 +1,20 @@
+# Manual upstream-runtime reproducer, NOT a passing application test.
+# Runtime 4bdffa88b35a496ca0a856a9eb58486cf6e2029c, OpenBSD 8.0 amd64.
+# No project modules, native bridge or game state are loaded.
+# Expected: all three comparisons are true; reversing operands or widening
+# the positive value must not change the mathematical comparison.
+# Actual on the pin: false / true / true. compare.c converts U16 to S16
+# when comparing to S8/S16, turning 58944 into -6592.
+# Run from the runtime directory: kc3s/kc3s --load <this file> --quit.
+# A nonzero exit reproduces the defect; runtime sources remain untouched.
+forward = (U16) 58944 >= (S16) -6144
+reverse = (S16) -6144 <= (U16) 58944
+widened = (U32) 58944 >= (S16) -6144
+puts("U16(58944) >= S16(-6144): " + inspect(forward))
+puts("S16(-6144) <= U16(58944): " + inspect(reverse))
+puts("U32(58944) >= S16(-6144): " + inspect(widened))
+if (! forward) || (! reverse) || (! widened) do
+  puts("FAIL: unsigned/signed comparison changed with operand order or width")
+  exit(1)
+end
+puts("PASS: unsigned/signed comparisons agree")
