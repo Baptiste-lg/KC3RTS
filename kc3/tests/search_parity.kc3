@@ -38,6 +38,43 @@ List.do([true, false], astar, do
     end)
   end)
 end)
+
+# Small asymmetric fixtures isolate neighbor guards and packed priority ties.
+# Keep these boundary cases when experimenting with search helper inlining.
+# Four corners and the center exercise every missing/present neighbor axis.
+List.do([{1, 1, 0, 0, false},
+  {4, 1, 0, 3, false}, {4, 1, 3, 0, true},
+  {1, 4, 0, 3, true}, {1, 4, 3, 0, false},
+  {3, 3, 0, 8, false}, {3, 3, 2, 6, true},
+  {3, 3, 6, 2, false}, {3, 3, 8, 0, true},
+  {3, 3, 4, 0, true}, {3, 3, 4, 8, false}],
+  {width, height, start, goal, reverse}, do
+  tiny = %{"width" => width, "height" => height}
+  clear = RTS.Map.repeat(".", width * height)
+  RTS.Check.that("corner and single-axis fixtures exercise the intended opposite tie directions",
+    RTS.Search.reverse_ties?(tiny, start, goal) == reverse)
+  List.do([true, false], astar, do
+    current = RTS.Search.start(tiny, start, goal, astar)
+    List.do([0, 1, 2], budget, do
+      current = RTS.SearchParity.chunk(tiny, clear, current, budget)
+      if width == 1 && height == 1 && budget == 1 do
+        RTS.Check.that("one-cell search reaches its goal without generating neighbors",
+          RTS.Data.get(current, "status") == "ready" &&
+          RTS.Data.get(current, "expanded") == 1 && RTS.Data.get(current, "path") == [0])
+      end
+      current = JSON.from_str(RTS.Wire.encode(current))
+    end)
+  end)
+end)
+singleton = %{"width" => 1, "height" => 1}
+List.do(["#", "#.."], blocked_goal, do
+  List.do([0, 1], budget, do
+    stopped = RTS.SearchParity.chunk(singleton, blocked_goal,
+      RTS.Search.start(singleton, 0, 0, true), budget)
+    RTS.Check.that("blocked one-cell goals win over budget and ready-goal checks in N/3N masks",
+      RTS.Data.get(stopped, "status") == "unreachable" && RTS.Data.get(stopped, "expanded") == 0)
+  end)
+end)
 initial = RTS.Search.start(map, 0, 63, true)
 RTS.SearchParity.chunk(map, mask, initial, 0)
 sealed = RTS.Map.mark(RTS.Map.mark(mask, 1), 8)
