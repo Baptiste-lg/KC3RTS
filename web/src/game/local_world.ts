@@ -14,6 +14,7 @@ const COST = { villager: { wood: 5, gold: 5 }, center: { wood: 25, stone: 15 } }
 export interface LocalWorld extends WorldSnapshot { nextVillagerId: number; nextBuildingId: number }
 export type CommandResult = { ok: true; world: LocalWorld } | { ok: false; reason: string };
 interface Route { key: string; points: GroundPoint[] }
+interface UnitIndex { positions: Map<number, Villager>; cells: Map<string, Set<number>> }
 const routeCache = new WeakMap<LocalWorld, Map<number, Route>>();
 function routes(world: LocalWorld): Map<number, Route> { return routeCache.get(world) ?? new Map(); }
 function withRoutes(world: LocalWorld, previous: LocalWorld, cleared: ReadonlySet<number> = new Set()): LocalWorld {
@@ -86,7 +87,7 @@ export function applyLocalCommand(world: LocalWorld, command: GameCommand): Comm
   if (!["move", "gather", "build", "attack"].includes(order.kind)) return { ok: false, reason: "invalid_target" };
   return { ok: true, world: withRoutes({ ...world, villagers: world.villagers.map((v) => ids.has(v.id) ? { ...v, order } : v) }, world, ids) };
 }
-function move(v: Villager, p: GroundPoint, range: number, blockers: Villager[], radius: number, resources: ResourceNode[], buildings: Building[], plans: Map<number, Route>): Villager {
+function move(v: Villager, p: GroundPoint, range: number, blockers: Villager[], radius: number, resources: ResourceNode[], buildings: Building[], plans: Map<number, Route>, units: UnitIndex): Villager {
   const key = `${p.x},${p.z},${range}`;
   let plan = plans.get(v.id);
   if (!plan || plan.key !== key || plan.points.length && !clearApproach(v, plan.points[0], 0, resources, buildings)) {
@@ -96,6 +97,14 @@ function move(v: Villager, p: GroundPoint, range: number, blockers: Villager[], 
     plans.set(v.id, plan);
   }
   while (plan?.points.length && distance(v, plan.points[0]) < 0.1) {
+    plan = { ...plan, points: plan.points.slice(1) }; plans.set(v.id, plan);
+  }
+  // An idle unit can occupy an intermediate grid point indefinitely. Bypass
+  // only that point when the next one is free and visible; retain the final
+  // approach and the normal per-step terrain/unit collision checks below.
+  if (plan.points.length > 1 && !free(plan.points[0], blockers, radius) &&
+      free(plan.points[1], nearby(plan.points[1], v.id, units.positions, units.cells), radius) &&
+      clearApproach(v, plan.points[1], 0, resources, buildings)) {
     plan = { ...plan, points: plan.points.slice(1) }; plans.set(v.id, plan);
   }
   const waypoint = plan?.points[0];
@@ -159,6 +168,7 @@ function once(world: LocalWorld): LocalWorld {
   for (const v of positions.values()) {
     const key = cell(v); const ids = cells.get(key) ?? new Set<number>(); ids.add(v.id); cells.set(key, ids);
   }
+  const units = { positions, cells };
   const villagers = world.villagers.filter((v) => v.hp > 0).map((previous) => {
     let v = { ...previous };
     const finish = (updated: Villager): Villager => {
@@ -173,7 +183,7 @@ function once(world: LocalWorld): LocalWorld {
     if (!order) return finish(v);
     const blockers = nearby(v, v.id, positions, cells);
     if (order.kind === "move") {
-      v = move(v, order, 0, blockers, world.map_radius, world.resources, world.buildings, plans);
+      v = move(v, order, 0, blockers, world.map_radius, world.resources, world.buildings, plans, units);
       const sharedGoal = distance(v, order) <= UNIT_SPACING * 2 && nearby(order, v.id, positions, cells).some((unit) => distance(unit, order) < UNIT_SPACING);
       if (distance(v, order) < 0.1 || sharedGoal && distance(v, order) <= UNIT_SPACING * 2) v.order = null;
       return finish(v);
@@ -184,12 +194,12 @@ function once(world: LocalWorld): LocalWorld {
       if (!r || r.amount <= 0 && v.cargo === 0) return finish({ ...v, order: null });
       if (v.cargo >= CAPACITY || r.amount <= 0 || v.cargo > 0 && v.cargo_kind !== r.kind) {
         if (!center) return finish(v);
-        if (distance(v, center) > 3.5) return finish(move(v, center, 3.5, blockers, world.map_radius, world.resources, world.buildings, plans));
+        if (distance(v, center) > 3.5) return finish(move(v, center, 3.5, blockers, world.map_radius, world.resources, world.buildings, plans, units));
         stockpile[v.cargo_kind!] += v.cargo; v.cargo = 0; v.cargo_kind = null;
         if (r.amount <= 0) v.order = null;
         return finish(v);
       }
-      if (distance(v, r) > gatherRange(r.kind) + .01) return finish(move(v, r, gatherRange(r.kind), blockers, world.map_radius, world.resources, world.buildings, plans));
+      if (distance(v, r) > gatherRange(r.kind) + .01) return finish(move(v, r, gatherRange(r.kind), blockers, world.map_radius, world.resources, world.buildings, plans, units));
       if ((tick + v.id) % GATHER_INTERVAL_TICKS === 0) { mutableResource(r.id).amount -= 1; v.cargo += 1; v.cargo_kind = r.kind; }
       return finish(v);
     }
@@ -197,12 +207,12 @@ function once(world: LocalWorld): LocalWorld {
     if (!b || b.hp <= 0) return finish({ ...v, order: null });
     if (order.kind === "build") {
       if (b.progress >= 100) return finish({ ...v, order: null });
-      if (distance(v, b) > 3.5) return finish(move(v, b, 3.5, blockers, world.map_radius, world.resources, world.buildings, plans));
+      if (distance(v, b) > 3.5) return finish(move(v, b, 3.5, blockers, world.map_radius, world.resources, world.buildings, plans, units));
       const site = mutableBuilding(b.id);
       site.progress = Math.min(100, site.progress + 1); site.hp = Math.max(1, Math.round(site.max_hp * site.progress / 100));
       return finish(v);
     }
-    if (distance(v, b) > ATTACK_RANGE + .01) return finish(move(v, b, ATTACK_RANGE, blockers, world.map_radius, world.resources, world.buildings, plans));
+    if (distance(v, b) > ATTACK_RANGE + .01) return finish(move(v, b, ATTACK_RANGE, blockers, world.map_radius, world.resources, world.buildings, plans, units));
     if ((tick + v.id) % v.attack_interval_ticks === 0) {
       const target = mutableBuilding(b.id);
       target.hp = Math.max(0, target.hp - 5);

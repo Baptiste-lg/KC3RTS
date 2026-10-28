@@ -1,5 +1,6 @@
 defmodule KC3RTS.Game.WorldTest do
   use ExUnit.Case, async: true
+  alias KC3RTS.Game.Pathfinding
   alias KC3RTS.Game.World
 
   test "generates a seeded map with three villagers, three resource types and a passive enemy base" do
@@ -47,6 +48,112 @@ defmodule KC3RTS.Game.WorldTest do
     later = World.step(ordered, 500)
     assert later.stockpile.wood > world.stockpile.wood
     assert later.stockpile.stone == world.stockpile.stone
+  end
+
+  test "the smoke seed delivers wood past an occupied intermediate waypoint" do
+    world = World.new(seed: 1_397_533_113)
+    assert {:ok, recruited} = World.command(world, %{type: :spawn_villager, building_id: 1})
+
+    node =
+      recruited.resources
+      |> Enum.filter(&(&1.kind == :wood))
+      |> Enum.min_by(&distance(&1, %{x: 0, z: 0}))
+
+    assert node.id == 101
+
+    assert {:ok, ordered} =
+             World.command(recruited, %{
+               type: :order,
+               villager_ids: [1],
+               order: {:gather, node.id}
+             })
+
+    final =
+      Enum.reduce(1..150, ordered, fn _, current ->
+        next = World.step(current)
+        assert_spaced(next.villagers)
+
+        for {before, moved} <- Enum.zip(current.villagers, next.villagers) do
+          assert distance(before, moved) <= 0.55 + 1.0e-9
+
+          assert Pathfinding.clear_approach?(
+                   before,
+                   moved,
+                   0,
+                   current.resources,
+                   current.buildings
+                 )
+        end
+
+        next
+      end)
+
+    assert final.stockpile.wood > recruited.stockpile.wood
+    assert final.stockpile.gold == recruited.stockpile.gold
+    assert final.stockpile.stone == recruited.stockpile.stone
+    assert World.step(ordered, 150) == final
+
+    assert Enum.map(tl(final.villagers), &{&1.x, &1.z}) ==
+             Enum.map(tl(recruited.villagers), &{&1.x, &1.z})
+  end
+
+  test "an occupied last waypoint is retained and an occupied successor is not skipped into" do
+    world = World.new(seed: 1234)
+    [mover, blocker, other] = world.villagers
+    head = %{x: 4.0, z: 4.0}
+    next = %{x: 4.0, z: 6.0}
+
+    for {goal, points, villagers} <- [
+          {%{x: 5.0, z: 4.0}, [head], [mover, blocker]},
+          {%{x: 6.0, z: 6.0}, [head, next, %{x: 6.0, z: 6.0}],
+           [mover, blocker, %{other | x: next.x, z: next.z}]},
+          # The successor's occupant is outside the mover's 3x3 cell query.
+          {%{x: 8.0, z: 4.0}, [head, %{x: 6.0, z: 4.0}, %{x: 8.0, z: 4.0}],
+           [mover, blocker, %{other | x: 6.0, z: 4.0}]}
+        ] do
+      [mover, blocker | rest] = villagers
+      plan = %{key: {goal.x, goal.z, 0}, points: points}
+
+      ordered = %{
+        world
+        | resources: [],
+          villagers: [
+            %{mover | x: 2.0, z: 4.0, order: {:move, goal}},
+            %{blocker | x: head.x, z: head.z} | rest
+          ],
+          routes: %{mover.id => plan}
+      }
+
+      stepped = World.step(ordered)
+      assert Map.fetch!(stepped.routes, mover.id) == plan
+      assert_in_delta hd(stepped.villagers).x, 2.55, 1.0e-9
+      assert_spaced(stepped.villagers)
+    end
+  end
+
+  test "an occupied intermediate waypoint cannot be bypassed through a center" do
+    world = World.new(seed: 1234)
+    [mover, blocker | _] = world.villagers
+    mover = %{mover | x: -2.91, z: 0.0}
+    head = %{x: -4.0, z: 2.0}
+    next = %{x: -2.0, z: 4.0}
+    goal = %{x: -2.0, z: 8.0}
+    plan = %{key: {goal.x, goal.z, 0}, points: [head, next, goal]}
+
+    ordered = %{
+      world
+      | resources: [],
+        villagers: [%{mover | order: {:move, goal}}, %{blocker | x: head.x, z: head.z}],
+        routes: %{mover.id => plan}
+    }
+
+    assert Pathfinding.clear_approach?(mover, head, 0, [], world.buildings)
+    assert Pathfinding.clear_approach?(head, next, 0, [], world.buildings)
+    refute Pathfinding.clear_approach?(mover, next, 0, [], world.buildings)
+    stepped = World.step(ordered)
+    assert Map.fetch!(stepped.routes, mover.id) == plan
+    assert_spaced(stepped.villagers)
+    assert Pathfinding.clear_approach?(mover, hd(stepped.villagers), 0, [], world.buildings)
   end
 
   test "a worker stops beside a resource before harvesting" do

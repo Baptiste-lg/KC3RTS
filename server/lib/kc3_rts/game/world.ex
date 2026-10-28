@@ -224,7 +224,7 @@ defmodule KC3RTS.Game.World do
               stockpile,
               tick,
               blockers,
-              navigation,
+              {navigation, positions, cells},
               routes
             )
 
@@ -485,12 +485,13 @@ defmodule KC3RTS.Game.World do
     end
   end
 
-  defp move(v, point, range, blockers, {radius, obstacles}, routes) do
+  defp move(v, point, range, blockers, {{radius, obstacles}, positions, cells}, routes) do
     case plan_route(v, point, range, radius, obstacles, routes) do
       :unreachable ->
         {%{v | order: nil}, Map.delete(routes, v.id)}
 
       plan ->
+        plan = skip_occupied_waypoint(plan, v, blockers, radius, obstacles, {positions, cells})
         routes = if plan, do: Map.put(routes, v.id, plan), else: Map.delete(routes, v.id)
         waypoint = if plan, do: List.first(plan.points), else: nil
         goal = waypoint || point
@@ -549,6 +550,30 @@ defmodule KC3RTS.Game.World do
   end
 
   defp drop_reached_points(plan, _v), do: plan
+
+  # A static route may cross an idle unit. Bypass only one intermediate point
+  # when its successor is open; ordinary per-step collisions remain unchanged.
+  defp skip_occupied_waypoint(
+         %{points: [point, next | rest]} = plan,
+         v,
+         blockers,
+         radius,
+         obstacles,
+         {positions, cells}
+       ) do
+    if not free?(point, blockers, radius) and
+         open?(
+           v,
+           next,
+           nearby_units(%{v | x: next.x, z: next.z}, positions, cells),
+           radius,
+           obstacles
+         ),
+       do: %{plan | points: [next | rest]},
+       else: plan
+  end
+
+  defp skip_occupied_waypoint(plan, _v, _blockers, _radius, _obstacles, _index), do: plan
 
   defp movement_candidate(v, dx, dz, step, blockers, radius, obstacles) do
     direct = %{x: v.x + dx * step, z: v.z + dz * step}

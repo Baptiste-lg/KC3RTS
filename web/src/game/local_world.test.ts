@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RESOURCE_AMOUNTS, RESOURCE_COUNTS } from "./map_generation";
 import { UNIT_HITBOX_RADIUS } from "./action_rules";
+import { clearApproach, findRoute } from "./pathfinding";
 import { applyLocalCommand, createLocalWorld, stepLocalWorld, type LocalWorld } from "./local_world";
 
 function expectSpaced(world: LocalWorld): void {
@@ -63,6 +64,32 @@ describe("RTS simulation", () => {
     expect(attacked.buildings[1].hp).toBeLessThan(enemy.hp);
     expect(attacking.buildings[1].hp).toBe(enemy.hp);
   });
+  it("delivers past a waypoint occupied by an idle worker on the failing CI seed", () => {
+    const start = createLocalWorld(1397533113);
+    const recruited = applyLocalCommand(start, { type: "spawn_villager", building_id: 1 });
+    expect(recruited.ok).toBe(true); if (!recruited.ok) return;
+    const wood = recruited.world.resources.filter((r) => r.kind === "wood")
+      .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))[0];
+    expect(wood.id).toBe(101);
+    const ordered = applyLocalCommand(recruited.world, { type: "order", villager_ids: [1], order: { kind: "gather", id: wood.id } });
+    expect(ordered.ok).toBe(true); if (!ordered.ok) return;
+    const before = JSON.stringify(ordered.world);
+    let world = ordered.world;
+    for (let tick = 0; tick < 250; tick += 1) {
+      const previous = world;
+      world = stepLocalWorld(world);
+      expectSpaced(world);
+      expect(Math.hypot(world.villagers[0].x - previous.villagers[0].x,
+        world.villagers[0].z - previous.villagers[0].z)).toBeLessThanOrEqual(0.55 + 1e-8);
+      expect(clearApproach(previous.villagers[0], world.villagers[0], 0,
+        previous.resources, previous.buildings)).toBe(true);
+    }
+    expect(world.stockpile.wood).toBeGreaterThan(recruited.world.stockpile.wood);
+    expect(world.resources.find((r) => r.id === wood.id)!.amount).toBeLessThan(wood.amount);
+    expect(world.villagers.slice(1)).toEqual(ordered.world.villagers.slice(1));
+    expect(JSON.stringify(ordered.world)).toBe(before);
+    expect(stepLocalWorld(ordered.world, 250)).toEqual(world);
+  });
   it("stops at the edge of a resource before gathering", () => {
     const start = createLocalWorld(1234);
     const node = start.resources.find((r) => r.kind === "wood")!;
@@ -72,6 +99,36 @@ describe("RTS simulation", () => {
     const worker = stepLocalWorld(ordered.world).villagers[0];
     expect(Math.hypot(worker.x - node.x, worker.z - node.z)).toBeCloseTo(3);
     expect(stepLocalWorld(ordered.world, 2).resources.find((r) => r.id === node.id)!.amount).toBe(node.amount - 1);
+  });
+  it.each([
+    { name: "a next waypoint occupied outside the current neighborhood", from: { x: -8, z: -6.5 }, goal: { x: 7, z: 0 }, head: { x: -6, z: -4 }, next: { x: -4, z: -4 }, occupiedNext: true },
+    { name: "a shortcut through the center", from: { x: -2, z: 2.5 }, goal: { x: 0, z: -7 }, head: { x: -4, z: 0 }, next: { x: -4, z: -2 }, occupiedNext: false },
+    { name: "the final waypoint", from: { x: -2.5, z: 2.5 }, goal: { x: -3, z: -1 }, head: { x: -4, z: 0 }, next: null, occupiedNext: false },
+  ])("retains an occupied waypoint before $name", ({ from, goal, head, next, occupiedNext }) => {
+    const start = createLocalWorld(1234);
+    const world = { ...start, resources: [], buildings: [start.buildings[0]], villagers: [
+      { ...start.villagers[0], ...from },
+      { ...start.villagers[1], ...head },
+      { ...start.villagers[2], ...(occupiedNext ? next! : { x: 10, z: 10 }) },
+    ] };
+    const route = findRoute(from, goal, 0, world.map_radius, world.resources, world.buildings);
+    expect(route?.[0]).toEqual(head);
+    if (next) {
+      expect(route?.[1]).toEqual(next);
+      expect(clearApproach(from, next, 0, world.resources, world.buildings)).toBe(occupiedNext);
+      if (occupiedNext) {
+        // The next occupant must be found at its own cell, not the actor's.
+        expect(Math.abs(Math.floor(next.x / 1.8) - Math.floor(from.x / 1.8))).toBeGreaterThan(1);
+      }
+    } else expect(route).toHaveLength(1);
+    const ordered = applyLocalCommand(world, { type: "order", villager_ids: [1], order: { kind: "move", ...goal } });
+    expect(ordered.ok).toBe(true); if (!ordered.ok) return;
+    const moved = stepLocalWorld(ordered.world);
+    const d = Math.hypot(head.x - from.x, head.z - from.z);
+    expect(moved.villagers[0].x).toBeCloseTo(from.x + 0.55 * (head.x - from.x) / d, 12);
+    expect(moved.villagers[0].z).toBeCloseTo(from.z + 0.55 * (head.z - from.z) / d, 12);
+    expectSpaced(moved);
+    expect(clearApproach(from, moved.villagers[0], 0, world.resources, world.buildings)).toBe(true);
   });
   it("reserves a larger building footprint around stone and gold", () => {
     const world = createLocalWorld(1234);

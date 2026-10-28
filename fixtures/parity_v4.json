@@ -3036,8 +3036,8 @@
             "id": 1,
             "max_hp": 30,
             "order": null,
-            "x": 21.104543,
-            "z": -18.916319
+            "x": 22.392053,
+            "z": -17.328216
           },
           {
             "attack_interval_ticks": 6,
@@ -3047,8 +3047,8 @@
             "id": 2,
             "max_hp": 30,
             "order": null,
-            "x": 22.110969,
-            "z": -17.461317
+            "x": 20.980248,
+            "z": -18.679843
           },
           {
             "attack_interval_ticks": 6,
@@ -4251,7 +4251,7 @@
             "z": 21.9
           },
           {
-            "amount": 134,
+            "amount": 132,
             "id": 15,
             "initial_amount": 160,
             "kind": "wood",
@@ -5094,52 +5094,10 @@
         "villagers": [
           {
             "attack_interval_ticks": 6,
-            "cargo": 0,
-            "cargo_kind": null,
-            "hp": 30,
-            "id": 1,
-            "max_hp": 30,
-            "order": {
-              "id": 15,
-              "kind": "gather"
-            },
-            "x": 12.0,
-            "z": 8.0
-          },
-          {
-            "attack_interval_ticks": 6,
-            "cargo": 0,
-            "cargo_kind": null,
-            "hp": 30,
-            "id": 2,
-            "max_hp": 30,
-            "order": {
-              "id": 15,
-              "kind": "gather"
-            },
-            "x": 15.1,
-            "z": 7.45
-          },
-          {
-            "attack_interval_ticks": 6,
-            "cargo": 0,
-            "cargo_kind": null,
-            "hp": 30,
-            "id": 3,
-            "max_hp": 30,
-            "order": {
-              "id": 15,
-              "kind": "gather"
-            },
-            "x": 11.1,
-            "z": 6.0
-          },
-          {
-            "attack_interval_ticks": 6,
-            "cargo": 1,
+            "cargo": 3,
             "cargo_kind": "wood",
             "hp": 30,
-            "id": 4,
+            "id": 1,
             "max_hp": 30,
             "order": {
               "id": 15,
@@ -5153,6 +5111,48 @@
             "cargo": 0,
             "cargo_kind": null,
             "hp": 30,
+            "id": 2,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 15.65,
+            "z": 8.0
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 3,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 14.853376,
+            "z": 8.509261
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
+            "id": 4,
+            "max_hp": 30,
+            "order": {
+              "id": 15,
+              "kind": "gather"
+            },
+            "x": 7.65,
+            "z": 6.0
+          },
+          {
+            "attack_interval_ticks": 6,
+            "cargo": 0,
+            "cargo_kind": null,
+            "hp": 30,
             "id": 5,
             "max_hp": 30,
             "order": {
@@ -5160,7 +5160,7 @@
               "kind": "gather"
             },
             "x": 16.0,
-            "z": 8.55
+            "z": 7.1
           }
         ]
       }
